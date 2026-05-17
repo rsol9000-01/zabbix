@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ########################################################################################################################
-###### Installation script for Zabbix, executed by the zabbix-init service, defined in docker-compose.yml #############
+###### Script post-install for Zabbix, executed by the zabbix-init service, defined in docker-compose.yml #############
 ########################################################################################################################
 
 #──── Exit on error, e=exit on error, u=exit on undefined var ──────────
