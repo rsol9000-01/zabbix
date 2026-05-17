@@ -6,10 +6,8 @@
 #──── Exit on error, e=exit on error, u=exit on undefined var ──────────
 set -eu
 #──── Flag to determine if a new user should be created with API_WEB_USER and API_WEB_PASS from .env *** DO NOT CHANGE THE VALUE *** ──────────
-flag_new_user=FALSE
-
-PSK_VALUE=$(cat /zabbix_agentd.psk)
-
+flag_new_user=FALSE           
+PSK_VALUE=$(cat psk/zabbix_agentd.psk)
 #############################################################################################################
 #######################################    0. IS API AVAILABLE?   ###########################################
 #############################################################################################################
