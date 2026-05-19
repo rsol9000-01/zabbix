@@ -1,0 +1,29 @@
+
+##############################################
+# Remote Agent: These variables are required #
+##############################################
+
+#----- Zabbix server FQDN ---------
+SERVER_FQDN=r4.siua.ac.cr
+
+#----- Remote agent FQDN ---------
+AGENT_FQDN=databus.siua.ac.cr
+
+#----- Remote agent hostname ---------
+REMOTE_AGENT_HOSTNAME=Databus host
+
+#----- Time Zone ------
+TZ=America/Costa_Rica
+
+#------ Metadata for autoregistration ------
+ZBX_METADATA=docker-autoreg
+
+#---------- zabbix-remote-Agent2 -----------
+ZBX_PORTS=10050:10050
+ZBX_ACTIVE_ALLOW=true
+ZBX_REFRESH_ACTIVE_CHECKS=60
+#ZBX_HOSTNAME=Zabbix server
+ZBX_TLSCONNECT=psk                             # ← activo usa PSK
+ZBX_TLSACCEPT=psk                              # ← pasivo usa PSK
+ZBX_TLSPSKIDENTITY=zabbix-databus-psk           # ← nombre identificador
+ZBX_TLSPSKFILE=/etc/zabbix/zabbix_agentd.psk    # ← ruta del archivo en el ocker del Agent

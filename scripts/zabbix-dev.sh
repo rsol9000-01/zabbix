@@ -153,5 +153,6 @@ if [ "$FLAG_SERVER" = "true" ]; then
 fi
 
 echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
+
 #---------- Run the compose file ----------------
-docker compose -f "$COMPOSE_FILE" up -d
+docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d

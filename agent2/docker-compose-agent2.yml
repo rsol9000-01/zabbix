@@ -4,11 +4,11 @@ services:
   ###########################
   zabbix-agent2:
     image: zabbix/zabbix-agent2:ubuntu-7.4.3
-    container_name: zabbix-agent2
+    container_name: remote-zabbix-agent2
     hostname: ${REMOTE_AGENT_HOSTNAME}
     restart: unless-stopped
-    env_file:
-      - ../.env
+    #env_file:
+     # - ../.env
     privileged: true
     ports:
       - "${ZBX_PORTS}" # Para poder ser alcanzado por el servidor ZABBIX
@@ -34,4 +34,4 @@ services:
       - /proc:/proc
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./psk/zabbix_agentd.psk:/etc/zabbix/zabbix_agentd.psk:ro
+      - ../psk/zabbix_agentd.psk:/etc/zabbix/zabbix_agentd.psk:ro
