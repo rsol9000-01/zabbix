@@ -34,4 +34,4 @@ services:
       - /proc:/proc
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - ZBX_TLSPSKROUTE:ZBX_TLSPSKFILE:ro
+      - ${ZBX_TLSPSKROUTE}:${ZBX_TLSPSKFILE}:ro
