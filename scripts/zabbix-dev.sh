@@ -14,12 +14,24 @@ echo " *********   Zabbix infrastructure stack installation script ********* "
 # -------------- Script usage instructions
 usage() {
     echo ""
-    echo -e "⚠️  ${YELLOW}Usage:${NC} $0 [agent|server]"
-    echo "            agent  ---> Deploys the remote Zabbix Agent2 container"
-    echo "            server ---> Deploys the full Zabbix server infrastructure stack"
+    echo -e "⚠️  ${YELLOW}Usage:${NC} $0 [agent|server] [optional_seed]"
+    echo ""
+    echo -e "            ${BLUE}agent${NC}  ---> Deploys the remote Zabbix Agent2 container"
+    echo -e "            ${BLUE}server${NC} ---> Deploys the full Zabbix server infrastructure stack"
+    echo ""
+    echo -e "            ${BLUE}optional_seed${NC} ---> Optional custom seed used to generate"
+    echo "                                 a deterministic TLS PSK value"
+    echo ""
+    echo "                                Requirements:"
+    echo -e "                                    ${GREEN}•${NC} Minimum 8 characters"
+    echo -e "                                    ${GREEN}•${NC} No spaces allowed"
+    echo -e "                                    ${GREEN}•${NC} Recommended to use uppercase,"
+    echo -e "                                      lowercase, numbers and symbols"
+    echo ""
+    echo "ℹ️  The same seed must be used during both the Zabbix server"
+    echo "    and remote agent deployment to generate matching PSK values."
     echo ""
 }
-
 # ---------------------------------------------------------------------------
 # Print a consistently formatted section title with a chosen color
 # ---------------------------------------------------------------------------
@@ -46,11 +58,15 @@ cd "$REPO_ROOT"
 #--------------  What type of installation is required?
 FLAG_SERVER=false
 
-# ---------- Only one argument is allowed.
-if [ $# -ne 1 ]; then
+#--------------  Get the PSK seed value from the second argument (if provided)
+PSK_SEED="${2:-}"
+
+# ---------- Only one or two argument are allowed.
+if [[ $# -ne 1 && $# -ne 2 ]]; then
   usage
   exit 1
 fi
+# ---------- Check the first argument to determine the installation type
 
 if [ "$1" = "agent" ]; then
   echo "🛰️   Deploying Zabbix agent2..."
@@ -61,6 +77,39 @@ else
   usage
   exit 1
 fi
+#---------- Check the second argument for a custom seed value (optional)
+
+if [ -n "$PSK_SEED" ]; then
+
+  # Reject spaces
+  if [[ "$PSK_SEED" =~ [[:space:]] ]]; then
+    echo "   - ❌  Invalid seed: spaces are not allowed."
+    exit 1
+  fi
+
+  # Minimum length
+  if [ ${#PSK_SEED} -lt 8 ]; then
+    echo "   - ❌  Invalid seed: minimum length is 8 characters."
+    exit 1
+  fi
+
+  echo "🔐 Custom seed detected, generating PSK from provided seed..."
+  mkdir -p psk
+  PSK_VALUE=$(printf "%s" "$PSK_SEED" | openssl dgst -sha256 | cut -d' ' -f2)
+  echo "$PSK_VALUE" > psk/zabbix_agentd.psk
+  chmod 640 psk/zabbix_agentd.psk
+  echo "   - ✅ Custom PSK generated."
+  echo "   - 🚨  The same seed must be used for both the Zabbix server and remote agent deployment to generate matching PSK values."
+else
+  echo "⚠️  No custom seed provided, genering a random PSK..."
+  mkdir -p psk
+  openssl rand -hex 32 > psk/zabbix_agentd.psk
+  chmod 640 psk/zabbix_agentd.psk
+  echo "   - ✅ Random PSK generated."
+  echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKROUTE${NC} environment variable during both the Zabbix server and remote agent deployment."
+fi
+
+
 
 # ---------- Compose file to deploy 
 COMPOSE_FILE="docker-compose.yml"
@@ -96,8 +145,8 @@ fi
 command -v curl &> /dev/null || { echo "❌  Error: curl is not installed or not in PATH."; exit 1; }
 echo "✅  curl ready: $(curl -V | head -n1 | cut -d' ' -f1-2)"
 
-#--------------- openssl - server only -------------------
-if [ "$FLAG_SERVER" = "true" ]; then
+#--------------- openssl  -------------------
+#if [ "$FLAG_SERVER" = "true" ]; then
     
   if ! command -v openssl &> /dev/null; then
     echo "🔧  Installing openssl..."
@@ -110,7 +159,7 @@ if [ "$FLAG_SERVER" = "true" ]; then
   mkdir -p psk
   openssl rand -hex 32 > psk/zabbix_agentd.psk
   chmod 640 psk/zabbix_agentd.psk
-fi
+#fi
 
 #############################################################################################################
 ###################################    Check required files  ###############################################
@@ -156,3 +205,5 @@ echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
 
 #---------- Run the compose file ----------------
 docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d
+
+docker compose logs -f zabbix-init
