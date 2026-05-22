@@ -92,24 +92,12 @@ if [ -n "$PSK_SEED" ]; then
     echo "   - ❌  Invalid seed: minimum length is 8 characters."
     exit 1
   fi
-
-  echo "🔐 Custom seed detected, generating PSK from provided seed..."
-  mkdir -p psk
-  PSK_VALUE=$(printf "%s" "$PSK_SEED" | openssl dgst -sha256 | cut -d' ' -f2)
-  echo "$PSK_VALUE" > psk/zabbix_agentd.psk
-  chmod 640 psk/zabbix_agentd.psk
-  echo "   - ✅ Custom PSK generated."
-  echo "   - 🚨  The same seed must be used for both the Zabbix server and remote agent deployment to generate matching PSK values."
+  FLAG_SEED=true
+  
 else
-  echo "⚠️  No custom seed provided, genering a random PSK..."
-  mkdir -p psk
-  openssl rand -hex 32 > psk/zabbix_agentd.psk
-  chmod 640 psk/zabbix_agentd.psk
-  echo "   - ✅ Random PSK generated."
-  echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKROUTE${NC} environment variable during both the Zabbix server and remote agent deployment."
+  FLAG_SEED=false
+  
 fi
-
-
 
 # ---------- Compose file to deploy 
 COMPOSE_FILE="docker-compose.yml"
@@ -155,10 +143,7 @@ echo "✅  curl ready: $(curl -V | head -n1 | cut -d' ' -f1-2)"
   command -v openssl &> /dev/null || { echo "❌  Error: openssl is not installed or not in PATH."; exit 1; }
   echo "✅  openssl ready: $(openssl version | cut -d' ' -f1-2)"
 
-  #---------- Generate PSK file - server only -------------
-  mkdir -p psk
-  openssl rand -hex 32 > psk/zabbix_agentd.psk
-  chmod 640 psk/zabbix_agentd.psk
+
 #fi
 
 #############################################################################################################
@@ -202,6 +187,27 @@ if [ "$FLAG_SERVER" = "true" ]; then
 fi
 
 echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
+
+#########################################################################################################
+######################################    Generating PSK  ###############################################
+#########################################################################################################
+
+if [ "$FLAG_SEED" = "true" ]; then
+  echo "🔐 Custom seed detected, generating PSK from provided seed..."
+  mkdir -p psk
+  PSK_VALUE=$(printf "%s" "$PSK_SEED" | openssl dgst -sha256 | cut -d' ' -f2)
+  echo "$PSK_VALUE" > psk/zabbix_agentd.psk
+  chmod 640 psk/zabbix_agentd.psk
+  echo "   - ✅ Custom PSK generated."
+  echo "   - 🚨  The same seed must be used for both the Zabbix server and remote agent deployment to generate matching PSK values."
+else
+  echo "⚠️  No custom seed provided, genering a random PSK..."
+  mkdir -p psk
+  openssl rand -hex 32 > psk/zabbix_agentd.psk
+  chmod 640 psk/zabbix_agentd.psk
+  echo "   - ✅ Random PSK generated."
+  echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKROUTE${NC} environment variable during both the Zabbix server and remote agent deployment."
+fi
 
 #---------- Run the compose file ----------------
 docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d
