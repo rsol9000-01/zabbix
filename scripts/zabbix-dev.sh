@@ -200,12 +200,12 @@ if [ "$FLAG_SEED" = "true" ]; then
   echo "   - 🚨  The same seed must be used for both the Zabbix server and remote agent deployment to generate matching PSK values."
 else
   if [ "$FLAG_SERVER" = "true" ]; then
-    echo "⚠️  No custom seed provided, genering a random PSK..."
+    echo "⚠️   No custom seed provided, genering a random PSK..."
     openssl rand -hex 32 > psk/zabbix_agentd.psk
     echo "   - ✅ Random PSK generated."
     echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKROUTE${NC} environment variable during both the Zabbix server and remote agent deployment."
   else
-    echo "⚠️  No custom seed provided"
+    echo "⚠️   No custom seed provided"
     echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKROUTE${NC} environment variable during both the Zabbix server and remote agent deployment."
   fi
 fi
