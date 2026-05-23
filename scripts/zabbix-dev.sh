@@ -186,8 +186,6 @@ if [ "$FLAG_SERVER" = "true" ]; then
   echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
 fi
 
-echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
-
 #########################################################################################################
 ######################################    Generating PSK  ###############################################
 #########################################################################################################
@@ -212,7 +210,7 @@ else
   fi
 fi
 
-chmod 640 psk/zabbix_agentd.psk
+chmod 644 psk/zabbix_agentd.psk
 
 #---------- Run the compose file ----------------
 echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
