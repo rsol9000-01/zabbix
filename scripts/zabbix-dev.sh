@@ -213,7 +213,8 @@ else
 fi
 
 chmod 640 psk/zabbix_agentd.psk
-#---------- Run the compose file ----------------
-docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d
 
+#---------- Run the compose file ----------------
+echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
+docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d
 docker compose logs -f zabbix-init
