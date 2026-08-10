@@ -1,0 +1,589 @@
+
+./scripts/zabbix-conf-en.sh
+
+El script zabbix-conf-en.sh es un **script de postinstalación de Zabbix**. Se ejecuta dentro del servicio `zabbix-init` definido en el Compose principal, cuando Zabbix Server y su interfaz web ya están disponibles.
+
+Su objetivo es configurar automáticamente:
+
+- El acceso a la API de Zabbix.
+- Un grupo de hosts.
+- El host del agente local.
+- Una acción de autorregistro para agentes remotos.
+- La autenticación TLS mediante PSK.
+- Un usuario administrativo personalizado.
+- La transferencia y eliminación de la cuenta `Admin`.
+
+**1. Cabecera y control de errores**
+
+El comentario inicial indica que el script es ejecutado por `zabbix-init`.
+
+```bash
+set -eu
+```
+
+Esto significa:
+
+- `-e`: termina ante un comando fallido.
+- `-u`: termina si utiliza una variable no definida.
+
+A diferencia de zabbix-dev.sh, no usa `pipefail`.
+
+Después define:
+
+```bash
+flag_new_user=FALSE
+```
+
+Esta variable determina si debe crearse un nuevo usuario y eliminar la cuenta predeterminada `Admin`.
+También lee el PSK montado dentro del contenedor:
+
+```bash
+PSK_VALUE=$(cat /zabbix_agentd.psk)
+```
+
+El archivo se monta desde el host mediante docker-compose.yml. Su contenido se utilizará para configurar el autorregistro TLS.
+
+**2. Espera de disponibilidad de la API**
+
+La sección `0. IS API AVAILABLE?` espera que la API de Zabbix responda.
+Configura:
+
+```bash
+MAX_RETRIES=10
+COUNT=0
+```
+
+Luego ejecuta repetidamente una petición JSON-RPC a `$API_URL` usando el método:
+
+```text
+apiinfo.version
+```
+
+La petición se realiza con:
+
+```bash
+curl -sf -o /dev/null -X POST "$API_URL"
+```
+
+El script:
+
+1. Envía la solicitud.
+2. Si falla, incrementa el contador.
+3. Espera 5 segundos.
+4. Reintenta.
+5. Después de 10 intentos, termina con error.
+
+En el peor caso, espera aproximadamente 45 segundos entre intentos antes de salir. Si la API responde correctamente, muestra:
+
+```text
+API available
+```
+
+**3. Generación de certificados TLS**
+
+La sección `0.5. GENERATE TLS CERTIFICATES` está vacía.
+
+El comentario indica que estaba reservada para generar certificados TLS, pero actualmente no ejecuta ningún comando. La configuración TLS utilizada por el script se basa en PSK, no en certificados:
+
+```text
+tls_psk_identity
+tls_psk
+```
+
+Por tanto, esta sección no tiene efecto en la ejecución actual.
+
+**4. Autenticación contra la API**
+
+La sección `1. AUTHENTICATE` intenta iniciar sesión en dos etapas.
+
+Primero usa las credenciales predeterminadas definidas en .env:
+
+```text
+DEFAULT_USER
+DEFAULT_PASS
+```
+
+Realiza una llamada al método:
+
+```text
+user.login
+```
+
+Extrae el token de la respuesta utilizando:
+
+```bash
+grep -o '"result":"[^"]*"'
+```
+
+Si obtiene un token:
+
+- Lo guarda en `TOKEN`.
+- Muestra que se autenticó con el usuario predeterminado.
+- Cambia:
+
+```bash
+flag_new_user=TRUE
+```
+
+Esto activa posteriormente la creación del usuario personalizado y la eliminación de `Admin`.
+
+Si la autenticación predeterminada falla, intenta con:
+
+```text
+API_WEB_USER
+API_WEB_PASS
+```
+
+Si estas credenciales funcionan:
+
+- Guarda el nuevo token en `TOKEN`.
+- No activa `flag_new_user`.
+- Conserva la cuenta `Admin`.
+- Utiliza el usuario personalizado existente para el resto de la configuración.
+
+Si ambas autenticaciones fallan, el script termina.
+
+**Comportamiento importante**
+
+El script interpreta que:
+
+- Si todavía funcionan las credenciales predeterminadas, se trata de una instalación inicial.
+- Si las credenciales predeterminadas ya no funcionan pero funcionan las personalizadas, la instalación ya fue inicializada.
+
+**5. Obtención o creación del grupo de hosts**
+
+La sección `2. GET OR CREATE HOST GROUP` consulta si existe el grupo definido por:
+
+```text
+HOST_GROUP
+```
+
+En el .env actual:
+
+```text
+HOST_GROUP=Monitoring hosting
+```
+
+Utiliza el método:
+
+```text
+hostgroup.get
+```
+
+Si encuentra el grupo:
+
+- Obtiene su `groupid`.
+- No crea nada.
+
+Si no lo encuentra:
+
+- Ejecuta `hostgroup.create`.
+- Crea el grupo con ese nombre.
+- Guarda el identificador devuelto en `GROUP_ID`.
+
+Después muestra el nombre y el ID del grupo.
+
+**6. Obtención y validación de la plantilla**
+
+La sección `3. GET TEMPLATE ID` busca la plantilla indicada por:
+
+```text
+HOST_TEMPLATE
+```
+
+En el entorno actual:
+
+```text
+HOST_TEMPLATE=Linux by Zabbix agent
+```
+
+Utiliza:
+
+```text
+template.get
+```
+
+Si encuentra la plantilla:
+
+- Extrae su `templateid`.
+- Lo guarda en `TEMPLATE_ID`.
+
+Si no la encuentra, termina con error:
+
+```text
+Template '...' not found, exiting...
+```
+
+Este identificador será utilizado para asociar la plantilla al host local.
+
+**7. Comprobación y configuración del agente local**
+
+La sección `4. CHECK IF LOCAL AGENT2 EXISTS` busca el host indicado por:
+
+```text
+LOCAL_HOST_NAME
+```
+
+En el .env actual:
+
+```text
+LOCAL_HOST_NAME=Zabbix server
+```
+
+Consulta mediante:
+
+```text
+host.get
+```
+
+### Si el host ya existe
+
+Obtiene su interfaz usando:
+
+```text
+hostinterface.get
+```
+
+Si no encuentra una interfaz, termina con error.
+
+Si la encuentra, ejecuta `hostinterface.update` y configura:
+
+```text
+type=1
+useip=0
+dns=$HOST_DNS
+ip=""
+port=$HOST_PORT
+main=1
+```
+
+Con los valores actuales:
+
+```text
+HOST_DNS=zabbix-agent2
+HOST_PORT=10050
+```
+
+En consecuencia, el host queda configurado para conectarse mediante DNS a:
+
+```text
+zabbix-agent2:10050
+```
+
+### Si el host no existe
+
+Crea un nuevo host mediante `host.create` con:
+
+- Nombre: `LOCAL_HOST_NAME`.
+- Interfaz de agente.
+- Conexión mediante DNS.
+- Grupo: `GROUP_ID`.
+- Plantilla: `TEMPLATE_ID`.
+
+El host se crea apuntando también a:
+
+```text
+zabbix-agent2:10050
+```
+
+**8. Creación de la acción de autorregistro**
+
+La sección `5. CREATE AUTOREGISTRATION ACTION` configura el autorregistro de agentes remotos.
+
+Primero busca una acción llamada exactamente:
+
+```text
+Autoregistro-agentes-simovilab
+```
+
+mediante:
+
+```text
+action.get
+```
+
+### Si la acción ya existe
+
+Muestra:
+
+```text
+Autoregistration action already exists
+```
+
+y no modifica la acción existente ni actualiza su configuración TLS.
+
+### Si la acción no existe
+
+Obtiene:
+
+1. El ID de `HOST_GROUP`.
+2. El ID del grupo `Discovered hosts`.
+3. El ID de `Docker by Zabbix agent 2`.
+4. El ID de `Linux by Zabbix agent active`.
+
+Después crea una acción con:
+
+```text
+eventsource=2
+status=0
+```
+
+El valor `eventsource=2` corresponde a eventos de autorregistro de agentes.
+
+La condición configurada es:
+
+```text
+conditiontype=24
+operator=2
+value=docker-autoreg
+```
+
+Esto hace que la acción se aplique a agentes cuyo metadata coincida con:
+
+```text
+docker-autoreg
+```
+
+Ese valor corresponde al entorno:
+
+```text
+ZBX_METADATA=docker-autoreg
+```
+
+### Operaciones de la acción
+
+La acción configurada:
+
+1. Ejecuta una operación general.
+2. Añade el host al grupo `Monitoring hosting`.
+3. Lo elimina del grupo `Discovered hosts`.
+4. Asocia las plantillas:
+   - `Docker by Zabbix agent 2`
+   - `Linux by Zabbix agent active`
+
+Después actualiza la configuración global de autorregistro mediante:
+
+```text
+autoregistration.update
+```
+
+y establece:
+
+```text
+tls_accept=2
+tls_psk_identity=$ZBX_TLSPSKIDENTITY
+tls_psk=$PSK_VALUE
+```
+
+El valor `2` indica autenticación mediante PSK.
+
+El PSK usado aquí debe coincidir con el PSK del agente remoto. La identidad se obtiene de:
+
+```text
+ZBX_TLSPSKIDENTITY
+```
+
+**9. Creación del usuario personalizado**
+
+La sección `6. CREATE NEW USER` solo se ejecuta si:
+
+```bash
+flag_new_user=TRUE
+```
+
+Es decir, solo cuando el script pudo autenticarse con las credenciales predeterminadas.
+
+El objetivo es reemplazar la cuenta administrativa por defecto con el usuario definido en:
+
+```text
+API_WEB_USER
+API_WEB_PASS
+```
+
+### Obtención del rol
+
+Busca el rol:
+
+```text
+Super admin role
+```
+
+mediante `role.get`.
+
+Si no lo encuentra, termina.
+
+### Obtención de grupos de usuario
+
+Busca:
+
+```text
+Zabbix administrators
+Internal
+```
+
+y obtiene sus respectivos IDs.
+
+Si alguno no existe, termina.
+
+### Comprobación del usuario
+
+Busca si ya existe el usuario indicado por `API_WEB_USER`.
+
+Si ya existe:
+
+- No lo crea.
+- Continúa con ese usuario.
+
+Si no existe:
+
+- Ejecuta `user.create`.
+- Lo crea con permisos de Super Admin.
+- Lo añade a los grupos `Zabbix administrators` e `Internal`.
+
+Si la creación falla, muestra requisitos mínimos de contraseña y termina sin eliminar `Admin`.
+
+**10. Eliminación de la cuenta `Admin`**
+
+Esta sección solo se ejecuta después de crear o localizar correctamente el usuario personalizado.
+
+Primero inicia sesión con:
+
+```text
+API_WEB_USER
+API_WEB_PASS
+```
+
+Si no consigue un nuevo token, termina y conserva `Admin`.
+
+Después busca el usuario:
+
+```text
+Admin
+```
+
+Si no lo encuentra, asume que ya fue eliminado y termina exitosamente.
+
+Si lo encuentra, obtiene `ADMIN_ID`.
+
+**11. Transferencia de mapas**
+
+El script obtiene los mapas pertenecientes a `Admin` mediante:
+
+```text
+map.get
+```
+
+Para cada mapa encontrado ejecuta:
+
+```text
+map.update
+```
+
+y cambia su propietario a `NEW_USER_ID`.
+
+Cada mapa transferido se muestra en pantalla.
+
+**12. Transferencia de dashboards**
+
+Realiza una operación equivalente para los dashboards:
+
+1. Busca los dashboards propiedad de `Admin`.
+2. Obtiene sus IDs.
+3. Ejecuta `dashboard.update`.
+4. Cambia su propietario al usuario nuevo.
+
+Así intenta evitar que se pierdan mapas o dashboards antes de borrar la cuenta administrativa.
+
+**13. Eliminación de `Admin`**
+
+Finalmente ejecuta:
+
+```text
+user.delete
+```
+
+con el ID de `Admin`.
+
+Si la llamada se procesa correctamente, muestra:
+
+```text
+User 'Admin' deleted
+User configuration completed
+Active user: API_WEB_USER
+```
+
+El script no inspecciona explícitamente el campo `error` de la respuesta antes de mostrar que la eliminación fue exitosa.
+
+**14. Caso en que no se crea un usuario**
+
+Si el script se autenticó directamente con `API_WEB_USER`, la variable continúa siendo:
+
+```bash
+flag_new_user=FALSE
+```
+
+En ese caso:
+
+- No busca roles.
+- No crea usuarios.
+- No transfiere mapas.
+- No transfiere dashboards.
+- No elimina `Admin`.
+
+Solo muestra que no se requiere crear un nuevo usuario y termina la inicialización.
+
+**15. Finalización**
+
+Si todas las operaciones anteriores completan su flujo, muestra:
+
+```text
+Initialization complete
+```
+
+El contenedor `zabbix-init` termina después. Como el Compose tiene configurado:
+
+```yaml
+restart: "no"
+```
+
+no debería reiniciarse automáticamente.
+
+**Resumen del flujo completo**
+
+```text
+Leer PSK
+  ↓
+Esperar API de Zabbix
+  ↓
+Autenticar con Admin
+  ├─ Éxito: crear usuario personalizado y eliminar Admin al final
+  └─ Fallo: autenticar con usuario personalizado existente
+  ↓
+Crear o localizar grupo de hosts
+  ↓
+Localizar plantilla
+  ↓
+Crear o actualizar host local
+  ↓
+Crear acción de autorregistro si no existe
+  ↓
+Configurar autorregistro TLS PSK
+  ↓
+Transferir mapas y dashboards
+  ↓
+Eliminar Admin si corresponde
+  ↓
+Finalizar inicialización
+```
+
+**Observaciones importantes**
+
+- La sección de certificados TLS está documentada, pero vacía.
+- El script extrae respuestas JSON con `grep`, `head` y `cut`, en lugar de usar un parser JSON.
+- Varias llamadas usan `curl -s` sin `-f`, por lo que una respuesta HTTP errónea puede producir una variable vacía y ser interpretada como “objeto inexistente”.
+- La creación de la acción de autorregistro y la actualización TLS están dentro del mismo bloque. Si la acción ya existe, el PSK global no se actualiza.
+- El nombre de la acción está fijo y no se obtiene desde .env.
+- La eliminación de `Admin` es destructiva, aunque el script intenta transferir mapas y dashboards previamente.
+- Las credenciales de .env se insertan directamente en cuerpos JSON. Si contienen comillas, saltos de línea u otros caracteres especiales, las peticiones pueden quedar mal formadas.
+- La salida confirma algunas operaciones sin validar completamente el campo `error` devuelto por la API.
+- El script depende de que existan previamente los grupos y plantillas estándar de Zabbix, especialmente `Discovered hosts`, `Docker by Zabbix agent 2`, `Linux by Zabbix agent active`, `Super admin role`, `Zabbix administrators` e `Internal`.

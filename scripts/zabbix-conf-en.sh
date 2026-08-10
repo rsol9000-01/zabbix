@@ -9,7 +9,8 @@ set -eu
 flag_new_user=FALSE
 
 #----- PSK file inside the container, used to read the PSK value and configure API autoregistration settings
-PSK_VALUE=$(cat /zabbix_agentd.psk)
+PSK_VALUE=$(cat /$ZBX_TLSPSKFILENAME)
+TEMPLATE_FILE="/${AGENT_TEMPLATE_FILE}"
 
 #############################################################################################################
 #######################################    0. IS API AVAILABLE?   ###########################################
@@ -98,19 +99,101 @@ echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
 #####################################    3. GET TEMPLATE ID   ###############################################
 #############################################################################################################
 
-TEMPLATE_ID=$(curl -sf -X POST "$API_URL" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"host\":[\"$HOST_TEMPLATE\"]}},\"id\":4}" \
-  | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
+# ------------------------------------------------------------
+# Verificar que exista el archivo
+# ------------------------------------------------------------
 
-# ── 3.1. Validate TEMPLATE_ID ─────────────────────────────────
-if [ -z "$TEMPLATE_ID" ]; then
-  echo "❌ Template '$HOST_TEMPLATE' not found, exiting..."
-  exit 1
+if [ ! -f "$TEMPLATE_FILE" ]; then
+    echo -e "❌ ERROR: File to import not found: ${YELLOW}$TEMPLATE_FILE${NC}"
+    exit 1
 fi
 
-echo "📋 '$HOST_TEMPLATE' template ID: $TEMPLATE_ID"
+echo -e "📋 Importing/updating the template: ${YELLOW}$AGENT_TEMPLATE_NAME${NC}"
+
+# ------------------------------------------------------------
+# Construir JSON usando jq
+# ------------------------------------------------------------
+
+IMPORT_REQUEST=$(jq -n \
+    --arg source "$(cat "$TEMPLATE_FILE")" \
+    '{
+        jsonrpc: "2.0",
+        method: "configuration.import",
+        params: {
+            format: "yaml",
+            rules: {
+                templates: {
+                    createMissing: true,
+                    updateExisting: true
+                },
+                items: {
+                    createMissing: true,
+                    updateExisting: true
+                },
+                triggers: {
+                    createMissing: true,
+                    updateExisting: true
+                },
+                graphs: {
+                    createMissing: true,
+                    updateExisting: true
+                },
+                discoveryRules: {
+                    createMissing: true,
+                    updateExisting: true
+                },
+                valueMaps: {
+                    createMissing: true,
+                    updateExisting: true
+                }
+            },
+            source: $source
+        },
+        id: 1
+    }')
+
+
+# ------------------------------------------------------------
+# Importar / actualizar template
+# ------------------------------------------------------------
+
+IMPORT_RESULT=$(curl -sf -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "$IMPORT_REQUEST")
+
+echo "📋 Import result:"
+echo -e "${YELLOW}$IMPORT_RESULT${NC}"
+
+# ------------------------------------------------------------
+# Comprobar errores
+# ------------------------------------------------------------
+
+IMPORT_ERROR=$(echo "$IMPORT_RESULT" | jq -r '.error.message // empty')
+
+if [ -n "$IMPORT_ERROR" ]; then
+    echo "❌ ERROR importing template:"
+    echo -e "${RED}$IMPORT_RESULT${NC}"
+    exit 1
+fi
+
+# ------------------------------------------------------------
+# Obtener TEMPLATE_ID
+# ------------------------------------------------------------
+
+TEMPLATE_ID=$(curl -s -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"$AGENT_TEMPLATE_NAME\"]},\"output\":[\"templateid\"]},\"id\":1}" \
+  | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+if [ -z "$TEMPLATE_ID" ]; then
+    echo "❌ ERROR: Could not obtain template ID. Something went wrong during the import process."
+    exit 1
+fi
+
+echo "✅ Template '$AGENT_TEMPLATE_NAME' ready with ID: $TEMPLATE_ID"
+
 
 #############################################################################################################
 ############################    4. CHECK IF LOCAL AGENT2 EXISTS   ###########################################

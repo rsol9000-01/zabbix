@@ -1,0 +1,134 @@
+El script zabbix-dev.sh automatiza el despliegue de la infraestructura Zabbix mediante Docker Compose. Acepta dos modos:
+
+```bash
+./zabbix-dev.sh agent [semilla]
+./zabbix-dev.sh server [semilla]
+```
+
+La semilla es opcional y se utiliza para generar un PSK TLS determinista.
+
+**Secciones principales**
+
+1. **Configuración visual**
+   - Define colores ANSI para los mensajes.
+   - Imprime el encabezado del instalador.
+   - La función `usage()` muestra la sintaxis, modos disponibles y requisitos de la semilla.
+   - La función `print_section()` imprime títulos formateados.
+   - Ejecuta `clear` para limpiar la terminal.
+
+2. **Control de errores**
+   ```bash
+   set -euo pipefail
+   ```
+   - `-e`: detiene el script cuando falla un comando.
+   - `-u`: considera error usar variables no definidas.
+   - `pipefail`: detecta errores dentro de tuberías.
+
+3. **Determinación de la raíz del proyecto**
+   - Calcula la raíz a partir de la ubicación del propio script.
+   - Cambia el directorio actual a zabbix.
+   - Esto permite ejecutar el script desde cualquier ubicación.
+
+4. **Procesamiento de argumentos**
+   - Exige uno o dos argumentos.
+   - El primer argumento debe ser `agent` o `server`.
+   - El segundo argumento se guarda como `PSK_SEED`.
+   - Sin argumentos, como en:
+
+     ```bash
+     ./zabbix-dev.sh
+     ```
+
+     muestra `usage()` y termina con código `1`.
+
+5. **Validación de la semilla**
+   - Rechaza semillas con espacios.
+   - Exige al menos 8 caracteres.
+   - Define `FLAG_SEED=true` si la semilla es válida.
+   - En caso contrario, termina antes de tocar Docker.
+
+6. **Selección del Compose**
+   - Para `server` usa:
+
+     ```text
+     docker-compose.yml
+     ```
+
+   - Para `agent` usa:
+
+     ```text
+     agent2/docker-compose-agent2.yml
+     ```
+
+7. **Obtención del grupo Docker**
+   - Busca el grupo `docker` mediante `getent`.
+   - Obtiene su identificador numérico.
+   - Lo exporta como `DOCKER_GID`.
+   - El Compose del agente usa ese valor en `group_add`.
+
+8. **Comprobación de dependencias**
+   Verifica:
+
+   - `docker`
+   - `curl`
+   - `openssl`
+
+   Si faltan `curl` u `openssl`, intenta instalarlos con `apt-get`.
+
+9. **Validación de archivos**
+   Comprueba que exista:
+
+   - .env
+   - El archivo Compose seleccionado.
+
+   Si no existe .env pero existe `.env.example`, copia el ejemplo a .env y termina para que el usuario lo configure.
+
+   En modo `server` también valida:
+
+   - `SCRIPT_POST_INSTALL` dentro de .env.
+   - El script posterior, actualmente `scripts/zabbix-conf-en.sh`.
+
+10. **Generación del PSK**
+    - Crea el directorio `psk`.
+    - Con una semilla, calcula:
+
+      ```bash
+      printf "%s" "$PSK_SEED" | openssl dgst -sha256
+      ```
+
+    - Guarda el hash en:
+
+      psk/zabbix_agentd.psk
+
+    - Sin semilla:
+      - En modo `server`, genera un PSK aleatorio.
+      - En modo `agent`, no genera uno nuevo y espera que ya exista el archivo.
+    - Establece permisos `644` para el archivo PSK.
+
+11. **Despliegue Docker**
+    Ejecuta:
+
+    ```bash
+    docker compose \
+      -f "$COMPOSE_FILE" \
+      --env-file "$REPO_ROOT/.env" \
+      up -d
+    ```
+
+    `up -d` crea o actualiza los contenedores y los deja ejecutándose en segundo plano.
+
+12. **Seguimiento de logs**
+    Al final ejecuta:
+
+    ```bash
+    docker compose logs -f zabbix-init
+    ```
+
+    Este paso está pensado para el despliegue `server` unicamente.
+
+**Resumen por modo**
+
+- `server`: valida toda la infraestructura, genera el PSK, levanta PostgreSQL, Zabbix Server, dashboard, agente local y `zabbix-init`, y ejecuta la configuración posterior.
+- `agent`: valida el entorno, utiliza el PSK existente, levanta únicamente `remote-zabbix-agent2`.
+
+La ejecución sin argumentos que aparece en el contexto termina correctamente desde el punto de vista del control del script: muestra la ayuda y sale con código `1` porque falta indicar `agent` o `server`.

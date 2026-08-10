@@ -7,6 +7,7 @@ services:
     container_name: remote-zabbix-agent2
     hostname: ${REMOTE_AGENT_HOSTNAME}
     restart: unless-stopped
+    #pid: "host"
     #env_file:
      # - ../.env
     privileged: true
@@ -31,7 +32,7 @@ services:
       - ZBX_TLSPSKIDENTITY=${ZBX_TLSPSKIDENTITY} 
       - ZBX_TLSPSKFILE=${ZBX_TLSPSKFILE}  
     volumes:
-      - /proc:/proc
+      - /proc:/proc:ro
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${ZBX_TLSPSKROUTE}:${ZBX_TLSPSKFILE}:ro
+      - ../psk/${ZBX_TLSPSKFILENAME}:${ZBX_TLSPSKFILE}:ro

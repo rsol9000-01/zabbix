@@ -185,6 +185,7 @@ services:
     volumes:
       - ./${SCRIPT_POST_INSTALL}:/init.sh:ro
       - ./psk/zabbix_agentd.psk:/zabbix_agentd.psk:ro
+      - ./templates/${AGENT_TEMPLATE_FILE}:/${AGENT_TEMPLATE_FILE}:ro
       #- ./scripts/zabbix-conf-en.sh:/init.sh:ro
     #entrypoint: ["bash", "/init.sh"]
     entrypoint: ["sh", "-c", "apk add --no-cache bash && exec bash /init.sh"]

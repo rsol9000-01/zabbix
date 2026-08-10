@@ -203,10 +203,10 @@ else
     echo "⚠️   No custom seed provided, genering a random PSK..."
     openssl rand -hex 32 > psk/zabbix_agentd.psk
     echo "   - ✅ Random PSK generated."
-    echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKROUTE${NC} environment variable during both the Zabbix server and remote agent deployment."
+    echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKFILENAME${NC} environment variable during both the Zabbix server and remote agent deployment."
   else
     echo "⚠️   No custom seed provided"
-    echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKROUTE${NC} environment variable during both the Zabbix server and remote agent deployment."
+    echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKFILENAME${NC} environment variable during both the Zabbix server and remote agent deployment."
   fi
 fi
 
@@ -215,4 +215,6 @@ chmod 644 psk/zabbix_agentd.psk
 #---------- Run the compose file ----------------
 echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
 docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d
-docker compose logs -f zabbix-init
+if [ "$FLAG_SERVER" = "true" ]; then
+  docker compose logs -f zabbix-init
+fi
