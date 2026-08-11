@@ -188,34 +188,88 @@ fi
 
 #------------- user_script route ------------------------
 
-  USER_SCRIPTS_DIR="$REPO_ROOT/scripts/user_scripts"
+USER_SCRIPTS_DIR="$REPO_ROOT/scripts/user_scripts"
 
-  if [ ! -d "$USER_SCRIPTS_DIR" ]; then
-    echo "⚠️  User scripts directory not found. Creating: $USER_SCRIPTS_DIR"
-    mkdir -p "$USER_SCRIPTS_DIR"
-    if [ $? -ne 0 ]; then
-      echo "❌  Error: could not create $USER_SCRIPTS_DIR"
-      exit 1
-    fi
+if [ ! -d "$USER_SCRIPTS_DIR" ]; then
+  echo "⚠️  User scripts directory not found. Creating: $USER_SCRIPTS_DIR"
+  mkdir -p "$USER_SCRIPTS_DIR"
+  if [ $? -ne 0 ]; then
+    echo "❌  Error: could not create $USER_SCRIPTS_DIR"
+    exit 1
   fi
+fi
 
-  echo "✅  User scripts directory found: $USER_SCRIPTS_DIR"
+echo "✅  User scripts directory found: $USER_SCRIPTS_DIR"
 
-  chown root:root "$USER_SCRIPTS_DIR"
-  chmod 775 "$USER_SCRIPTS_DIR"
+chown root:root "$USER_SCRIPTS_DIR"
+chmod 775 "$USER_SCRIPTS_DIR"
 
-  if compgen -G "$USER_SCRIPTS_DIR"/*.sh > /dev/null; then
-    chown root:root "$USER_SCRIPTS_DIR"/*.sh
-    chmod 775 "$USER_SCRIPTS_DIR"/*.sh
-    echo "✅  Permissions applied to $USER_SCRIPTS_DIR and *.sh files (root:root 775)"
-  else
-    echo "⚠️  No .sh scripts found in $USER_SCRIPTS_DIR yet"
-  fi
+if compgen -G "$USER_SCRIPTS_DIR"/*.sh > /dev/null; then
+  chown root:root "$USER_SCRIPTS_DIR"/*.sh
+  chmod 775 "$USER_SCRIPTS_DIR"/*.sh
+  echo "✅  Permissions applied to $USER_SCRIPTS_DIR and *.sh files (root:root 775)"
+else
+  echo "⚠️  No .sh scripts found in $USER_SCRIPTS_DIR yet"
+fi
 # ------------ simovilab-sudoers ---------------------------
 
+AGENT_SUDOERS_FILE=$(grep '^AGENT_SUDOERS_FILE[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')
+
+if [ -z "$AGENT_SUDOERS_FILE" ]; then
+    echo "❌  Error: AGENT_SUDOERS_FILE is not set in .env"
+    exit 1
+fi
+
+AGENT_SUDOERS_FILE_ROUTE=$REPO_ROOT/agent2/$AGENT_SUDOERS_FILE
+
+if [ ! -f "$AGENT_SUDOERS_FILE_ROUTE" ]; then
+    echo "⚠️  Sudoers file not found. Creating: $AGENT_SUDOERS_FILE_ROUTE"
+    echo "zabbix ALL=(root) NOPASSWD: /var/lib/zabbix/user_scripts/*" > "$AGENT_SUDOERS_FILE"
+    if [ $? -ne 0 ]; then
+      echo "❌  Error: could not create $AGENT_SUDOERS_FILE"
+      exit 1
+    fi
+fi
+
+echo "✅  Sudoers file found: $AGENT_SUDOERS_FILE"
+chown root:root "$AGENT_SUDOERS_FILE"
+chmod 440 "$AGENT_SUDOERS_FILE"
+echo "✅  Permissions applied to $AGENT_SUDOERS_FILE_ROUTE (root:root 440)"
+
+# ------------ Dockerfile ---------------------------
+
+DOCKERFILE="$REPO_ROOT/agent2/Dockerfile"
+
+# ======================================================================
+# ⚠️  DO NOT SPLIT OR INSERT CODE INSIDE THIS BLOCK
+# Reason: the heredoc (<< 'EOF' ... EOF) must remain fully contiguous.
+# Any code inserted between "cat > ... << 'EOF'" and the closing "EOF"
+# will break the heredoc and corrupt the generated Dockerfile content.
+# ======================================================================
+
+if [ ! -f "$DOCKERFILE" ]; then
+    echo "⚠️  Dockerfile not found. Creating: $DOCKERFILE"
+    cat > "$DOCKERFILE" << 'EOF'
+FROM zabbix/zabbix-agent2:ubuntu-7.4.3
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends iproute2 && \
+    rm -rf /var/lib/apt/lists/*
+EOF
+    if [ $? -ne 0 ]; then
+      echo "❌  Error: could not create $DOCKERFILE"
+      exit 1
+    fi
+fi
+# ======================================================================
+# END — safe to add code again from this point onward
+# ======================================================================
+echo "✅  Dockerfile found: $DOCKERFILE"
+chown root:root "$DOCKERFILE"
+chmod 644 "$DOCKERFILE"
+echo "✅  Permissions applied to $DOCKERFILE (root:root 644)"
 
 
-#------------ REVISION DE ARCHIVOS NUEVOS  -------------------
+#------------ zabbix_agent2.conf  -------------------
  
   SCRIPT_POST_INSTALL=$(grep '^SCRIPT_POST_INSTALL[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')
 
