@@ -46,9 +46,7 @@ zabbix_export:
           value_type: FLOAT
           units: '%'
           description: |
-            Basado en item estándar de Zabbix:
-            system.cpu.util
-            
+            Basado en item estándar de Zabbix: system.cpu.util
             Adaptado para plantilla simovilab personalizada.
             Mide consumo total CPU incluyendo user + system.
           triggers:

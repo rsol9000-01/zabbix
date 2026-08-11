@@ -100,99 +100,105 @@ echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
 #############################################################################################################
 
 # ------------------------------------------------------------
-# Verificar que exista el archivo
+# Verificar que exista el archivo OJO MODIFICAR QUE SE HAGA LA IMPORTACION SOLO SI EL TEMPLATE_FILE EXISTE DE LO
+# CONTRARIO NO SE HACE NADA, Y SE CARGA COMO TEMPLATE_ID EL DE LA PLANTILLA ICMP Ping
 # ------------------------------------------------------------
 
-if [ ! -f "$TEMPLATE_FILE" ]; then
-    echo -e "❌ ERROR: File to import not found: ${YELLOW}$TEMPLATE_FILE${NC}"
-    exit 1
-fi
+if [  -f "$TEMPLATE_FILE" ]; then
+  echo -e "📋 Importing/updating the template: ${YELLOW}$AGENT_TEMPLATE_NAME${NC}"
 
-echo -e "📋 Importing/updating the template: ${YELLOW}$AGENT_TEMPLATE_NAME${NC}"
+  # ------------------------------------------------------------
+  # Construir JSON usando jq
+  # ------------------------------------------------------------
 
-# ------------------------------------------------------------
-# Construir JSON usando jq
-# ------------------------------------------------------------
-
-IMPORT_REQUEST=$(jq -n \
-    --arg source "$(cat "$TEMPLATE_FILE")" \
-    '{
-        jsonrpc: "2.0",
-        method: "configuration.import",
-        params: {
-            format: "yaml",
-            rules: {
-                templates: {
-                    createMissing: true,
-                    updateExisting: true
-                },
-                items: {
-                    createMissing: true,
-                    updateExisting: true
-                },
-                triggers: {
-                    createMissing: true,
-                    updateExisting: true
-                },
-                graphs: {
-                    createMissing: true,
-                    updateExisting: true
-                },
-                discoveryRules: {
-                    createMissing: true,
-                    updateExisting: true
-                },
-                valueMaps: {
-                    createMissing: true,
-                    updateExisting: true
-                }
-            },
-            source: $source
-        },
-        id: 1
-    }')
+  IMPORT_REQUEST=$(jq -n \
+      --arg source "$(cat "$TEMPLATE_FILE")" \
+      '{
+          jsonrpc: "2.0",
+          method: "configuration.import",
+          params: {
+              format: "yaml",
+              rules: {
+                  templates: {
+                      createMissing: true,
+                      updateExisting: true
+                  },
+                  items: {
+                      createMissing: true,
+                      updateExisting: true
+                  },
+                  triggers: {
+                      createMissing: true,
+                      updateExisting: true
+                  },
+                  graphs: {
+                      createMissing: true,
+                      updateExisting: true
+                  },
+                  discoveryRules: {
+                      createMissing: true,
+                      updateExisting: true
+                  },
+                  valueMaps: {
+                      createMissing: true,
+                      updateExisting: true
+                  }
+              },
+              source: $source
+          },
+          id: 1
+      }')
 
 
-# ------------------------------------------------------------
-# Importar / actualizar template
-# ------------------------------------------------------------
+  # ------------------------------------------------------------
+  # Importar / actualizar template
+  # ------------------------------------------------------------
 
-IMPORT_RESULT=$(curl -sf -X POST "$API_URL" \
+  IMPORT_RESULT=$(curl -sf -X POST "$API_URL" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $TOKEN" \
+      -d "$IMPORT_REQUEST")
+
+  echo "📋 Import result:"
+  echo -e "${YELLOW}$IMPORT_RESULT${NC}"
+
+  # ------------------------------------------------------------
+  # Comprobar errores
+  # ------------------------------------------------------------
+
+  IMPORT_ERROR=$(echo "$IMPORT_RESULT" | jq -r '.error.message // empty')
+
+  if [ -n "$IMPORT_ERROR" ]; then
+      echo "❌ ERROR importing template:"
+      echo -e "${RED}$IMPORT_RESULT${NC}"
+      exit 1
+  fi
+
+  # ------------------------------------------------------------
+  # Obtener TEMPLATE_ID
+  # ------------------------------------------------------------
+
+  TEMPLATE_ID=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "$IMPORT_REQUEST")
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"$AGENT_TEMPLATE_NAME\"]},\"output\":[\"templateid\"]},\"id\":1}" \
+    | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
-echo "📋 Import result:"
-echo -e "${YELLOW}$IMPORT_RESULT${NC}"
+  if [ -z "$TEMPLATE_ID" ]; then
+      echo "❌ ERROR: Could not obtain template ID. Something went wrong during the import process."
+      exit 1
+  fi
 
-# ------------------------------------------------------------
-# Comprobar errores
-# ------------------------------------------------------------
-
-IMPORT_ERROR=$(echo "$IMPORT_RESULT" | jq -r '.error.message // empty')
-
-if [ -n "$IMPORT_ERROR" ]; then
-    echo "❌ ERROR importing template:"
-    echo -e "${RED}$IMPORT_RESULT${NC}"
-    exit 1
-fi
-
-# ------------------------------------------------------------
-# Obtener TEMPLATE_ID
-# ------------------------------------------------------------
-
-TEMPLATE_ID=$(curl -s -X POST "$API_URL" \
+  echo "✅ Template '$AGENT_TEMPLATE_NAME' ready with ID: $TEMPLATE_ID"
+else
+# -------------- Load default ICMP Ping template if the specified template file does not exist
+  echo "⚠️  No templates found. Using default ICMP Ping template."
+  TEMPLATE_ID=$(curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"$AGENT_TEMPLATE_NAME\"]},\"output\":[\"templateid\"]},\"id\":1}" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"ICMP Ping\"]},\"output\":[\"templateid\"]},\"id\":1}" \
   | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-if [ -z "$TEMPLATE_ID" ]; then
-    echo "❌ ERROR: Could not obtain template ID. Something went wrong during the import process."
-    exit 1
 fi
-
-echo "✅ Template '$AGENT_TEMPLATE_NAME' ready with ID: $TEMPLATE_ID"
 
 
 #############################################################################################################
@@ -286,7 +292,7 @@ if [ -z "$ACTION_ID" ]; then
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
   #  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"${AGENT_TEMPLATE_NAME}\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TMPL_DOCKER_ID\"},{\"templateid\":\"$TMPL_LINUX_ID\"}]}]},\"id\":1}" > /dev/null
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"${AGENT_TEMPLATE_NAME}\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TEMPLATE_ID\"}]}]},\"id\":1}" > /dev/null
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Self-registration-agents-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"${ZBX_METADATA}\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TEMPLATE_ID\"}]}]},\"id\":1}" > /dev/null
   echo "   - ✅ Autoregistration action created"
 
   curl -s -X POST "$API_URL" \
