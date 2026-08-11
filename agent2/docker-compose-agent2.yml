@@ -3,7 +3,10 @@ services:
   # ZABBIX AGENT 2
   ###########################
   zabbix-agent2:
-    image: zabbix/zabbix-agent2:ubuntu-7.4.3
+    build:
+        context: .
+        dockerfile: Dockerfile
+    image: simovilab/zabbix-agent2:ubuntu-7.4.3
     container_name: remote-zabbix-agent2
     hostname: ${REMOTE_AGENT_HOSTNAME}
     restart: unless-stopped
@@ -36,5 +39,6 @@ services:
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ../psk/${ZBX_TLSPSKFILENAME}:${ZBX_TLSPSKFILE}:ro
-      #- ${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}
-      #- ../scripts/user_scripts/zabbix-host-tcp-established.sh:/var/lib/zabbix/zabbix-host-tcp-established.sh
+      - ./${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}:ro
+      - ../scripts/user_scripts/:/var/lib/zabbix/user_scripts/:ro
+      - ./${AGENT_SUDOERS_FILE}:/etc/sudoers.d/${AGENT_SUDOERS_FILE}:ro
