@@ -96,7 +96,7 @@ fi
 echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
 
 #############################################################################################################
-#####################################    3. GET TEMPLATE ID   ###############################################
+##############################    3. CREATE/UPDATE SIMOVILAB TEMPLATE  ######################################
 #############################################################################################################
 
 # ------------------------------------------------------------
@@ -248,15 +248,15 @@ fi
 ACTION_ID=$(curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.get\",\"params\":{\"filter\":{\"name\":[\"Autoregistro-agentes-simovilab\"]},\"output\":[\"actionid\"]},\"id\":1}" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.get\",\"params\":{\"filter\":{\"name\":[\"Self-registration-agents-simovilab\"]},\"output\":[\"actionid\"]},\"id\":1}" \
   | grep -o '"actionid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 if [ -z "$ACTION_ID" ]; then
 
-# ── 5.2. If action does not exist — create it ───────────────────────────────
+  # ── 5.2. If action does not exist — create it ───────────────────────────────
   echo "ℹ️  Creating autoregistration action for remote agents"
 
-# ── 5.2.1. Get groups IDs ──────────────────────────────────────────────────
+  # ── 5.2.1. Get groups IDs ──────────────────────────────────────────────────
   GROUP_ADD_ID=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
@@ -269,29 +269,24 @@ if [ -z "$ACTION_ID" ]; then
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"hostgroup.get\",\"params\":{\"filter\":{\"name\":[\"Discovered hosts\"]},\"output\":[\"groupid\"]},\"id\":1}" \
     | grep -o '"groupid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
-# ── 5.2.2. Get templates IDs ───────────────────────────────────────────────
-  TMPL_DOCKER_ID=$(curl -s -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"Docker by Zabbix agent 2\"]},\"output\":[\"templateid\"]},\"id\":1}" \
-    | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-  TMPL_LINUX_ID=$(curl -s -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"Linux by Zabbix agent active\"]},\"output\":[\"templateid\"]},\"id\":1}" \
-    | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
+  # ── 5.2.2. Get templates IDs ───────────────────────────────────────────────
+  #TMPL_DOCKER_ID=$(curl -s -X POST "$API_URL" \
+  #  -H "Content-Type: application/json" \
+  #  -H "Authorization: Bearer $TOKEN" \
+  #  -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"Docker by Zabbix agent 2\"]},\"output\":[\"templateid\"]},\"id\":1}" \
+  #  | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
   echo "   - 📁 Group to add   : $GROUP_ADD_ID"
   echo "   - 📁 Group to remove: $GROUP_REMOVE_ID"
-  echo "   - 📋 Docker template: $TMPL_DOCKER_ID"
-  echo "   - 📋 Linux template : $TMPL_LINUX_ID"
+  echo "   - 📋 Template to add: $TEMPLATE_ID"
+  #echo "   - 📋 Linux template : $TMPL_LINUX_ID"
 
- #── 5.3. Create action ──────────────────────────────────────────────────
+  #── 5.3. Create action ──────────────────────────────────────────────────
   curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Autoregistro-agentes-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TMPL_DOCKER_ID\"},{\"templateid\":\"$TMPL_LINUX_ID\"}]}]},\"id\":1}" > /dev/null
+  #  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"${AGENT_TEMPLATE_NAME}\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TMPL_DOCKER_ID\"},{\"templateid\":\"$TMPL_LINUX_ID\"}]}]},\"id\":1}" > /dev/null
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"${AGENT_TEMPLATE_NAME}\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TEMPLATE_ID\"}]}]},\"id\":1}" > /dev/null
   echo "   - ✅ Autoregistration action created"
 
   curl -s -X POST "$API_URL" \
@@ -300,13 +295,12 @@ if [ -z "$ACTION_ID" ]; then
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"autoregistration.update\",\"params\":{\"tls_accept\":2,\"tls_psk_identity\":\"$ZBX_TLSPSKIDENTITY\",\"tls_psk\":\"$PSK_VALUE\"},\"id\":1}" > /dev/null
   echo "   - 🔑 Autoregistration will use TLS PSK authentication"
   
-#curl -s -X POST "$API_URL" \
-#  -H "Content-Type: application/json" \
-#  -H "Authorization: Bearer $TOKEN" \
-#  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Autoregistro-agentes-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TMPL_DOCKER_ID\"},{\"templateid\":\"$TMPL_LINUX_ID\"}]},{\"operationtype\":9,\"optls\":{\"tls_connect\":2,\"tls_accept\":2,\"tls_psk_identity\":\"$ZBX_TLSPSKIDENTITY\",\"tls_psk\":\"$PSK_VALUE\"}}]},\"id\":1}" \
-#  echo "   - ✅ Autoregistration action created"
+  #curl -s -X POST "$API_URL" \
+  #  -H "Content-Type: application/json" \
+  #  -H "Authorization: Bearer $TOKEN" \
+  #  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Autoregistro-agentes-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TMPL_DOCKER_ID\"},{\"templateid\":\"$TMPL_LINUX_ID\"}]},{\"operationtype\":9,\"optls\":{\"tls_connect\":2,\"tls_accept\":2,\"tls_psk_identity\":\"$ZBX_TLSPSKIDENTITY\",\"tls_psk\":\"$PSK_VALUE\"}}]},\"id\":1}" \
+  #  echo "   - ✅ Autoregistration action created"
 
-  
 else
 # ── 5.4. If action exists, do nothing ─────────────────────────────
   echo "ℹ️  Autoregistration action already exists"
