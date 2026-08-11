@@ -14,7 +14,7 @@ zabbix_export:
           name: 'TCP connections ESTABLISHED'
           type: ZABBIX_ACTIVE
           key: host.tcp.established
-          value_type: TEXT
+          trends: '0'
           description: 'Número de conexiones TCP actualmente en estado ESTABLISHED.'
           triggers:
             - uuid: c25ecd52e305407089767b48e9f18ee9
@@ -46,7 +46,7 @@ zabbix_export:
           value_type: FLOAT
           units: '%'
           description: |
-            Basado en item estándar de Zabbix: system.cpu.util
+            Basado en item estándar de Zabbix:system.cpu.util
             Adaptado para plantilla simovilab personalizada.
             Mide consumo total CPU incluyendo user + system.
           triggers:

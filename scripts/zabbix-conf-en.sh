@@ -2,7 +2,14 @@
 ########################################################################################################################
 ###### Script post-install for Zabbix, executed by the zabbix-init service, defined in docker-compose.yml #############
 ########################################################################################################################
-
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+GRAY='\033[0;90m'
+NC='\033[0m'
 #──── Exit on error, e=exit on error, u=exit on undefined var ──────────
 set -eu
 #──── Flag to determine if a new user should be created with API_WEB_USER and API_WEB_PASS from .env *** DO NOT CHANGE THE VALUE *** ──────────
@@ -110,7 +117,7 @@ echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
 # CONTRARIO NO SE HACE NADA, Y SE CARGA COMO TEMPLATE_ID EL DE LA PLANTILLA ICMP Ping
 # ------------------------------------------------------------
 
-if [  -f "$TEMPLATE_FILE" ]; then
+if [[ -f "$TEMPLATE_FILE" && -n "$AGENT_TEMPLATE_NAME" ]]; then
   echo -e "📋 Importing/updating the template: ${YELLOW}$AGENT_TEMPLATE_NAME${NC}"
 
   # ------------------------------------------------------------
@@ -192,13 +199,16 @@ if [  -f "$TEMPLATE_FILE" ]; then
 
   if [ -z "$TEMPLATE_ID" ]; then
       echo "❌ ERROR: Could not obtain template ID. Something went wrong during the import process."
+      echo -e "   ${YELLOW}- Check the ${BLUE}$AGENT_TEMPLATE_NAME${YELLOW} and ${BLUE}$AGENT_TEMPLATE_FILE${YELLOW} values in .env.${NC}"
       exit 1
   fi
 
   echo "✅ Template '$AGENT_TEMPLATE_NAME' ready with ID: $TEMPLATE_ID"
 else
 # -------------- Load default ICMP Ping template if the specified template file does not exist
-  echo "⚠️  No templates found. Using default ICMP Ping template."
+  echo "⚠️  No templates found."
+  echo -e "   ${YELLOW}- Check the ${BLUE}AGENT_TEMPLATE_NAME${YELLOW} and ${BLUE}AGENT_TEMPLATE_FILE${YELLOW} values in .env.${NC}"
+  echo "⚠️  Using default ICMP Ping template."
   TEMPLATE_ID=$(curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
