@@ -186,7 +186,32 @@ if [ "$FLAG_SERVER" = "true" ]; then
   echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
 fi
 
+#------------- user_script route ------------------------
 
+  USER_SCRIPTS_DIR="$REPO_ROOT/scripts/user_scripts"
+
+  if [ ! -d "$USER_SCRIPTS_DIR" ]; then
+    echo "⚠️  User scripts directory not found. Creating: $USER_SCRIPTS_DIR"
+    mkdir -p "$USER_SCRIPTS_DIR"
+    if [ $? -ne 0 ]; then
+      echo "❌  Error: could not create $USER_SCRIPTS_DIR"
+      exit 1
+    fi
+  fi
+
+  echo "✅  User scripts directory found: $USER_SCRIPTS_DIR"
+
+  chown root:root "$USER_SCRIPTS_DIR"
+  chmod 775 "$USER_SCRIPTS_DIR"
+
+  if compgen -G "$USER_SCRIPTS_DIR"/*.sh > /dev/null; then
+    chown root:root "$USER_SCRIPTS_DIR"/*.sh
+    chmod 775 "$USER_SCRIPTS_DIR"/*.sh
+    echo "✅  Permissions applied to $USER_SCRIPTS_DIR and *.sh files (root:root 775)"
+  else
+    echo "⚠️  No .sh scripts found in $USER_SCRIPTS_DIR yet"
+  fi
+# ------------ simovilab-sudoers ---------------------------
 
 
 
