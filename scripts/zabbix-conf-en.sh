@@ -9,8 +9,8 @@ set -eu
 flag_new_user=FALSE
 
 #----- PSK file inside the container, used to read the PSK value and configure API autoregistration settings
-PSK_VALUE=$(cat /$ZBX_TLSPSKFILENAME)
-TEMPLATE_FILE="/${AGENT_TEMPLATE_FILE}"
+PSK_VALUE=$(cat /{$ZBX_TLSPSKFILENAME})
+TEMPLATE_FILE="/{$AGENT_TEMPLATE_FILE}"
 
 #############################################################################################################
 #######################################    0. IS API AVAILABLE?   ###########################################

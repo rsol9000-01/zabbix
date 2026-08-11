@@ -186,6 +186,29 @@ if [ "$FLAG_SERVER" = "true" ]; then
   echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
 fi
 
+
+
+
+
+#------------ REVISION DE ARCHIVOS NUEVOS  -------------------
+ 
+  SCRIPT_POST_INSTALL=$(grep '^SCRIPT_POST_INSTALL[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')
+
+  if [ -z "$SCRIPT_POST_INSTALL" ]; then
+      echo "❌ Error: SCRIPT_POST_INSTALL is not set in .env"
+      exit 1
+  fi
+   
+  if [ ! -f "$SCRIPT_POST_INSTALL" ]; then
+    echo "❌  Error: $SCRIPT_POST_INSTALL not found."
+    exit 1
+  fi
+  echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
+
+
+
+
+
 #########################################################################################################
 ######################################    Generating PSK  ###############################################
 #########################################################################################################

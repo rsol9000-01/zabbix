@@ -152,7 +152,11 @@ services:
   # ZABBIX AGENT 2
   ###########################
   zabbix-agent2:
-    image: zabbix/zabbix-agent2:ubuntu-7.4.3
+    build:
+        context: ./agent2/
+        dockerfile: Dockerfile
+    image: simovilab/zabbix-agent2:ubuntu-7.4.3
+  #  image: zabbix/zabbix-agent2:ubuntu-7.4.3
     container_name: zabbix-agent2
     hostname: ${LOCAL_HOST_NAME}
     restart: unless-stopped
