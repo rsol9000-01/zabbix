@@ -176,9 +176,13 @@ services:
       - ZBX_HOSTINTERFACE=${HOST_DNS}
       - TZ=${TZ}
     volumes:
-      - /proc:/proc
+      - /proc:/proc:ro
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      #- ../psk/${ZBX_TLSPSKFILENAME}:${ZBX_TLSPSKFILE}:ro
+      - ./${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}:ro
+      - ../scripts/user_scripts/:/var/lib/zabbix/user_scripts/:ro
+      - ./${AGENT_SUDOERS_FILE}:/etc/sudoers.d/${AGENT_SUDOERS_FILE}:ro
 
   ##########################
   # INIT CONTAINER

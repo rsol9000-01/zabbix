@@ -291,34 +291,40 @@ fi
 echo "✅  Zabbix agent config file found: $ZBX_AGENT_CONFIG_FILE_ROUTE"
 
 # Extraer todas las líneas AGENT_PARAMS_XX=ITEMKEY:SCRIPTNAME del .env
+
 echo "🔎  Checking for UserParameter entries in .env to add to $ZBX_AGENT_CONFIG_FILE..."
 
-grep -E '^AGENT_PARAMS_[A-Za-z0-9_]+[[:space:]]*=' "$ENV_FILE" | while IFS= read -r line; do
+MATCHES=$(grep -E '^AGENT_PARAMS_[A-Za-z0-9_]+[[:space:]]*=' "$ENV_FILE")
 
-  # Separar nombre de variable y valor
-  VALUE=$(echo "$line" | sed 's/^[^=]*=[[:space:]]*//')
+if [ -z "$MATCHES" ]; then
+  echo "ℹ️  No UserParameter entries found in .env, nothing to process"
+else
+  echo "$MATCHES" | while IFS= read -r line; do
 
-  ITEMKEY=$(echo "$VALUE" | cut -d':' -f1)
-  SCRIPTNAME=$(echo "$VALUE" | cut -d':' -f2)
+    # Separar nombre de variable y valor
+    VALUE=$(echo "$line" | sed 's/^[^=]*=[[:space:]]*//')
 
-  if [ -z "$ITEMKEY" ] || [ -z "$SCRIPTNAME" ]; then
-    echo "⚠️  Skipping malformed line: $line on .env file"
-    continue
-  fi
+    ITEMKEY=$(echo "$VALUE" | cut -d':' -f1)
+    SCRIPTNAME=$(echo "$VALUE" | cut -d':' -f2)
 
-  NEW_LINE="UserParameter=${ITEMKEY},sudo /var/lib/zabbix/user_scripts/${SCRIPTNAME}"
+    if [ -z "$ITEMKEY" ] || [ -z "$SCRIPTNAME" ]; then
+      echo "⚠️  Skipping malformed line: $line on .env file"
+      continue
+    fi
 
-  # Buscar si ya existe (ignorando líneas comentadas)
-  EXISTS=$(grep -v '^[[:space:]]*#' "$ZBX_AGENT_CONFIG_FILE_ROUTE" | grep -Fx "$NEW_LINE")
+    NEW_LINE="UserParameter=${ITEMKEY},sudo /var/lib/zabbix/user_scripts/${SCRIPTNAME}"
 
-  if [ -z "$EXISTS" ]; then
-    echo "$NEW_LINE" >> "$ZBX_AGENT_CONFIG_FILE_ROUTE"
-    echo "✅  Added: $NEW_LINE"
-  else
-    echo "ℹ️  Already present, skipping: $ITEMKEY"
-  fi
-done
+    # Buscar si ya existe (ignorando líneas comentadas)
+    EXISTS=$(grep -v '^[[:space:]]*#' "$ZBX_AGENT_CONFIG_FILE_ROUTE" | grep -Fx "$NEW_LINE")
 
+    if [ -z "$EXISTS" ]; then
+      echo "$NEW_LINE" >> "$ZBX_AGENT_CONFIG_FILE_ROUTE"
+      echo "✅  Added: $NEW_LINE"
+    else
+      echo "ℹ️  Already present, skipping: $ITEMKEY"
+    fi
+  done
+fi
 chown root:root "$ZBX_AGENT_CONFIG_FILE_ROUTE"
 chmod 644 "$ZBX_AGENT_CONFIG_FILE_ROUTE"
 echo "✅  Permissions applied to $ZBX_AGENT_CONFIG_FILE_ROUTE (root:root 644)"
