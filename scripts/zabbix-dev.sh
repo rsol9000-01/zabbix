@@ -270,22 +270,58 @@ echo "✅  Permissions applied to $DOCKERFILE (root:root 644)"
 
 
 #------------ zabbix_agent2.conf  -------------------
- 
-  SCRIPT_POST_INSTALL=$(grep '^SCRIPT_POST_INSTALL[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')
 
-  if [ -z "$SCRIPT_POST_INSTALL" ]; then
-      echo "❌ Error: SCRIPT_POST_INSTALL is not set in .env"
-      exit 1
-  fi
-   
-  if [ ! -f "$SCRIPT_POST_INSTALL" ]; then
-    echo "❌  Error: $SCRIPT_POST_INSTALL not found."
+ZBX_AGENT_CONFIG_FILE=$(grep '^ZBX_AGENT_CONFIG_FILE[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')
+
+if [ -z "$ZBX_AGENT_CONFIG_FILE" ]; then
+    echo "❌  Error: ZBX_AGENT_CONFIG_FILE is not set in .env"
     exit 1
+fi
+
+ZBX_AGENT_CONFIG_FILE_ROUTE=$REPO_ROOT/agent2/$ZBX_AGENT_CONFIG_FILE
+
+if [ ! -f "$ZBX_AGENT_CONFIG_FILE_ROUTE" ]; then
+    echo "⚠️  Zabbix agent config file not found. Creating: $ZBX_AGENT_CONFIG_FILE_ROUTE"
+    touch "$ZBX_AGENT_CONFIG_FILE_ROUTE"
+    if [ $? -ne 0 ]; then
+      echo "❌  Error: could not create $ZBX_AGENT_CONFIG_FILE_ROUTE"
+      exit 1
+    fi
+fi
+echo "✅  Zabbix agent config file found: $ZBX_AGENT_CONFIG_FILE_ROUTE"
+
+# Extraer todas las líneas AGENT_PARAMS_XX=ITEMKEY:SCRIPTNAME del .env
+echo "🔎  Checking for UserParameter entries in .env to add to $ZBX_AGENT_CONFIG_FILE..."
+
+grep -E '^AGENT_PARAMS_[A-Za-z0-9_]+[[:space:]]*=' "$ENV_FILE" | while IFS= read -r line; do
+
+  # Separar nombre de variable y valor
+  VALUE=$(echo "$line" | sed 's/^[^=]*=[[:space:]]*//')
+
+  ITEMKEY=$(echo "$VALUE" | cut -d':' -f1)
+  SCRIPTNAME=$(echo "$VALUE" | cut -d':' -f2)
+
+  if [ -z "$ITEMKEY" ] || [ -z "$SCRIPTNAME" ]; then
+    echo "⚠️  Skipping malformed line: $line on .env file"
+    continue
   fi
-  echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
 
+  NEW_LINE="UserParameter=${ITEMKEY},sudo /var/lib/zabbix/user_scripts/${SCRIPTNAME}"
 
+  # Buscar si ya existe (ignorando líneas comentadas)
+  EXISTS=$(grep -v '^[[:space:]]*#' "$ZBX_AGENT_CONFIG_FILE_ROUTE" | grep -Fx "$NEW_LINE")
 
+  if [ -z "$EXISTS" ]; then
+    echo "$NEW_LINE" >> "$ZBX_AGENT_CONFIG_FILE_ROUTE"
+    echo "✅  Added: $NEW_LINE"
+  else
+    echo "ℹ️  Already present, skipping: $ITEMKEY"
+  fi
+done
+
+chown root:root "$ZBX_AGENT_CONFIG_FILE_ROUTE"
+chmod 644 "$ZBX_AGENT_CONFIG_FILE_ROUTE"
+echo "✅  Permissions applied to $ZBX_AGENT_CONFIG_FILE_ROUTE (root:root 644)"
 
 
 #########################################################################################################
