@@ -14,19 +14,19 @@ echo " *********   Zabbix infrastructure stack installation script ********* "
 # -------------- Script usage instructions
 usage() {
     echo ""
-    echo -e "⚠️  ${YELLOW}Usage:${NC} $0 [agent|server] [optional_seed]"
+    echo -e "⚠️  ${YELLOW}Usage:${NC} $0 [agent|server] ['optional_seed']"
     echo ""
-    echo -e "            ${BLUE}agent${NC}  ---> Deploys the remote Zabbix Agent2 container"
-    echo -e "            ${BLUE}server${NC} ---> Deploys the full Zabbix server infrastructure stack"
+    echo -e "      ${BLUE}agent${NC}  ---> Deploys the remote Zabbix Agent2 container"
+    echo -e "      ${BLUE}server${NC} ---> Deploys the full Zabbix server infrastructure stack"
     echo ""
-    echo -e "            ${BLUE}optional_seed${NC} ---> Optional custom seed used to generate"
-    echo "                                 a deterministic TLS PSK value"
+    echo -e "      ${BLUE}optional_seed${NC} ---> Optional custom seed used to generate"
+    echo "                         a deterministic TLS PSK value"
     echo ""
-    echo "                                Requirements:"
-    echo -e "                                    ${GREEN}•${NC} Minimum 8 characters"
-    echo -e "                                    ${GREEN}•${NC} No spaces allowed"
-    echo -e "                                    ${GREEN}•${NC} Recommended to use uppercase,"
-    echo -e "                                      lowercase, numbers and symbols"
+    echo "         Requirements:"
+    echo -e "                   ${GREEN}•${NC} Minimum 8 characters"
+    echo -e "                   ${GREEN}•${NC} It is highly recommended to enclose the seed in single quotes: 'seed'"
+    echo -e "                   ${GREEN}•${NC} You must use uppercase, lowercase, numbers and one of the following symbols: . * + ? -"
+    echo -e "                   ${GREEN}•${NC} No spaces or special characters allowed: \$ | & \\"
     echo ""
     echo "ℹ️  The same seed must be used during both the Zabbix server"
     echo "    and remote agent deployment to generate matching PSK values."
@@ -42,6 +42,50 @@ print_section() {
     echo -e "${color}-----------------------------------------------------${NC}"
     echo -e "${color}  ${title}${NC}"
     echo -e "${color}-----------------------------------------------------${NC}"
+}
+
+validate_password() {
+  local password="$1"
+  local var_name="${2:-seed}"  # just for error message
+  local len=${#password}
+
+  # Longitud entre 8 y 64
+  if (( len < 8 || len > 64 )); then
+    echo "❌  Error: ${var_name} must be between 8 and 64 characters long (current: ${len})."
+    return 1
+  fi
+
+  # At least one uppercase letter
+  if [[ ! "$password" =~ [A-Z] ]]; then
+    echo "❌  Error: ${var_name} must contain at least one uppercase letter."
+    return 1
+  fi
+
+  # At least one lowercase letter
+  if [[ ! "$password" =~ [a-z] ]]; then
+    echo "❌  Error: ${var_name} must contain at least one lowercase letter."
+    return 1
+  fi
+
+  # At least one number
+  if [[ ! "$password" =~ [0-9] ]]; then
+    echo "❌  Error: ${var_name} must contain at least one digit."
+    return 1
+  fi
+
+  # At least one allowed symbol: . * + ? -
+  if [[ ! "$password" =~ [.*+?\-] ]]; then
+    echo "❌  Error: ${var_name} must contain at least one of the following symbols: . * + ? -"
+    return 1
+  fi
+
+  # Characters not allowed: $ | & \
+  if [[ "$password" == *['$|&\']* ]]; then
+    echo "❌  Error: Character (\$, |, &, \\) it is not allowed on ${var_name}."
+    exit 1
+  fi
+
+  return 0
 }
 
 clear
@@ -77,26 +121,15 @@ else
   usage
   exit 1
 fi
-#---------- Check the second argument for a custom seed value (optional)
+#---------- Check the second argument for a custom seed value (optional but highly recommended )
 
 if [ -n "$PSK_SEED" ]; then
-
-  # Reject spaces
-  if [[ "$PSK_SEED" =~ [[:space:]] ]]; then
-    echo "   - ❌  Invalid seed: spaces are not allowed."
-    exit 1
-  fi
-
-  # Minimum length
-  if [ ${#PSK_SEED} -lt 8 ]; then
-    echo "   - ❌  Invalid seed: minimum length is 8 characters."
-    exit 1
+  if ! validate_password "$PSK_SEED" "Provided seed"; then
+      exit 1
   fi
   FLAG_SEED=true
-  
 else
   FLAG_SEED=false
-  
 fi
 
 # ---------- Compose file to deploy 
@@ -186,7 +219,7 @@ if [ "$FLAG_SERVER" = "true" ]; then
   echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
 fi
 
-#------------- user_script route ------------------------
+#------------- user_scripts directory ------------------------
 
 USER_SCRIPTS_DIR="$REPO_ROOT/scripts/user_scripts"
 
@@ -224,16 +257,16 @@ AGENT_SUDOERS_FILE_ROUTE=$REPO_ROOT/agent2/$AGENT_SUDOERS_FILE
 
 if [ ! -f "$AGENT_SUDOERS_FILE_ROUTE" ]; then
     echo "⚠️  Sudoers file not found. Creating: $AGENT_SUDOERS_FILE_ROUTE"
-    echo "zabbix ALL=(root) NOPASSWD: /var/lib/zabbix/user_scripts/*" > "$AGENT_SUDOERS_FILE"
+    echo "zabbix ALL=(root) NOPASSWD: /var/lib/zabbix/user_scripts/*" > "$AGENT_SUDOERS_FILE_ROUTE"
     if [ $? -ne 0 ]; then
-      echo "❌  Error: could not create $AGENT_SUDOERS_FILE"
+      echo "❌  Error: could not create $AGENT_SUDOERS_FILE_ROUTE"
       exit 1
     fi
 fi
 
 echo "✅  Sudoers file found: $AGENT_SUDOERS_FILE"
-chown root:root "$AGENT_SUDOERS_FILE"
-chmod 440 "$AGENT_SUDOERS_FILE"
+chown root:root "$AGENT_SUDOERS_FILE_ROUTE"
+chmod 440 "$AGENT_SUDOERS_FILE_ROUTE"
 echo "✅  Permissions applied to $AGENT_SUDOERS_FILE_ROUTE (root:root 440)"
 
 # ------------ Dockerfile ---------------------------
@@ -251,6 +284,7 @@ if [ ! -f "$DOCKERFILE" ]; then
     echo "⚠️  Dockerfile not found. Creating: $DOCKERFILE"
     cat > "$DOCKERFILE" << 'EOF'
 FROM zabbix/zabbix-agent2:ubuntu-7.4.3
+USER root
 RUN apt-get update && \
     apt-get install -y --no-install-recommends iproute2 && \
     rm -rf /var/lib/apt/lists/*
@@ -290,18 +324,19 @@ if [ ! -f "$ZBX_AGENT_CONFIG_FILE_ROUTE" ]; then
 fi
 echo "✅  Zabbix agent config file found: $ZBX_AGENT_CONFIG_FILE_ROUTE"
 
-# Extraer todas las líneas AGENT_PARAMS_XX=ITEMKEY:SCRIPTNAME del .env
+# ----------------------------------- Extract all AGENT_PARAMS_XX=ITEMKEY:SCRIPTNAME lines from .env
 
 echo "🔎  Checking for UserParameter entries in .env to add to $ZBX_AGENT_CONFIG_FILE..."
 
-MATCHES=$(grep -E '^AGENT_PARAMS_[A-Za-z0-9_]+[[:space:]]*=' "$ENV_FILE")
+MATCHES=$(grep -E '^AGENT_PARAMS_[A-Za-z0-9_]+[[:space:]]*=' "$REPO_ROOT/.env")
 
 if [ -z "$MATCHES" ]; then
   echo "ℹ️  No UserParameter entries found in .env, nothing to process"
 else
+  
   echo "$MATCHES" | while IFS= read -r line; do
-
-    # Separar nombre de variable y valor
+  
+    # -------- Split variable name and value
     VALUE=$(echo "$line" | sed 's/^[^=]*=[[:space:]]*//')
 
     ITEMKEY=$(echo "$VALUE" | cut -d':' -f1)
@@ -311,24 +346,23 @@ else
       echo "⚠️  Skipping malformed line: $line on .env file"
       continue
     fi
-
+    
     NEW_LINE="UserParameter=${ITEMKEY},sudo /var/lib/zabbix/user_scripts/${SCRIPTNAME}"
-
-    # Buscar si ya existe (ignorando líneas comentadas)
-    EXISTS=$(grep -v '^[[:space:]]*#' "$ZBX_AGENT_CONFIG_FILE_ROUTE" | grep -Fx "$NEW_LINE")
-
+    
+    # --------- Check if it already exists (ignoring commented lines)
+    EXISTS=$(grep -v '^[[:space:]]*#' "$ZBX_AGENT_CONFIG_FILE_ROUTE" | grep -Fx "$NEW_LINE" || true)
+    
     if [ -z "$EXISTS" ]; then
       echo "$NEW_LINE" >> "$ZBX_AGENT_CONFIG_FILE_ROUTE"
       echo "✅  Added: $NEW_LINE"
     else
-      echo "ℹ️  Already present, skipping: $ITEMKEY"
+      echo "ℹ️   Already present, skipping: $ITEMKEY"
     fi
   done
 fi
 chown root:root "$ZBX_AGENT_CONFIG_FILE_ROUTE"
 chmod 644 "$ZBX_AGENT_CONFIG_FILE_ROUTE"
 echo "✅  Permissions applied to $ZBX_AGENT_CONFIG_FILE_ROUTE (root:root 644)"
-
 
 #########################################################################################################
 ######################################    Generating PSK  ###############################################

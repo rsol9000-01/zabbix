@@ -47,26 +47,9 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 30s
       timeout: 10s
-      retries: 3
-
-  ###########################
-  # SNMP TRAPS
-  ###########################
-  #zabbix-snmptraps:
-  #  image: zabbix/zabbix-snmptraps:latest
-  #  container_name: zabbix-snmptraps
-  #  restart: unless-stopped
-    #  networks:
-    #    net0:
-    #      ipv4_address: ${ZBX_TRAPS_IP}
-  #  ports:
-  #    - "162:1162/udp"
-  #  volumes:
-  #    - zabbix-snmptraps:/var/lib/zabbix/snmptraps:rw
-  #    - ./mibs:/usr/share/snmp/mibs:ro
-    #security_opt:
-    #  - seccomp=unconfined
-
+      retries: 10
+      start_period: 30s
+  
   ###########################
   # ZABBIX SERVER
   ###########################
@@ -104,8 +87,8 @@ services:
         ]
       interval: 10s
       timeout: 10s
-      retries: 10
-      start_period: 30s
+      retries: 20
+      start_period: 90s
   ###########################
   # ZABBIX WEB (NGINX)
   ###########################
@@ -131,7 +114,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 15
-      start_period: 20s
+      start_period: 30s
     environment:
       - ZBX_SERVER_HOST=${ZBX_SERVER_IP}
       - DB_SERVER_HOST=${ZBX_DB_IP}
@@ -179,10 +162,10 @@ services:
       - /proc:/proc:ro
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/user_scripts/:/var/lib/zabbix/user_scripts/:ro
+      - ./agent2/${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}:ro
+      - ./agent2/${AGENT_SUDOERS_FILE}:/etc/sudoers.d/${AGENT_SUDOERS_FILE}:ro
       #- ../psk/${ZBX_TLSPSKFILENAME}:${ZBX_TLSPSKFILE}:ro
-      - ./${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}:ro
-      - ../scripts/user_scripts/:/var/lib/zabbix/user_scripts/:ro
-      - ./${AGENT_SUDOERS_FILE}:/etc/sudoers.d/${AGENT_SUDOERS_FILE}:ro
 
   ##########################
   # INIT CONTAINER
@@ -196,7 +179,7 @@ services:
       - ./templates/${AGENT_TEMPLATE_FILE}:/${AGENT_TEMPLATE_FILE}:ro
       #- ./scripts/zabbix-conf-en.sh:/init.sh:ro
     #entrypoint: ["bash", "/init.sh"]
-    entrypoint: ["sh", "-c", "apk add --no-cache bash && exec bash /init.sh"]
+    entrypoint: ["sh", "-c", "apk add --no-cache bash jq && exec bash /init.sh"]
     depends_on:
       zabbix-dashboard:
         condition: service_healthy

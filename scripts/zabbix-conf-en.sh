@@ -3,6 +3,7 @@
 ###### Script post-install for Zabbix, executed by the zabbix-init service, defined in docker-compose.yml #############
 ########################################################################################################################
 # Colors
+ORANGE='\033[38;2;252;209;161m'
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -23,7 +24,6 @@ if [ -z "$AGENT_TEMPLATE_FILE" ]; then
 else
   TEMPLATE_FILE="/${AGENT_TEMPLATE_FILE}"
 fi
-
 
 #############################################################################################################
 #######################################    0. IS API AVAILABLE?   ###########################################
@@ -112,13 +112,9 @@ echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
 ##############################    3. CREATE/UPDATE SIMOVILAB TEMPLATE  ######################################
 #############################################################################################################
 
-# ------------------------------------------------------------
-# Verificar que exista el archivo OJO MODIFICAR QUE SE HAGA LA IMPORTACION SOLO SI EL TEMPLATE_FILE EXISTE DE LO
-# CONTRARIO NO SE HACE NADA, Y SE CARGA COMO TEMPLATE_ID EL DE LA PLANTILLA ICMP Ping
-# ------------------------------------------------------------
 
 if [[ -f "$TEMPLATE_FILE" && -n "$AGENT_TEMPLATE_NAME" ]]; then
-  echo -e "📋 Importing/updating the template: ${YELLOW}$AGENT_TEMPLATE_NAME${NC}"
+  echo -e "📋 Importing/updating the template: ${ORANGE}$AGENT_TEMPLATE_NAME${NC}"
 
   # ------------------------------------------------------------
   # Construir JSON usando jq
@@ -172,8 +168,7 @@ if [[ -f "$TEMPLATE_FILE" && -n "$AGENT_TEMPLATE_NAME" ]]; then
       -H "Authorization: Bearer $TOKEN" \
       -d "$IMPORT_REQUEST")
 
-  echo "📋 Import result:"
-  echo -e "${YELLOW}$IMPORT_RESULT${NC}"
+  echo -e "📋 Import result: ${ORANGE}$IMPORT_RESULT${NC}"
 
   # ------------------------------------------------------------
   # Comprobar errores
@@ -307,7 +302,6 @@ if [ -z "$ACTION_ID" ]; then
   curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-  #  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"${AGENT_TEMPLATE_NAME}\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TMPL_DOCKER_ID\"},{\"templateid\":\"$TMPL_LINUX_ID\"}]}]},\"id\":1}" > /dev/null
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Self-registration-agents-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"${ZBX_METADATA}\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TEMPLATE_ID\"}]}]},\"id\":1}" > /dev/null
   echo "   - ✅ Autoregistration action created"
 
