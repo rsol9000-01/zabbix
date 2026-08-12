@@ -1,7 +1,6 @@
 #version: "3.9"
-
 ############################
-# VOLUMENES
+# VOLUMENS
 ############################
 volumes:
   zabbix-postgresdb:
@@ -9,32 +8,25 @@ volumes:
   zabbix-snmptraps:
   zabbix_dashboard_config:
   zabbix_certificados:
-
 ############################
-# RED
+# NETWORKS
 ############################
-#networks:
-#  net0:
-#    driver: bridge
-#    ipam:
-#      config:
-#        - subnet: ${SUBNET}
-#          gateway: ${GATEWAY}
-
+networks:
+  zabbix_network:
+    driver: bridge
 ############################
-# SERVICIOS
+# SERVICES
 ############################
 services:
   ###########################
   # POSTGRES
   ###########################
   zabbix-postgres-bd:
+    networks:
+      - zabbix_network
     image: postgres:17.6
     container_name: zabbix-postgres-bd
     restart: unless-stopped
-    #   networks:
-    #     net0:
-    #       ipv4_address: ${ZBX_DB_IP}
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -49,17 +41,15 @@ services:
       timeout: 10s
       retries: 10
       start_period: 30s
-  
   ###########################
   # ZABBIX SERVER
   ###########################
   zabbix-server-pgsql:
+    networks:
+      - zabbix_network
     image: zabbix/zabbix-server-pgsql:latest
     container_name: zabbix-server-pgsql
     restart: unless-stopped
-    #  networks:
-    #    net0:
-    #      ipv4_address: ${ZBX_SERVER_IP}
     depends_on:
       zabbix-postgres-bd:
         condition: service_healthy
@@ -77,8 +67,6 @@ services:
       - ./alertscripts:/usr/lib/zabbix/alertscripts:ro
       - ./externalscripts:/usr/lib/zabbix/externalscripts:ro
       - zabbix-snmptraps:/var/lib/zabbix/snmptraps
-    #security_opt:
-    #  - seccomp=unconfined
     healthcheck:
       test:
         [
@@ -88,17 +76,16 @@ services:
       interval: 10s
       timeout: 10s
       retries: 20
-      start_period: 90s
+      start_period: 300s
   ###########################
   # ZABBIX WEB (NGINX)
   ###########################
   zabbix-dashboard:
+    networks:
+      - zabbix_network
     image: zabbix/zabbix-web-nginx-pgsql:latest
     container_name: zabbix-dashboard
     restart: unless-stopped
-    #    networks:
-    #      net0:
-    #        ipv4_address: ${ZBX_DASHBOARD_IP}
     depends_on:
       zabbix-postgres-bd:
         condition: service_healthy
@@ -130,31 +117,30 @@ services:
       - zabbix_dashboard_config:/usr/share/zabbix
     #security_opt:
     #  - seccomp=unconfined
-
   ##########################
   # ZABBIX AGENT 2
   ###########################
   zabbix-agent2:
+    networks:
+      - zabbix_network
     build:
         context: ./agent2/
         dockerfile: Dockerfile
     image: simovilab/zabbix-agent2:ubuntu-7.4.3
-  #  image: zabbix/zabbix-agent2:ubuntu-7.4.3
     container_name: zabbix-agent2
     hostname: ${LOCAL_HOST_NAME}
     restart: unless-stopped
     privileged: true
     group_add:
-    #  - "990"
      - "$DOCKER_GID"
-    #    networks:
-    #      net0:
-    #        ipv4_address: ${ZBX_AGENT2_IP}
-    #user: "1001:996"
+    depends_on:
+      zabbix-postgres-bd:
+        condition: service_healthy
+      zabbix-server-pgsql:
+        condition: service_healthy
     environment:
       - ZBX_SERVER_HOST=${ZBX_SERVER_IP}
       - ZBX_ACTIVE_ALLOW=${ZBX_ACTIVE_ALLOW}
-      #- ZBX_HOSTNAME=${ZBX_HOSTNAME}
       - ZBX_METADATA=${ZBX_METADATA}
       - ZBX_HOSTINTERFACE=${HOST_DNS}
       - TZ=${TZ}
@@ -165,24 +151,22 @@ services:
       - ./scripts/user_scripts/:/var/lib/zabbix/user_scripts/:ro
       - ./agent2/${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}:ro
       - ./agent2/${AGENT_SUDOERS_FILE}:/etc/sudoers.d/${AGENT_SUDOERS_FILE}:ro
-      #- ../psk/${ZBX_TLSPSKFILENAME}:${ZBX_TLSPSKFILE}:ro
-
   ##########################
   # INIT CONTAINER
   ###########################
   zabbix-init:
+    networks:
+      - zabbix_network
     image: alpine/curl:latest
     env_file: .env
     volumes:
       - ./${SCRIPT_POST_INSTALL}:/init.sh:ro
       - ./psk/zabbix_agentd.psk:/zabbix_agentd.psk:ro
       - ./templates/${AGENT_TEMPLATE_FILE}:/${AGENT_TEMPLATE_FILE}:ro
-      #- ./scripts/zabbix-conf-en.sh:/init.sh:ro
-    #entrypoint: ["bash", "/init.sh"]
     entrypoint: ["sh", "-c", "apk add --no-cache bash jq && exec bash /init.sh"]
     depends_on:
       zabbix-dashboard:
         condition: service_healthy
       zabbix-server-pgsql:
         condition: service_healthy
-    restart: "no" # solo corre una vez y sale
+    restart: "no"

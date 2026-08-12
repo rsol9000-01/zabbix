@@ -256,6 +256,17 @@ else
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.create\",\"params\":{\"host\":\"$LOCAL_HOST_NAME\",\"interfaces\":[{\"type\":1,\"main\":1,\"useip\":0,\"ip\":\"\",\"dns\":\"$HOST_DNS\",\"port\":\"$HOST_PORT\"}],\"groups\":[{\"groupid\":\"$GROUP_ID\"}],\"templates\":[{\"templateid\":\"$TEMPLATE_ID\"}]},\"id\":8}" > /dev/null
   echo "✅ Host created with DNS: $HOST_DNS:$HOST_PORT"
 fi
+# ──── 4.4 Delete the default "Zabbix server" agent ───────────────────────────
+DEFAULT_HOST_ID=$(curl -sf -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.get\",\"params\":{\"filter\":{\"host\":[\"Zabbix server\"]}},\"id\":5}" \
+  | grep -o '"hostid":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+curl -sf -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.delete\",\"params\":[\"$DEFAULT_HOST_ID\"],\"id\":7}"
 
 #############################################################################################################
 ############################    5. CREATE AUTOREGISTRATION ACTION   #########################################

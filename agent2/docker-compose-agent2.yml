@@ -1,8 +1,19 @@
+############################
+# NETWORKS
+############################
+networks:
+  databus_network:
+    external: true
+############################
+# SERVICES
+############################
 services:
   ##########################
   # ZABBIX AGENT 2
   ###########################
   zabbix-agent2:
+    networks:
+      - databus_network
     build:
         context: .
         dockerfile: Dockerfile
@@ -10,18 +21,11 @@ services:
     container_name: remote-zabbix-agent2
     hostname: ${REMOTE_AGENT_HOSTNAME}
     restart: unless-stopped
-    #pid: "host"
-    #env_file:
-     # - ../.env
     privileged: true
     ports:
-      - "${ZBX_PORTS}" # Para poder ser alcanzado por el servidor ZABBIX
+      - "${ZBX_PORTS}"
     group_add:
       - "${DOCKER_GID}"
-    #    networks:
-    #      net0:
-    #        ipv4_address: ${ZBX_AGENT2_IP}
-    #user: "1001:996"
     environment:
       - TZ=${TZ}
       - ZBX_SERVER_HOST=${SERVER_FQDN}
