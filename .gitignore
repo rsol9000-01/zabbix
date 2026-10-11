@@ -9,3 +9,6 @@
 
 # Certificados para https
 data/dashboard/certificados/*
+
+# PSK SERVER - AGENTE REMOTO
+psk/zabbix_agentd.psk

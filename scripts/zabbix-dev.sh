@@ -370,9 +370,15 @@ echo "✅  Permissions applied to $ZBX_AGENT_CONFIG_FILE_ROUTE (root:root 644)"
 
 mkdir -p psk
 
+PSK_KDF_SALT="simovilab-zabbix-psk-v1"
+
 if [ "$FLAG_SEED" = "true" ]; then
   echo "🔐 Custom seed detected, generating PSK from provided seed..."
-  PSK_VALUE=$(printf "%s" "$PSK_SEED" | openssl dgst -sha256 | cut -d' ' -f2)
+  #PSK_VALUE=$(printf "%s" "$PSK_SEED" | openssl dgst -sha256 | cut -d' ' -f2)
+  PSK_VALUE=$(python3 -c 'import hashlib,sys; print(hashlib.pbkdf2_hmac("sha256",
+  sys.argv[1].encode(), sys.argv[2].encode(), 600000).hex())' \
+  "$PSK_SEED" "$PSK_KDF_SALT")
+
   echo "$PSK_VALUE" > psk/zabbix_agentd.psk
   echo "   - ✅ Custom PSK generated."
   echo "   - 🚨  The same seed must be used for both the Zabbix server and remote agent deployment to generate matching PSK values."
