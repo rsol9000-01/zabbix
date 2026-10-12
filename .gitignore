@@ -11,4 +11,4 @@
 data/dashboard/certificados/*
 
 # PSK SERVER - AGENTE REMOTO
-# psk/zabbix_agentd.psk
+#. psk/zabbix_agentd.psk
