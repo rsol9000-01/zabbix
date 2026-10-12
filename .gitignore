@@ -1,14 +1,7 @@
-# Docker
-.env
-#data/
-*.log
 
-# Editor
+.env
+psk/*
+data/dashboard/certificados/*
+*.log
 .vscode/
 .idea/
-
-# Certificados para https
-data/dashboard/certificados/*
-
-# PSK SERVER - AGENTE REMOTO
-psk/*
