@@ -1,0 +1,484 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 19a51f2ca0864028ba21eb9633248ac3
+      name: Templates/Simovilab
+  templates:
+    - uuid: 5eb6213b9821476c8690cd4bec8babd9
+      template: simovilab-data
+      name: simovilab-data
+      groups:
+        - name: Templates/Simovilab
+      items:
+        - uuid: b196dceecaa245f9bb02dfa2cc4b7b52
+          name: 'GTFS estático publicado por databus'
+          type: ZABBIX_ACTIVE
+          key: databus.static
+          delay: 5m
+          history: 1d
+          value_type: TEXT
+        - uuid: 3d045ed757e3448383fd38c38131a93f
+          name: 'databus: antigüedad del estático'
+          type: DEPENDENT
+          key: databus.static.age_s
+          value_type: FLOAT
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.static_zip_age_s
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: databus.static
+        - uuid: b7db7517416e4d808e2b1fe3d92e9ae7
+          name: 'databus: desfase del estático frente a la fuente'
+          type: CALCULATED
+          key: databus.static.desfase_s
+          delay: 5m
+          value_type: FLOAT
+          units: s
+          params: 'last(/simovilab-data/databus.static.age_s) - last(/simovilab-data/macdt.static_zip_age_s)'
+          triggers:
+            - uuid: 5cbbc7f23c704a9d9eba788d67a7de4e
+              expression: 'min(/simovilab-data/databus.static.desfase_s,15m)>{$MACDT.ZIP.DESFASE.WARN}'
+              name: 'El GTFS que publica databus está desactualizado'
+              dependencies:
+                - name: 'databus no publica el GTFS estático'
+                  expression: last(/simovilab-data/macdt.static_zip_http)<>200
+        - uuid: 5cd27a5a2ccd4781bae8e48cd15921db
+          name: 'databus: código HTTP del estático'
+          type: DEPENDENT
+          key: databus.static.http
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.static_zip_http
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: databus.static
+        - uuid: d3c7378b4fb04a839608eacf51f16c29
+          name: 'databus: lectura del estático correcta'
+          type: DEPENDENT
+          key: databus.static.ok
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.window_ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: databus.static
+        - uuid: 9c6a80ec3d2d47919e07417af235fffa
+          name: 'V_completeness de predicciones'
+          type: DEPENDENT
+          key: gtfs.completeness_tu_pct
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_completeness_tu_pct
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: a7e3e0ad4a144978a0489e01ac0dae42
+          name: 'V_completeness de posiciones'
+          type: DEPENDENT
+          key: gtfs.completeness_vp_pct
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_completeness_vp_pct
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: 57d014534aa643bd8158d819ba0a409e
+          name: 'Calibrar el --stale contra la cadencia real'
+          type: DEPENDENT
+          key: gtfs.data_age_p95_s
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.data_age_p95_s
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: 77455c60df804f9ab0a5a9bcecb36767
+          name: 'V_age del publicador de predicciones'
+          type: DEPENDENT
+          key: gtfs.feed_age_tu_s
+          value_type: FLOAT
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.feed_age_tu_s
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+          triggers:
+            - uuid: efad2902e2af46d1be1ea9a77b235008
+              expression: 'min(/simovilab-data/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.WARN}'
+              name: 'Feed GTFS-RT atrasado'
+              priority: WARNING
+              description: 'Depende de los dos primeros'
+              dependencies:
+                - name: 'Capa D: feed GTFS-RT no alcanzable'
+                  expression: last(/simovilab-data/gtfs.fetch_ok)=0
+                - name: 'Capa D: sonda sin datos'
+                  expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'
+            - uuid: 61525e6b5b024f529e155002e5bdaf0f
+              expression: 'min(/simovilab-data/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.CRIT}'
+              name: 'Feed GTFS-RT muy atrasado'
+              priority: HIGH
+              description: 'Depende del anterior'
+              dependencies:
+                - name: 'Feed GTFS-RT atrasado'
+                  expression: 'min(/simovilab-data/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.WARN}'
+        - uuid: 477b4b369f6548ac87bfa2f27c363bb4
+          name: 'V_age del publicador de posiciones'
+          type: DEPENDENT
+          key: gtfs.feed_age_vp_s
+          value_type: FLOAT
+          units: s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.feed_age_vp_s
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: ac8bd068c7fa4632bbb5d1d5aa5d4821
+          name: 'Raíz del árbol de alertas'
+          type: DEPENDENT
+          key: gtfs.fetch_ok
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.fetch_ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+          triggers:
+            - uuid: 82cc484e671b4469b52e6c23f1b15f69
+              expression: last(/simovilab-data/gtfs.fetch_ok)=0
+              name: 'Capa D: feed GTFS-RT no alcanzable'
+              priority: HIGH
+        - uuid: afe91d228ced4331bf84cbeb878edd7f
+          name: 'Latencia del endpoint de predicciones'
+          type: DEPENDENT
+          key: gtfs.fetch_tu_ms
+          value_type: FLOAT
+          units: ms
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.fetch_tu_ms
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: 1265b51a1ea54b73a8101576b458f79e
+          name: 'Latencia del endpoint de posiciones'
+          type: DEPENDENT
+          key: gtfs.fetch_vp_ms
+          value_type: FLOAT
+          units: ms
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.fetch_vp_ms
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: ad123756995f412aadec85af1734c392
+          name: gtfs-Maestro
+          type: ZABBIX_ACTIVE
+          key: gtfs.probe
+          value_type: TEXT
+          triggers:
+            - uuid: 08dbb1cc37cc40bbadc195148ca17da2
+              expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'
+              name: 'Capa D: sonda sin datos'
+              priority: HIGH
+        - uuid: f5eb2be0af924315b4dd3665610fac7a
+          name: 'Sospecha de relleno de timestamps'
+          type: DEPENDENT
+          key: gtfs.ts_igual_header_pct
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ts_igual_header_pct
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: d9befc0de79f4b8c8805ceb46024d79c
+          name: 'V_gps. Entrada de F_crit'
+          type: DEPENDENT
+          key: gtfs.v_gps_pct
+          value_type: FLOAT
+          units: '%'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_gps_pct
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: d791b34261844ac3b04998eed6b32b43
+          name: 'V_trips. Entrada de F_load y G_load'
+          type: DEPENDENT
+          key: gtfs.v_trips
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_trips
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: 29f21536310440bfb62cee6282bac73f
+          name: 'Denominador real de V_gps'
+          type: DEPENDENT
+          key: gtfs.v_vehicles
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_vehicles
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: gtfs.probe
+        - uuid: 97c60557f17e4d639c6fada7c1a4d675
+          name: 'Calendar age'
+          type: DEPENDENT
+          key: macdt.cal_dias_vigencia
+          value_type: TEXT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.dias_a_fin_vigencia
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+          triggers:
+            - uuid: 31cb40337b804ba6b4eaad6d21712c88
+              expression: 'last(/simovilab-data/macdt.cal_dias_vigencia)<={$MACDT.CAL.DIAS.WARN}'
+              name: 'GTFS estático por vencer'
+              priority: HIGH
+            - uuid: 0cdff1260afc41f7ae26dc2aa55749b3
+              expression: last(/simovilab-data/macdt.cal_dias_vigencia)<=0
+              name: 'GTFS estático vencido'
+              priority: DISASTER
+        - uuid: 3c718dea9ef54c0da00e46907d67634c
+          name: Schedule
+          type: DEPENDENT
+          key: macdt.gate
+          description: '1 dentro de L–V 06:10–21:58, 0 fuera. Compuerta de toda la Capa D'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.gate_ventana
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+        - uuid: 7d2d2ed31f2542e3b037c1f9ad5a60e3
+          name: 'scheduled slot'
+          type: DEPENDENT
+          key: macdt.hueco_programado
+          description: '1 en los tres huecos de cero programado. Sirve para suprimir, no para alertar'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.hueco_cero_programado
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+        - uuid: e5af78537d0a418f9d855b8a6215b352
+          name: static_zip_age
+          type: DEPENDENT
+          key: macdt.static_zip_age_s
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.static_zip_age_s
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+        - uuid: 4e9dedd5b10645929bae7342618dc21d
+          name: 'Publicacion de GTFS statico'
+          type: DEPENDENT
+          key: macdt.static_zip_http
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.static_zip_http
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+          triggers:
+            - uuid: f2398441f5414df29633745f863e2f27
+              expression: last(/simovilab-data/macdt.static_zip_http)<>200
+              name: 'databus no publica el GTFS estático'
+              priority: AVERAGE
+        - uuid: e046b49d630a4693af8e83d9a98cc03c
+          name: 'Scheduled trips'
+          type: DEPENDENT
+          key: macdt.s_t
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.s_t
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+        - uuid: 29c0d5c86bb940e1b4c928a2c8e7ee7e
+          name: 'Max trips'
+          type: DEPENDENT
+          key: macdt.v_trips_max
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_trips_max
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+        - uuid: ed527d5c6882401cadfed2443b97c8e6
+          name: macd-Maestro
+          type: ZABBIX_ACTIVE
+          key: macdt.window
+          value_type: TEXT
+        - uuid: 6a1219fb00664d89b30772d171da984a
+          name: 'Raíz del árbol de la ventana'
+          type: DEPENDENT
+          key: macdt.window_ok
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.window_ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+          triggers:
+            - uuid: d70bf1c130d244d6a31acdb1174a567a
+              expression: last(/simovilab-data/macdt.window_ok)=0
+              name: 'Capa D: ventana operativa no derivable'
+              priority: HIGH
+        - uuid: 49e205c62d414a1cb9ff1f465e6031d3
+          name: 'Calculo de p'
+          type: CALCULATED
+          key: p.calculated
+          params: 'min(last(/simovilab-data/gtfs.v_trips) / last(/simovilab-data/macdt.v_trips_max), {$MACDT.RHO_CAP})'
+      macros:
+        - macro: '{$MACDT.CAL.DIAS.WARN}'
+          value: '7'
+          description: 'Avisar una semana antes de que venza el calendario'
+        - macro: '{$MACDT.COMPL.CRIT}'
+          value: '80'
+          description: '[ESP] 2.5'
+        - macro: '{$MACDT.COMPL.WARN}'
+          value: '90'
+          description: '[ESP] 2.5'
+        - macro: '{$MACDT.RHO_CAP}'
+          value: '1.2'
+          description: 'Tope de ρ'
+        - macro: '{$MACDT.TSFILL.WARN}'
+          value: '50'
+          description: 'SIMULADO. Calibrar en F6'
+        - macro: '{$MACDT.V_AGE.CRIT}'
+          value: '70'
+          description: 'Justo bajo los 75 s de RUN_FEED_HEALTH_MAX_AGE_SECONDS de infobus'
+        - macro: '{$MACDT.V_AGE.WARN}'
+          value: '45'
+          description: '3 ciclos de construcción de 15 s'
+        - macro: '{$MACDT.V_GPS.CRIT}'
+          value: '70'
+          description: ídem
+        - macro: '{$MACDT.V_GPS.WARN}'
+          value: '85'
+          description: '[ESP] 2.5, respaldado en Tóth et al.'
+        - macro: '{$MACDT.ZIP.DESFASE.WARN}'
+          value: '21600'
+          description: '6 h de desfase entre origen y publicación'
+        - macro: '{$Q_CRIT}'
+          value: '150'
+          description: ídem
+        - macro: '{$Q_WARN}'
+          value: '80'
+          description: ídem
+        - macro: '{$T_LATENCY_CRIT}'
+          value: '400'
+          description: ídem
+        - macro: '{$T_LATENCY_WARN}'
+          value: '200'
+          description: 'Semilla. Lo sobrescribe MACDT en F5'
+  triggers:
+    - uuid: 41456f19773a4ddfa4c4249d8d47bcf2
+      expression: 'last(/simovilab-data/macdt.gate)=1 and max(/simovilab-data/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.WARN}'
+      name: 'Cobertura GPS baja'
+      priority: WARNING
+      dependencies:
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-data/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'
+    - uuid: c507ce1b741b49db9e3dc7c1be0917a5
+      expression: 'last(/simovilab-data/macdt.gate)=1 and max(/simovilab-data/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.CRIT}'
+      name: 'Cobertura GPS crítica'
+      priority: HIGH
+      dependencies:
+        - name: 'Cobertura GPS baja'
+          expression: 'last(/simovilab-data/macdt.gate)=1 and max(/simovilab-data/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.WARN}'
+    - uuid: c5d6bd8445e64a4b8265a39775f4d25b
+      expression: 'last(/simovilab-data/macdt.gate)=1 and max(/simovilab-data/gtfs.completeness_tu_pct,5m)<{$MACDT.COMPL.WARN}'
+      name: 'Completitud de predicciones baja'
+      priority: WARNING
+      dependencies:
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-data/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'
+    - uuid: abdaec51aaf5480e8f43d9a54715f9ad
+      expression: 'last(/simovilab-data/macdt.gate)=1 and last(/simovilab-data/macdt.s_t)>=2 and (min(/simovilab-data/macdt.s_t,5m)-max(/simovilab-data/gtfs.v_trips,5m))>=last(/simovilab-data/macdt.s_t)/2'
+      name: 'Déficit de viajes'
+      priority: AVERAGE
+      dependencies:
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-data/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'
+    - uuid: c55d8ed4f8e046c2843159fa995ca3eb
+      expression: 'min(/simovilab-data/gtfs.v_trips,5m)>last(/simovilab-data/macdt.v_trips_max)'
+      name: 'Más viajes que el máximo programado'
+      priority: WARNING
+      dependencies:
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-data/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'
+    - uuid: 2982be5f6b4044bb8514e2c5c9997e54
+      expression: 'last(/simovilab-data/macdt.gate)=1 and last(/simovilab-data/macdt.s_t)>=1 and max(/simovilab-data/gtfs.v_trips,3m)=0'
+      name: 'Sin viajes activos'
+      priority: WARNING
+      dependencies:
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-data/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'
+    - uuid: d2e66eb955194ef28b7c8bcf549da2a3
+      expression: 'last(/simovilab-data/macdt.gate)=1 and last(/simovilab-data/macdt.s_t)>=1 and max(/simovilab-data/gtfs.v_trips,10m)=0'
+      name: 'Sin viajes activos sostenido'
+      priority: DISASTER
+      dependencies:
+        - name: 'Sin viajes activos'
+          expression: 'last(/simovilab-data/macdt.gate)=1 and last(/simovilab-data/macdt.s_t)>=1 and max(/simovilab-data/gtfs.v_trips,3m)=0'
+    - uuid: 2d1de297a66e437ba61981c7e79f0b60
+      expression: 'last(/simovilab-data/macdt.gate)=1 and min(/simovilab-data/gtfs.ts_igual_header_pct,10m)>{$MACDT.TSFILL.WARN}'
+      name: 'Sospecha de relleno de timestamps'
+      priority: WARNING
+      dependencies:
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-data/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-data/gtfs.probe,5m)=1'

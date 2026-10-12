@@ -20,6 +20,7 @@ Uso:
 Dependencias: ninguna para --zip; psycopg[binary] para --pg
 """
 import os
+import time
 import argparse, collections, csv, io, json, sys, zipfile
 
 DOW = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
@@ -129,6 +130,44 @@ def analizar(spans, trips, cal):
     return out
 
 
+def _bajar(url, timeout, host_header=None):
+    """Baja el GTFS estatico. Devuelve (cuerpo, codigo HTTP, edad del archivo en s)."""
+    import email.utils
+    import urllib.request
+    pedido = urllib.request.Request(url)
+    if host_header:
+        pedido.add_header("Host", host_header)
+    with urllib.request.urlopen(pedido, timeout=timeout) as r:
+        cuerpo = r.read()
+        lm = r.headers.get("Last-Modified")
+    edad = None
+    if lm:
+        try:
+            edad = round(time.time() - email.utils.parsedate_to_datetime(lm).timestamp(), 1)
+        except Exception:
+            edad = None
+    return cuerpo, 200, edad
+
+
+def _now_degradado(error, http_estado):
+    """JSON de falla para --now: mismas claves, con window_ok=0."""
+    import datetime
+    ahora = datetime.datetime.now()
+    return {
+        "window_ok": 0,
+        "error": str(error)[:200],
+        "static_zip_http": http_estado,
+        "minuto": "%02d:%02d" % (ahora.hour, ahora.minute),
+        "service_id": None,
+        "gate_ventana": 0,
+        "s_t": 0,
+        "v_trips_max": None,
+        "hueco_cero_programado": 0,
+        "dias_a_fin_vigencia": None,
+        "static_zip_age_s": None,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -136,6 +175,9 @@ def main():
     g.add_argument("--zip"); g.add_argument("--pg")
     g.add_argument("--url", help="URL del GTFS estatico, p.ej. "
                                  "http://orchestrator:8000/feed/schedule/feed.zip")
+    ap.add_argument("--host-header", dest="host_header",
+                    help="Host a enviar con --url; usar un valor que este en "
+                         "ALLOWED_HOSTS de databus (evita el 400 DisallowedHost)")
     ap.add_argument("--timeout", type=float, default=20.0)
     ap.add_argument("--macros", action="store_true", help="solo macros de Zabbix")
     ap.add_argument("--now", action="store_true",
@@ -143,23 +185,31 @@ def main():
     ap.add_argument("--servicio", help="service_id a usar para las macros")
     a = ap.parse_args()
 
-    if a.url:
-        import tempfile
-        import urllib.request
-        with urllib.request.urlopen(a.url, timeout=a.timeout) as r:
-            if r.status != 200:
-                raise SystemExit("HTTP %s al bajar %s" % (r.status, a.url))
-            cuerpo = r.read()
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as fh:
-            fh.write(cuerpo)
-            tmp = fh.name
-        try:
-            spans, trips, cal = desde_zip(tmp)
-        finally:
-            os.unlink(tmp)
-    else:
-        spans, trips, cal = desde_zip(a.zip) if a.zip else desde_pg(a.pg)
-    r = analizar(spans, trips, cal)
+    http_estado, zip_age_s = None, None
+    try:
+        if a.url:
+            cuerpo, http_estado, zip_age_s = _bajar(a.url, a.timeout, a.host_header)
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as fh:
+                fh.write(cuerpo)
+                tmp = fh.name
+            try:
+                spans, trips, cal = desde_zip(tmp)
+            finally:
+                os.unlink(tmp)
+        else:
+            spans, trips, cal = desde_zip(a.zip) if a.zip else desde_pg(a.pg)
+        r = analizar(spans, trips, cal)
+    except Exception as e:
+        # Nunca abortar en --now: la falla ES la metrica. Un item en "no soportado"
+        # no se puede alertar; un JSON con window_ok=0 si.
+        import urllib.error
+        if isinstance(e, urllib.error.HTTPError):
+            http_estado = e.code
+        if not a.now:
+            raise
+        print(json.dumps(_now_degradado(e, http_estado), ensure_ascii=False))
+        return
 
     if not a.macros and not a.now:
         print(json.dumps(r, indent=2, ensure_ascii=False))
@@ -178,6 +228,9 @@ def main():
         st = s["programado_por_minuto"].get(str(m), 0) if dentro else 0
         vig = s["vigencia"]
         print(json.dumps({
+            "window_ok": 1,
+            "static_zip_http": http_estado,
+            "static_zip_age_s": zip_age_s,
             "minuto": "%02d:%02d" % (ahora.hour, ahora.minute),
             "service_id": sid,
             "gate_ventana": 1 if dentro else 0,

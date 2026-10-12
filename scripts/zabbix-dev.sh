@@ -240,6 +240,11 @@ chmod 775 "$USER_SCRIPTS_DIR"
 if compgen -G "$USER_SCRIPTS_DIR"/*.sh > /dev/null; then
   chown root:root "$USER_SCRIPTS_DIR"/*.sh
   chmod 775 "$USER_SCRIPTS_DIR"/*.sh
+
+  # for .py files, if any
+  chown root:root "$USER_SCRIPTS_DIR"/*.py 2>/dev/null
+  chmod 775 "$USER_SCRIPTS_DIR"/*.py 2>/dev/null
+  
   echo "✅  Permissions applied to $USER_SCRIPTS_DIR and *.sh files (root:root 775)"
 else
   echo "⚠️  No .sh scripts found in $USER_SCRIPTS_DIR yet"
