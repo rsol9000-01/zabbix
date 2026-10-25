@@ -21,8 +21,7 @@ zabbix_export:
           name: 'databus: antigüedad del estático'
           type: DEPENDENT
           key: databus.static.age_s
-          value_type: FLOAT
-          units: s
+          value_type: TEXT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -37,7 +36,7 @@ zabbix_export:
           delay: 5m
           value_type: FLOAT
           units: s
-          params: 'last(/simovilab-data/databus.static.age_s) - last(/simovilab-data/macdt.static_zip_age_s)'
+          params: 'last(//databus.static.age_s) - last(//macdt.static_zip_age_s)'
           triggers:
             - uuid: 5cbbc7f23c704a9d9eba788d67a7de4e
               expression: 'min(/simovilab-data/databus.static.desfase_s,15m)>{$MACDT.ZIP.DESFASE.WARN}'
@@ -71,8 +70,7 @@ zabbix_export:
           name: 'V_completeness de predicciones'
           type: DEPENDENT
           key: gtfs.completeness_tu_pct
-          value_type: FLOAT
-          units: '%'
+          value_type: TEXT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -84,8 +82,7 @@ zabbix_export:
           name: 'V_completeness de posiciones'
           type: DEPENDENT
           key: gtfs.completeness_vp_pct
-          value_type: FLOAT
-          units: '%'
+          value_type: TEXT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -206,8 +203,7 @@ zabbix_export:
           name: 'Sospecha de relleno de timestamps'
           type: DEPENDENT
           key: gtfs.ts_igual_header_pct
-          value_type: FLOAT
-          units: '%'
+          value_type: TEXT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -219,8 +215,7 @@ zabbix_export:
           name: 'V_gps. Entrada de F_crit'
           type: DEPENDENT
           key: gtfs.v_gps_pct
-          value_type: FLOAT
-          units: '%'
+          value_type: TEXT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -337,6 +332,7 @@ zabbix_export:
           name: 'Max trips'
           type: DEPENDENT
           key: macdt.v_trips_max
+          value_type: TEXT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -369,7 +365,7 @@ zabbix_export:
           name: 'Calculo de p'
           type: CALCULATED
           key: p.calculated
-          params: 'min(last(/simovilab-data/gtfs.v_trips) / last(/simovilab-data/macdt.v_trips_max), {$MACDT.RHO_CAP})'
+          params: 'min(last(//gtfs.v_trips) / last(//macdt.v_trips_max), {$MACDT.RHO_CAP})'
       macros:
         - macro: '{$MACDT.CAL.DIAS.WARN}'
           value: '7'

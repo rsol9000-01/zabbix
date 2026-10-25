@@ -134,11 +134,17 @@ def _bajar(url, timeout, host_header=None):
     """Baja el GTFS estatico. Devuelve (cuerpo, codigo HTTP, edad del archivo en s)."""
     import email.utils
     import urllib.request
-    pedido = urllib.request.Request(url)
+    # Sin User-Agent explicito urllib envia "Python-urllib/3.x", que el servidor
+    # de feeds.simovi.org responde con 404 (el navegador si recibe el zip).
+    pedido = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) zabbix-macdt/1.0",
+        "Accept": "application/zip,application/octet-stream,*/*",
+    })
     if host_header:
         pedido.add_header("Host", host_header)
     with urllib.request.urlopen(pedido, timeout=timeout) as r:
         cuerpo = r.read()
+        codigo = r.status
         lm = r.headers.get("Last-Modified")
     edad = None
     if lm:
@@ -146,7 +152,7 @@ def _bajar(url, timeout, host_header=None):
             edad = round(time.time() - email.utils.parsedate_to_datetime(lm).timestamp(), 1)
         except Exception:
             edad = None
-    return cuerpo, 200, edad
+    return cuerpo, codigo, edad
 
 
 def _now_degradado(error, http_estado):
