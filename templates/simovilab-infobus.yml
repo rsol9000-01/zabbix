@@ -1,0 +1,207 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 19a51f2ca0864028ba21eb9633248ac3
+      name: Templates/Simovilab
+  templates:
+    - uuid: 7c1a9d2e5b4f43a09e8d6c3b1a7f2049
+      template: simovilab-infobus
+      name: simovilab-infobus
+      description: |
+        Capa I de MACDT: latencia de la API de InfoBus, medida desde R4
+        atravesando Traefik por HTTPS. Es el RNF de rendimiento del TFG
+        y el objetivo de calibracion de beta.
+
+        La sonda hace 10 peticiones por ciclo porque NextTripView declara
+        throttle_scope "realtime" y la cuota es 30/min por IP. El p95 real
+        no sale de la rafaga (con n=10 el p95 es el maximo) sino del item
+        calculado sobre la serie almacenada.
+      groups:
+        - name: Templates/Simovilab
+      items:
+        - uuid: 34da9fced3ce4b3299962be23fa9dac8
+          name: 'Sonda de la API de InfoBus'
+          type: ZABBIX_ACTIVE
+          key: infobus.api
+          delay: 60s
+          history: 1d
+          value_type: TEXT
+          description: 'Maestro. 10 peticiones a /api/next-trips/ desde R4 por HTTPS.'
+        - uuid: 46315e08d097484b903040c1c0e309c2
+          name: 'API de InfoBus responde correctamente'
+          type: DEPENDENT
+          key: infobus.api.ok
+          value_type: UNSIGNED
+          description: '1 solo si las 10 peticiones devolvieron 200 con cuerpo.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: cd8211b1403b48748e997ceadfedba8f
+          name: 'L_api p50 del ciclo'
+          type: DEPENDENT
+          key: infobus.api.lat_p50
+          units: ms
+          value_type: FLOAT
+          description: 'Tendencia central del ciclo. Es el regresor para calibrar beta.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_p50_ms
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 4bef03e67e88483da7cd53d216f08a29
+          name: 'L_api p90 del ciclo'
+          type: DEPENDENT
+          key: infobus.api.lat_p90
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_p90_ms
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 129f1485684a4a578c3b4a6add6cc618
+          name: 'L_api maxima del ciclo'
+          type: DEPENDENT
+          key: infobus.api.lat_max
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_max_ms
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 4ff28ccfec0941c8b1fea42949a4e3b1
+          name: 'Costo de la consulta, aislado del transporte'
+          type: DEPENDENT
+          key: infobus.api.query_p50
+          units: ms
+          value_type: FLOAT
+          description: |
+            lat_p50 menos health_ms. Aisla el costo de la consulta del piso de
+            TLS + Traefik + Daphne, que no depende de la carga de transporte.
+            Es lo que beta pretende modelar.
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.query_p50_ms
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: dbd0683ceb1641aabec2053b43279e39
+          name: 'Piso de transporte: TLS + Traefik + Daphne'
+          type: DEPENDENT
+          key: infobus.api.health_ms
+          units: ms
+          value_type: FLOAT
+          description: '/health/ es una vista Django plana, sin throttling de DRF.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_ms
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 38675e6d46ff4483a6164904d5f18580
+          name: 'Disponibilidad de /health/'
+          type: DEPENDENT
+          key: infobus.api.health_ok
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: e9db3dd0d0cb4988ae012b4ebbfa9b3b
+          name: 'Peticiones estranguladas por la cuota'
+          type: DEPENDENT
+          key: infobus.api.throttled
+          value_type: UNSIGNED
+          description: 'Si pasa de 0, la medicion del ciclo no es valida.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.throttled
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 9be8a046e08a43b89b2d1ac87fe21525
+          name: 'L_api p95 real, ventana de 1 h'
+          type: CALCULATED
+          key: infobus.api.lat_p95_1h
+          units: ms
+          value_type: FLOAT
+          params: 'percentile(/simovilab-infobus/infobus.api.lat_p50,1h,95)'
+          description: 'El p95 del RNF. ~600 muestras por hora.'
+      macros:
+        - macro: '{$T_LATENCY_WARN}'
+          value: '130'
+          description: 'Semilla igual a T_BASE. Lo sobrescribe el bucle MACDT en F5.'
+        - macro: '{$T_LATENCY_CRIT}'
+          value: '200'
+          description: 'Fijo en el RNF. No lo mueve MACDT.'
+        - macro: '{$MACDT.T_BASE}'
+          value: '130'
+          description: 'PROVISIONAL. Sale de la linea base de 7 dias.'
+        - macro: '{$MACDT.T_FLOOR}'
+          value: '130'
+          description: 'Piso del umbral. Igual a T_BASE.'
+        - macro: '{$MACDT.T_RNF}'
+          value: '200'
+          description: 'Techo contractual. No se mueve.'
+        - macro: '{$MACDT.BETA}'
+          value: '0.35'
+          description: 'PROVISIONAL. Se deriva de la regresion query_p50 contra rho.'
+        - macro: '{$MACDT.F_CRIT}'
+          value: '0.7'
+          description: 'Endurecimiento del umbral con cobertura GPS bajo 70 %.'
+        - macro: '{$Q_WARN}'
+          value: '80'
+          description: 'Longitud del stream events de Redis. Pendiente del agente en R2.'
+        - macro: '{$Q_CRIT}'
+          value: '150'
+          description: 'ídem'
+      triggers:
+        - uuid: 2b3396876e1b4dcab3edccee1e0b5ad5
+          expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
+          name: 'La API de InfoBus no responde correctamente'
+          priority: HIGH
+          description: |
+            Puede ser el servicio, o un stop_id mal configurado en la sonda:
+            NextTripView responde 404 si la parada no existe en la base.
+        - uuid: 3236bfe193a8489e85d04a9e791189e2
+          expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
+          name: 'La sonda agota su cuota: la medicion no es valida'
+          priority: WARNING
+          description: |
+            Bajar --repeat o subir el intervalo. Mientras dispare, L_api no
+            sirve como dato: se esta midiendo el 429, no la latencia.
+        - uuid: 98edfb6df538451480794907aadbe5f5
+          expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_WARN}'
+          name: 'L_api p95 sobre el umbral adaptativo de MACDT'
+          priority: WARNING
+          dependencies:
+            - name: 'La API de InfoBus no responde correctamente'
+              expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
+            - name: 'La sonda agota su cuota: la medicion no es valida'
+              expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
+        - uuid: 3e04749615074eab87a0535f08e0e027
+          expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_CRIT}'
+          name: 'L_api p95 incumple el RNF de 200 ms'
+          priority: AVERAGE
+          dependencies:
+            - name: 'La API de InfoBus no responde correctamente'
+              expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
+            - name: 'La sonda agota su cuota: la medicion no es valida'
+              expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'

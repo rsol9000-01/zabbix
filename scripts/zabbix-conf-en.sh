@@ -19,12 +19,15 @@ flag_new_user=FALSE
 #----- PSK file inside the container, used to read the PSK value and configure API autoregistration settings
 PSK_VALUE=$(cat /${ZBX_TLSPSKFILENAME})
 
-if [ -z "$AGENT_TEMPLATE_FILE" ]; then
-  TEMPLATE_FILE=""
-else
-  TEMPLATE_FILE="/${AGENT_TEMPLATE_FILE}"
-fi
+#──── Recorta espacios al inicio y al final, sin depender de utilidades externas
+trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 
+#──── Guarda de migración: avisa si quedaron las variables antiguas
+if [ -n "${AGENT_TEMPLATE_FILE:-}" ] && [ -z "${AGENT_TEMPLATE_FILES:-}" ]; then
+  echo "❌ ERROR: AGENT_TEMPLATE_FILE quedó obsoleta."
+  echo "   Use AGENT_TEMPLATE_FILES (coma) y AGENT_TEMPLATE_NAMES (barra vertical)."
+  exit 1
+fi
 #############################################################################################################
 #######################################    0. IS API AVAILABLE?   ###########################################
 #############################################################################################################
@@ -109,108 +112,105 @@ fi
 echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
 
 #############################################################################################################
-##############################    3. CREATE/UPDATE SIMOVILAB TEMPLATE  ######################################
+##############################    3. CREATE/UPDATE SIMOVILAB TEMPLATES  #####################################
 #############################################################################################################
+# Importa una o varias plantillas y acumula sus IDs.
+#
+# AGENT_TEMPLATE_FILES  -> archivos separados por COMA
+# AGENT_TEMPLATE_NAMES  -> nombres separados por BARRA VERTICAL
+#
+# El separador de los nombres no puede ser coma: los nombres de plantilla de
+# Zabbix la contienen (p. ej. "Linux by Zabbix agent, Docker by Zabbix agent 2").
+# El orden de las dos listas tiene que coincidir.
 
+TEMPLATE_IDS=""
 
-if [[ -f "$TEMPLATE_FILE" && -n "$AGENT_TEMPLATE_NAME" ]]; then
-  echo -e "📋 Importing/updating the template: ${ORANGE}$AGENT_TEMPLATE_NAME${NC}"
+import_template() {
+  local _file="$1" _name="$2" _id _req _res _err
 
-  # ------------------------------------------------------------
-  # Construir JSON usando jq
-  # ------------------------------------------------------------
+  if [ ! -f "$_file" ]; then
+    echo -e "❌ ERROR: no existe el archivo de plantilla ${BLUE}${_file}${NC}"
+    exit 1
+  fi
 
-  IMPORT_REQUEST=$(jq -n \
-      --arg source "$(cat "$TEMPLATE_FILE")" \
+  echo -e "📋 Importando/actualizando: ${ORANGE}${_name}${NC}  (${_file})"
+
+  _req=$(jq -n --arg source "$(cat "$_file")" \
       '{
           jsonrpc: "2.0",
           method: "configuration.import",
           params: {
               format: "yaml",
               rules: {
-                  templates: {
-                      createMissing: true,
-                      updateExisting: true
-                  },
-                  items: {
-                      createMissing: true,
-                      updateExisting: true
-                  },
-                  triggers: {
-                      createMissing: true,
-                      updateExisting: true
-                  },
-                  graphs: {
-                      createMissing: true,
-                      updateExisting: true
-                  },
-                  discoveryRules: {
-                      createMissing: true,
-                      updateExisting: true
-                  },
-                  valueMaps: {
-                      createMissing: true,
-                      updateExisting: true
-                  }
+                  template_groups: { createMissing: true, updateExisting: true },
+                  templates:       { createMissing: true, updateExisting: true },
+                  items:           { createMissing: true, updateExisting: true },
+                  triggers:        { createMissing: true, updateExisting: true },
+                  graphs:          { createMissing: true, updateExisting: true },
+                  discoveryRules:  { createMissing: true, updateExisting: true },
+                  valueMaps:       { createMissing: true, updateExisting: true }
               },
               source: $source
           },
           id: 1
       }')
 
-
-  # ------------------------------------------------------------
-  # Importar / actualizar template
-  # ------------------------------------------------------------
-
-  IMPORT_RESULT=$(curl -sf -X POST "$API_URL" \
+  _res=$(curl -sf -X POST "$API_URL" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $TOKEN" \
-      -d "$IMPORT_REQUEST")
+      -d "$_req")
 
-  echo -e "📋 Import result: ${ORANGE}$IMPORT_RESULT${NC}"
-
-  # ------------------------------------------------------------
-  # Comprobar errores
-  # ------------------------------------------------------------
-
-  IMPORT_ERROR=$(echo "$IMPORT_RESULT" | jq -r '.error.message // empty')
-
-  if [ -n "$IMPORT_ERROR" ]; then
-      echo "❌ ERROR importing template:"
-      echo -e "${RED}$IMPORT_RESULT${NC}"
+  _err=$(echo "$_res" | jq -r '.error.data // .error.message // empty')
+  if [ -n "$_err" ]; then
+      echo "❌ ERROR importando la plantilla '${_name}':"
+      echo -e "${RED}${_err}${NC}"
       exit 1
   fi
 
-  # ------------------------------------------------------------
-  # Obtener TEMPLATE_ID
-  # ------------------------------------------------------------
-
-  TEMPLATE_ID=$(curl -s -X POST "$API_URL" \
+  _id=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"$AGENT_TEMPLATE_NAME\"]},\"output\":[\"templateid\"]},\"id\":1}" \
-    | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
+    -d "$(jq -n --arg n "$_name" \
+        '{jsonrpc:"2.0",method:"template.get",params:{filter:{name:[$n]},output:["templateid"]},id:1}')" \
+    | jq -r '.result[0].templateid // empty')
 
-  if [ -z "$TEMPLATE_ID" ]; then
-      echo "❌ ERROR: Could not obtain template ID. Something went wrong during the import process."
-      echo -e "   ${YELLOW}- Check the ${BLUE}$AGENT_TEMPLATE_NAME${YELLOW} and ${BLUE}$AGENT_TEMPLATE_FILE${YELLOW} values in .env.${NC}"
+  if [ -z "$_id" ]; then
+      echo "❌ ERROR: no se obtuvo el ID de la plantilla '${_name}'."
+      echo -e "   ${YELLOW}El nombre en .env tiene que ser idéntico al campo 'name:' de ${BLUE}${_file}${NC}"
       exit 1
   fi
 
-  echo "✅ Template '$AGENT_TEMPLATE_NAME' ready with ID: $TEMPLATE_ID"
+  echo "   - ✅ '${_name}' lista, ID ${_id}"
+  TEMPLATE_IDS="${TEMPLATE_IDS}${TEMPLATE_IDS:+ }${_id}"
+}
+
+if [ -n "${AGENT_TEMPLATE_FILES:-}" ] && [ -n "${AGENT_TEMPLATE_NAMES:-}" ]; then
+  IFS=',' read -r -a _tpl_files <<< "$AGENT_TEMPLATE_FILES"
+  IFS='|' read -r -a _tpl_names <<< "$AGENT_TEMPLATE_NAMES"
+
+  if [ "${#_tpl_files[@]}" -ne "${#_tpl_names[@]}" ]; then
+    echo "❌ ERROR: AGENT_TEMPLATE_FILES tiene ${#_tpl_files[@]} entradas y AGENT_TEMPLATE_NAMES tiene ${#_tpl_names[@]}."
+    echo -e "   ${YELLOW}Archivos separados por coma, nombres por barra vertical, y en el mismo orden.${NC}"
+    exit 1
+  fi
+
+  for _i in "${!_tpl_files[@]}"; do
+    import_template "/templates/$(trim "${_tpl_files[$_i]}")" "$(trim "${_tpl_names[$_i]}")"
+  done
 else
-# -------------- Load default ICMP Ping template if the specified template file does not exist
-  echo "⚠️  No templates found."
-  echo -e "   ${YELLOW}- Check the ${BLUE}AGENT_TEMPLATE_NAME${YELLOW} and ${BLUE}AGENT_TEMPLATE_FILE${YELLOW} values in .env.${NC}"
-  echo "⚠️  Using default ICMP Ping template."
-  TEMPLATE_ID=$(curl -s -X POST "$API_URL" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"ICMP Ping\"]},\"output\":[\"templateid\"]},\"id\":1}" \
-  | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
+  echo "⚠️  No se indicaron plantillas."
+  echo -e "   ${YELLOW}Revise ${BLUE}AGENT_TEMPLATE_FILES${YELLOW} y ${BLUE}AGENT_TEMPLATE_NAMES${YELLOW} en .env.${NC}"
+  echo "⚠️  Usando la plantilla ICMP Ping por omisión."
+  TEMPLATE_IDS=$(curl -s -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d '{"jsonrpc":"2.0","method":"template.get","params":{"filter":{"name":["ICMP Ping"]},"output":["templateid"]},"id":1}' \
+    | jq -r '.result[0].templateid // empty')
 fi
 
+#──── Arreglo JSON que consumen host.create / host.update / action.create
+TEMPLATE_JSON=$(printf '%s\n' $TEMPLATE_IDS | jq -R '{templateid: .}' | jq -s -c '.')
+echo "   - 📋 Plantillas a vincular: $TEMPLATE_JSON"
 
 #############################################################################################################
 ############################    4. CHECK IF LOCAL AGENT2 EXISTS   ###########################################
@@ -246,6 +246,12 @@ if [ -n "$HOST_ID" ]; then
     -H "Authorization: Bearer $TOKEN" \
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"hostinterface.update\",\"params\":{\"interfaceid\":\"$IFACE_ID\",\"type\":1,\"useip\":0,\"dns\":\"$HOST_DNS\",\"ip\":\"\",\"port\":\"$HOST_PORT\",\"main\":1},\"id\":7}" > /dev/null
   echo "   - ✅ Interface updated to DNS: $HOST_DNS:$HOST_PORT"
+# ── 4.2.4. Revincular plantillas: sin esto, una segunda corrida no aplica una plantilla nueva al host que ya existe.
+  curl -sf -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.update\",\"params\":{\"hostid\":\"$HOST_ID\",\"templates\":$TEMPLATE_JSON},\"id\":9}" > /dev/null
+  echo "   - ✅ Plantillas revinculadas: $TEMPLATE_JSON"
 else
 
 # ── 4.3. If host does not exist — create it ───────────────────────────────
@@ -253,7 +259,7 @@ else
   curl -sf -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.create\",\"params\":{\"host\":\"$LOCAL_HOST_NAME\",\"interfaces\":[{\"type\":1,\"main\":1,\"useip\":0,\"ip\":\"\",\"dns\":\"$HOST_DNS\",\"port\":\"$HOST_PORT\"}],\"groups\":[{\"groupid\":\"$GROUP_ID\"}],\"templates\":[{\"templateid\":\"$TEMPLATE_ID\"}]},\"id\":8}" > /dev/null
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.create\",\"params\":{\"host\":\"$LOCAL_HOST_NAME\",\"interfaces\":[{\"type\":1,\"main\":1,\"useip\":0,\"ip\":\"\",\"dns\":\"$HOST_DNS\",\"port\":\"$HOST_PORT\"}],\"groups\":[{\"groupid\":\"$GROUP_ID\"}],\"templates\":$TEMPLATE_JSON},\"id\":8}" > /dev/null
   echo "✅ Host created with DNS: $HOST_DNS:$HOST_PORT"
 fi
 # ──── 4.4 Delete the default "Zabbix server" agent ───────────────────────────
@@ -306,14 +312,14 @@ if [ -z "$ACTION_ID" ]; then
 
   echo "   - 📁 Group to add   : $GROUP_ADD_ID"
   echo "   - 📁 Group to remove: $GROUP_REMOVE_ID"
-  echo "   - 📋 Template to add: $TEMPLATE_ID"
+  echo "   - 📋 Template to add: $TEMPLATE_JSON"
   #echo "   - 📋 Linux template : $TMPL_LINUX_ID"
 
   #── 5.3. Create action ──────────────────────────────────────────────────
   curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Self-registration-agents-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"${ZBX_METADATA}\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TEMPLATE_ID\"}]}]},\"id\":1}" > /dev/null
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Self-registration-agents-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"${ZBX_METADATA}\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":$TEMPLATE_JSON}]},\"id\":1}" > /dev/null
   echo "   - ✅ Autoregistration action created"
 
   curl -s -X POST "$API_URL" \
