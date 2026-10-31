@@ -40,6 +40,14 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
+          triggers:
+            - uuid: 2b3396876e1b4dcab3edccee1e0b5ad5
+              expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
+              name: 'La API de InfoBus no responde correctamente'
+              priority: HIGH
+              description: |
+                Puede ser el servicio, o un stop_id mal configurado en la sonda:
+                NextTripView responde 404 si la parada no existe en la base.
         - uuid: cd8211b1403b48748e997ceadfedba8f
           name: 'L_api p50 del ciclo'
           type: DEPENDENT
@@ -152,6 +160,14 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
+          triggers:
+            - uuid: 3236bfe193a8489e85d04a9e791189e2
+              expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
+              name: 'La sonda agota su cuota: la medicion no es valida'
+              priority: WARNING
+              description: |
+                Bajar --repeat o subir el intervalo. Mientras dispare, L_api no
+                sirve como dato: se esta midiendo el 429, no la latencia.
         - uuid: 9be8a046e08a43b89b2d1ac87fe21525
           name: 'L_api p95 real, ventana de 1 h'
           type: CALCULATED
@@ -160,6 +176,25 @@ zabbix_export:
           value_type: FLOAT
           params: 'percentile(/simovilab-infobus/infobus.api.lat_p50,1h,95)'
           description: 'El p95 del RNF. ~600 muestras por hora.'
+          triggers:
+            - uuid: 98edfb6df538451480794907aadbe5f5
+              expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_WARN}'
+              name: 'L_api p95 sobre el umbral adaptativo de MACDT'
+              priority: WARNING
+              dependencies:
+                - name: 'La API de InfoBus no responde correctamente'
+                  expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
+                - name: 'La sonda agota su cuota: la medicion no es valida'
+                  expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
+            - uuid: 3e04749615074eab87a0535f08e0e027
+              expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_CRIT}'
+              name: 'L_api p95 incumple el RNF de 200 ms'
+              priority: AVERAGE
+              dependencies:
+                - name: 'La API de InfoBus no responde correctamente'
+                  expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
+                - name: 'La sonda agota su cuota: la medicion no es valida'
+                  expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
       macros:
         - macro: '{$T_LATENCY_WARN}'
           value: '130'
@@ -188,36 +223,3 @@ zabbix_export:
         - macro: '{$Q_CRIT}'
           value: '150'
           description: 'ídem'
-      triggers:
-        - uuid: 2b3396876e1b4dcab3edccee1e0b5ad5
-          expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
-          name: 'La API de InfoBus no responde correctamente'
-          priority: HIGH
-          description: |
-            Puede ser el servicio, o un stop_id mal configurado en la sonda:
-            NextTripView responde 404 si la parada no existe en la base.
-        - uuid: 3236bfe193a8489e85d04a9e791189e2
-          expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
-          name: 'La sonda agota su cuota: la medicion no es valida'
-          priority: WARNING
-          description: |
-            Bajar --repeat o subir el intervalo. Mientras dispare, L_api no
-            sirve como dato: se esta midiendo el 429, no la latencia.
-        - uuid: 98edfb6df538451480794907aadbe5f5
-          expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_WARN}'
-          name: 'L_api p95 sobre el umbral adaptativo de MACDT'
-          priority: WARNING
-          dependencies:
-            - name: 'La API de InfoBus no responde correctamente'
-              expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
-            - name: 'La sonda agota su cuota: la medicion no es valida'
-              expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
-        - uuid: 3e04749615074eab87a0535f08e0e027
-          expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_CRIT}'
-          name: 'L_api p95 incumple el RNF de 200 ms'
-          priority: AVERAGE
-          dependencies:
-            - name: 'La API de InfoBus no responde correctamente'
-              expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
-            - name: 'La sonda agota su cuota: la medicion no es valida'
-              expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
