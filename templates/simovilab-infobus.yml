@@ -52,6 +52,10 @@ zabbix_export:
               parameters:
                 - $.lat_p50_ms
               error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
         - uuid: 4bef03e67e88483da7cd53d216f08a29
@@ -65,6 +69,10 @@ zabbix_export:
               parameters:
                 - $.lat_p90_ms
               error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
         - uuid: 129f1485684a4a578c3b4a6add6cc618
@@ -77,6 +85,10 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - $.lat_max_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
@@ -94,6 +106,10 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - $.query_p50_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api

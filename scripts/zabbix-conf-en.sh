@@ -23,9 +23,9 @@ PSK_VALUE=$(cat /${ZBX_TLSPSKFILENAME})
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 
 #──── Guarda de migración: avisa si quedaron las variables antiguas
-if [ -n "${AGENT_TEMPLATE_FILE:-}" ] && [ -z "${AGENT_TEMPLATE_FILES:-}" ]; then
-  echo "❌ ERROR: AGENT_TEMPLATE_FILE quedó obsoleta."
-  echo "   Use AGENT_TEMPLATE_FILES (coma) y AGENT_TEMPLATE_NAMES (barra vertical)."
+if [ -n "${AGENT_TEMPLATE_FILE:-}${AGENT_TEMPLATE_FILES:-}" ]; then
+  echo "❌ ERROR: AGENT_TEMPLATE_FILE(S) / AGENT_TEMPLATE_NAME(S) quedaron obsoletas."
+  echo "   Use LOCAL_TEMPLATE_*, ROLE_DATABUS_TEMPLATE_* y ROLE_INFOBUS_TEMPLATE_* (ver .env.example)."
   exit 1
 fi
 #############################################################################################################
@@ -114,19 +114,25 @@ echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
 #############################################################################################################
 ##############################    3. CREATE/UPDATE SIMOVILAB TEMPLATES  #####################################
 #############################################################################################################
-# Importa una o varias plantillas y acumula sus IDs.
+# Tres listas de plantillas, cada una con su par FILES (coma) / NAMES (barra vertical), en el mismo orden.
+# El separador de nombres no puede ser coma: los nombres de plantilla de Zabbix la contienen.
 #
-# AGENT_TEMPLATE_FILES  -> archivos separados por COMA
-# AGENT_TEMPLATE_NAMES  -> nombres separados por BARRA VERTICAL
-#
-# El separador de los nombres no puede ser coma: los nombres de plantilla de
-# Zabbix la contienen (p. ej. "Linux by Zabbix agent, Docker by Zabbix agent 2").
-# El orden de las dos listas tiene que coincidir.
+#   LOCAL_TEMPLATE_*         -> host local de R4 (contenedor zabbix-agent2 del servidor)
+#   ROLE_DATABUS_TEMPLATE_*  -> agentes remotos cuyo ZBX_METADATA contiene "databus" (R3)
+#   ROLE_INFOBUS_TEMPLATE_*  -> agentes remotos cuyo ZBX_METADATA contiene "infobus" (R2)
 
-TEMPLATE_IDS=""
+declare -A IMPORTED_IDS=()   # archivo -> templateid; evita importar dos veces el mismo archivo
+_TPL_ID=""
+TPL_JSON="[]"
 
 import_template() {
   local _file="$1" _name="$2" _id _req _res _err
+
+  #── Ya importado en esta corrida: reutiliza el ID
+  if [ -n "${IMPORTED_IDS[$_file]:-}" ]; then
+    _TPL_ID="${IMPORTED_IDS[$_file]}"
+    return 0
+  fi
 
   if [ ! -f "$_file" ]; then
     echo -e "❌ ERROR: no existe el archivo de plantilla ${BLUE}${_file}${NC}"
@@ -181,36 +187,57 @@ import_template() {
   fi
 
   echo "   - ✅ '${_name}' lista, ID ${_id}"
-  TEMPLATE_IDS="${TEMPLATE_IDS}${TEMPLATE_IDS:+ }${_id}"
+  IMPORTED_IDS[$_file]="$_id"
+  _TPL_ID="$_id"
 }
 
-if [ -n "${AGENT_TEMPLATE_FILES:-}" ] && [ -n "${AGENT_TEMPLATE_NAMES:-}" ]; then
-  IFS=',' read -r -a _tpl_files <<< "$AGENT_TEMPLATE_FILES"
-  IFS='|' read -r -a _tpl_names <<< "$AGENT_TEMPLATE_NAMES"
+#──── resolve_templates FILES NAMES ETIQUETA -> deja el arreglo JSON en TPL_JSON
+resolve_templates() {
+  local _files="$1" _names="$2" _label="$3" _ids="" _i
+  local -a _tpl_files _tpl_names
+
+  if [ -z "$_files" ] || [ -z "$_names" ]; then
+    TPL_JSON="[]"
+    return 0
+  fi
+
+  IFS=',' read -r -a _tpl_files <<< "$_files"
+  IFS='|' read -r -a _tpl_names <<< "$_names"
 
   if [ "${#_tpl_files[@]}" -ne "${#_tpl_names[@]}" ]; then
-    echo "❌ ERROR: AGENT_TEMPLATE_FILES tiene ${#_tpl_files[@]} entradas y AGENT_TEMPLATE_NAMES tiene ${#_tpl_names[@]}."
+    echo "❌ ERROR (${_label}): hay ${#_tpl_files[@]} archivos y ${#_tpl_names[@]} nombres."
     echo -e "   ${YELLOW}Archivos separados por coma, nombres por barra vertical, y en el mismo orden.${NC}"
     exit 1
   fi
 
   for _i in "${!_tpl_files[@]}"; do
     import_template "/templates/$(trim "${_tpl_files[$_i]}")" "$(trim "${_tpl_names[$_i]}")"
+    _ids="${_ids}${_ids:+ }${_TPL_ID}"
   done
-else
-  echo "⚠️  No se indicaron plantillas."
-  echo -e "   ${YELLOW}Revise ${BLUE}AGENT_TEMPLATE_FILES${YELLOW} y ${BLUE}AGENT_TEMPLATE_NAMES${YELLOW} en .env.${NC}"
-  echo "⚠️  Usando la plantilla ICMP Ping por omisión."
-  TEMPLATE_IDS=$(curl -s -X POST "$API_URL" \
+
+  TPL_JSON=$(printf '%s\n' $_ids | jq -R '{templateid: .}' | jq -s -c '.')
+  echo "   - 📋 Plantillas para ${_label}: $TPL_JSON"
+}
+
+#──── 3.1. Host local (R4)
+resolve_templates "${LOCAL_TEMPLATE_FILES:-}" "${LOCAL_TEMPLATE_NAMES:-}" "host local"
+LOCAL_TEMPLATE_JSON="$TPL_JSON"
+
+if [ "$LOCAL_TEMPLATE_JSON" = "[]" ]; then
+  echo "⚠️  No se indicaron plantillas para el host local; se usa ICMP Ping."
+  _icmp=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
     -d '{"jsonrpc":"2.0","method":"template.get","params":{"filter":{"name":["ICMP Ping"]},"output":["templateid"]},"id":1}' \
     | jq -r '.result[0].templateid // empty')
+  LOCAL_TEMPLATE_JSON=$(jq -n -c --arg id "$_icmp" '[{templateid: $id}]')
 fi
 
-#──── Arreglo JSON que consumen host.create / host.update / action.create
-TEMPLATE_JSON=$(printf '%s\n' $TEMPLATE_IDS | jq -R '{templateid: .}' | jq -s -c '.')
-echo "   - 📋 Plantillas a vincular: $TEMPLATE_JSON"
+#──── 3.2. Roles de agentes remotos (se vinculan por autorregistro, sección 5)
+resolve_templates "${ROLE_DATABUS_TEMPLATE_FILES:-}" "${ROLE_DATABUS_TEMPLATE_NAMES:-}" "rol databus"
+DATABUS_TEMPLATE_JSON="$TPL_JSON"
+resolve_templates "${ROLE_INFOBUS_TEMPLATE_FILES:-}" "${ROLE_INFOBUS_TEMPLATE_NAMES:-}" "rol infobus"
+INFOBUS_TEMPLATE_JSON="$TPL_JSON"
 
 #############################################################################################################
 ############################    4. CHECK IF LOCAL AGENT2 EXISTS   ###########################################
@@ -247,11 +274,21 @@ if [ -n "$HOST_ID" ]; then
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"hostinterface.update\",\"params\":{\"interfaceid\":\"$IFACE_ID\",\"type\":1,\"useip\":0,\"dns\":\"$HOST_DNS\",\"ip\":\"\",\"port\":\"$HOST_PORT\",\"main\":1},\"id\":7}" > /dev/null
   echo "   - ✅ Interface updated to DNS: $HOST_DNS:$HOST_PORT"
 # ── 4.2.4. Revincular plantillas: sin esto, una segunda corrida no aplica una plantilla nueva al host que ya existe.
+#           Las que ya no estén en LOCAL_TEMPLATE_* se desvinculan Y se limpian (templates_clear);
+#           con solo desvincular, sus ítems quedarían pegados al host.
+  _linked=$(curl -s -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.get\",\"params\":{\"hostids\":\"$HOST_ID\",\"selectParentTemplates\":[\"templateid\"],\"output\":[\"hostid\"]},\"id\":9}" \
+    | jq -c '[.result[0].parentTemplates[]? | {templateid}]')
+  _clear=$(jq -n -c --argjson have "$_linked" --argjson want "$LOCAL_TEMPLATE_JSON" '$have - $want')
+
   curl -sf -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.update\",\"params\":{\"hostid\":\"$HOST_ID\",\"templates\":$TEMPLATE_JSON},\"id\":9}" > /dev/null
-  echo "   - ✅ Plantillas revinculadas: $TEMPLATE_JSON"
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.update\",\"params\":{\"hostid\":\"$HOST_ID\",\"templates\":$LOCAL_TEMPLATE_JSON,\"templates_clear\":$_clear},\"id\":9}" > /dev/null
+  echo "   - ✅ Plantillas revinculadas: $LOCAL_TEMPLATE_JSON"
+  [ "$_clear" != "[]" ] && echo "   - 🧹 Plantillas desvinculadas y limpiadas: $_clear"
 else
 
 # ── 4.3. If host does not exist — create it ───────────────────────────────
@@ -259,7 +296,7 @@ else
   curl -sf -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.create\",\"params\":{\"host\":\"$LOCAL_HOST_NAME\",\"interfaces\":[{\"type\":1,\"main\":1,\"useip\":0,\"ip\":\"\",\"dns\":\"$HOST_DNS\",\"port\":\"$HOST_PORT\"}],\"groups\":[{\"groupid\":\"$GROUP_ID\"}],\"templates\":$TEMPLATE_JSON},\"id\":8}" > /dev/null
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.create\",\"params\":{\"host\":\"$LOCAL_HOST_NAME\",\"interfaces\":[{\"type\":1,\"main\":1,\"useip\":0,\"ip\":\"\",\"dns\":\"$HOST_DNS\",\"port\":\"$HOST_PORT\"}],\"groups\":[{\"groupid\":\"$GROUP_ID\"}],\"templates\":$LOCAL_TEMPLATE_JSON},\"id\":8}" > /dev/null
   echo "✅ Host created with DNS: $HOST_DNS:$HOST_PORT"
 fi
 # ──── 4.4 Delete the default "Zabbix server" agent ───────────────────────────
@@ -277,67 +314,94 @@ curl -sf -X POST "$API_URL" \
 #############################################################################################################
 ############################    5. CREATE AUTOREGISTRATION ACTION   #########################################
 #############################################################################################################
+# Una acción por rol. Cada agente remoto declara su rol en ZBX_METADATA (p. ej. "docker-autoreg databus").
+# La acción exige las DOS condiciones (evaltype 1 = AND): la metadata común y el rol.
+# El host local de R4 usa solo "docker-autoreg", así que no cae en ninguna acción.
 
-# ── 5.1. Check if action already exists ───────────────────────────────────
-ACTION_ID=$(curl -s -X POST "$API_URL" \
+GROUP_ADD_ID=$(curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.get\",\"params\":{\"filter\":{\"name\":[\"Self-registration-agents-simovilab\"]},\"output\":[\"actionid\"]},\"id\":1}" \
-  | grep -o '"actionid":"[^"]*"' | head -1 | cut -d'"' -f4)
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"hostgroup.get\",\"params\":{\"filter\":{\"name\":[\"$HOST_GROUP\"]},\"output\":[\"groupid\"]},\"id\":1}" \
+  | jq -r '.result[0].groupid // empty')
 
-if [ -z "$ACTION_ID" ]; then
+GROUP_REMOVE_ID=$(curl -s -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"jsonrpc":"2.0","method":"hostgroup.get","params":{"filter":{"name":["Discovered hosts"]},"output":["groupid"]},"id":1}' \
+  | jq -r '.result[0].groupid // empty')
 
-  # ── 5.2. If action does not exist — create it ───────────────────────────────
-  echo "ℹ️  Creating autoregistration action for remote agents"
+echo "   - 📁 Group to add   : $GROUP_ADD_ID"
+echo "   - 📁 Group to remove: $GROUP_REMOVE_ID"
 
-  # ── 5.2.1. Get groups IDs ──────────────────────────────────────────────────
-  GROUP_ADD_ID=$(curl -s -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"hostgroup.get\",\"params\":{\"filter\":{\"name\":[\"$HOST_GROUP\"]},\"output\":[\"groupid\"]},\"id\":1}" \
-    | grep -o '"groupid":"[^"]*"' | head -1 | cut -d'"' -f4)
+# ── 5.1. Borrar la acción única anterior: vinculaba la misma lista a TODOS los agentes ──
+LEGACY_ACTION_ID=$(curl -s -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"jsonrpc":"2.0","method":"action.get","params":{"filter":{"name":["Self-registration-agents-simovilab"]},"output":["actionid"]},"id":1}' \
+  | jq -r '.result[0].actionid // empty')
 
-  GROUP_REMOVE_ID=$(curl -s -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"hostgroup.get\",\"params\":{\"filter\":{\"name\":[\"Discovered hosts\"]},\"output\":[\"groupid\"]},\"id\":1}" \
-    | grep -o '"groupid":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-  # ── 5.2.2. Get templates IDs ───────────────────────────────────────────────
-  #TMPL_DOCKER_ID=$(curl -s -X POST "$API_URL" \
-  #  -H "Content-Type: application/json" \
-  #  -H "Authorization: Bearer $TOKEN" \
-  #  -d "{\"jsonrpc\":\"2.0\",\"method\":\"template.get\",\"params\":{\"filter\":{\"name\":[\"Docker by Zabbix agent 2\"]},\"output\":[\"templateid\"]},\"id\":1}" \
-  #  | grep -o '"templateid":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-  echo "   - 📁 Group to add   : $GROUP_ADD_ID"
-  echo "   - 📁 Group to remove: $GROUP_REMOVE_ID"
-  echo "   - 📋 Template to add: $TEMPLATE_JSON"
-  #echo "   - 📋 Linux template : $TMPL_LINUX_ID"
-
-  #── 5.3. Create action ──────────────────────────────────────────────────
+if [ -n "$LEGACY_ACTION_ID" ]; then
   curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Self-registration-agents-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"${ZBX_METADATA}\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":$TEMPLATE_JSON}]},\"id\":1}" > /dev/null
-  echo "   - ✅ Autoregistration action created"
-
-  curl -s -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: Bearer $TOKEN" \
-    -d "{\"jsonrpc\":\"2.0\",\"method\":\"autoregistration.update\",\"params\":{\"tls_accept\":2,\"tls_psk_identity\":\"$ZBX_TLSPSKIDENTITY\",\"tls_psk\":\"$PSK_VALUE\"},\"id\":1}" > /dev/null
-  echo "   - 🔑 Autoregistration will use TLS PSK authentication"
-  
-  #curl -s -X POST "$API_URL" \
-  #  -H "Content-Type: application/json" \
-  #  -H "Authorization: Bearer $TOKEN" \
-  #  -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.create\",\"params\":{\"name\":\"Autoregistro-agentes-simovilab\",\"eventsource\":2,\"status\":0,\"filter\":{\"evaltype\":0,\"conditions\":[{\"conditiontype\":24,\"operator\":2,\"value\":\"docker-autoreg\"}]},\"operations\":[{\"operationtype\":2},{\"operationtype\":4,\"opgroup\":[{\"groupid\":\"$GROUP_ADD_ID\"}]},{\"operationtype\":5,\"opgroup\":[{\"groupid\":\"$GROUP_REMOVE_ID\"}]},{\"operationtype\":6,\"optemplate\":[{\"templateid\":\"$TMPL_DOCKER_ID\"},{\"templateid\":\"$TMPL_LINUX_ID\"}]},{\"operationtype\":9,\"optls\":{\"tls_connect\":2,\"tls_accept\":2,\"tls_psk_identity\":\"$ZBX_TLSPSKIDENTITY\",\"tls_psk\":\"$PSK_VALUE\"}}]},\"id\":1}" \
-  #  echo "   - ✅ Autoregistration action created"
-
-else
-# ── 5.4. If action exists, do nothing ─────────────────────────────
-  echo "ℹ️  Autoregistration action already exists"
+    -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.delete\",\"params\":[\"$LEGACY_ACTION_ID\"],\"id\":1}" > /dev/null
+  echo "   - 🗑️  Acción anterior 'Self-registration-agents-simovilab' eliminada"
 fi
+
+# ── 5.2. Crear o actualizar la acción de un rol ──────────────────────────────
+upsert_role_action() {
+  local _role="$1" _tpl_json="$2" _name="Self-registration-simovilab-$1" _action_id _body
+
+  if [ "$_tpl_json" = "[]" ]; then
+    echo "⚠️  Rol '${_role}' sin plantillas en .env: no se crea su acción de autorregistro."
+    return 0
+  fi
+
+  _body=$(jq -n -c \
+    --arg meta "$ZBX_METADATA" --arg role "$_role" \
+    --arg gadd "$GROUP_ADD_ID" --arg grem "$GROUP_REMOVE_ID" \
+    --argjson tpl "$_tpl_json" \
+    '{filter:{evaltype:1,conditions:[
+        {conditiontype:24,operator:2,value:$meta},
+        {conditiontype:24,operator:2,value:$role}]},
+      operations:[
+        {operationtype:2},
+        {operationtype:4,opgroup:[{groupid:$gadd}]},
+        {operationtype:5,opgroup:[{groupid:$grem}]},
+        {operationtype:6,optemplate:$tpl}]}')
+
+  _action_id=$(curl -s -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "$(jq -n -c --arg n "$_name" '{jsonrpc:"2.0",method:"action.get",params:{filter:{name:[$n]},output:["actionid"]},id:1}')" \
+    | jq -r '.result[0].actionid // empty')
+
+  if [ -z "$_action_id" ]; then
+    curl -s -X POST "$API_URL" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $TOKEN" \
+      -d "$(jq -n -c --arg n "$_name" --argjson b "$_body" '{jsonrpc:"2.0",method:"action.create",params:({name:$n,eventsource:2,status:0}+$b),id:1}')" > /dev/null
+    echo "   - ✅ Acción '${_name}' creada: $_tpl_json"
+  else
+    # Se actualiza siempre, para que un cambio en .env llegue a la acción en la siguiente corrida
+    curl -s -X POST "$API_URL" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $TOKEN" \
+      -d "$(jq -n -c --arg id "$_action_id" --argjson b "$_body" '{jsonrpc:"2.0",method:"action.update",params:({actionid:$id}+$b),id:1}')" > /dev/null
+    echo "   - 🔄 Acción '${_name}' actualizada: $_tpl_json"
+  fi
+}
+
+echo "ℹ️  Configuring autoregistration actions for remote agents"
+upsert_role_action databus "$DATABUS_TEMPLATE_JSON"
+upsert_role_action infobus "$INFOBUS_TEMPLATE_JSON"
+
+# ── 5.3. PSK del autorregistro ───────────────────────────────────────────────
+curl -s -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{\"jsonrpc\":\"2.0\",\"method\":\"autoregistration.update\",\"params\":{\"tls_accept\":2,\"tls_psk_identity\":\"$ZBX_TLSPSKIDENTITY\",\"tls_psk\":\"$PSK_VALUE\"},\"id\":1}" > /dev/null
+echo "   - 🔑 Autoregistration will use TLS PSK authentication"
 
 #############################################################################################################
 #############   6. CREATE NEW USER — only when authenticated with default credentials   #####################

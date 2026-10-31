@@ -21,11 +21,15 @@ zabbix_export:
           name: 'databus: antigüedad del estático'
           type: DEPENDENT
           key: databus.static.age_s
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.static_zip_age_s
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: databus.static
@@ -70,11 +74,15 @@ zabbix_export:
           name: 'V_completeness de predicciones'
           type: DEPENDENT
           key: gtfs.completeness_tu_pct
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.v_completeness_tu_pct
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: gtfs.probe
@@ -82,11 +90,15 @@ zabbix_export:
           name: 'V_completeness de posiciones'
           type: DEPENDENT
           key: gtfs.completeness_vp_pct
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.v_completeness_vp_pct
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: gtfs.probe
@@ -94,11 +106,15 @@ zabbix_export:
           name: 'Calibrar el --stale contra la cadencia real'
           type: DEPENDENT
           key: gtfs.data_age_p95_s
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.data_age_p95_s
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: gtfs.probe
@@ -112,6 +128,10 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - $.feed_age_tu_s
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: gtfs.probe
@@ -144,6 +164,10 @@ zabbix_export:
             - type: JSONPATH
               parameters:
                 - $.feed_age_vp_s
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: gtfs.probe
@@ -203,11 +227,15 @@ zabbix_export:
           name: 'Sospecha de relleno de timestamps'
           type: DEPENDENT
           key: gtfs.ts_igual_header_pct
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.ts_igual_header_pct
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: gtfs.probe
@@ -215,11 +243,15 @@ zabbix_export:
           name: 'V_gps. Entrada de F_crit'
           type: DEPENDENT
           key: gtfs.v_gps_pct
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.v_gps_pct
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: gtfs.probe
@@ -249,11 +281,15 @@ zabbix_export:
           name: 'Calendar age'
           type: DEPENDENT
           key: macdt.cal_dias_vigencia
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.dias_a_fin_vigencia
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: macdt.window
@@ -294,10 +330,15 @@ zabbix_export:
           name: static_zip_age
           type: DEPENDENT
           key: macdt.static_zip_age_s
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.static_zip_age_s
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: macdt.window
@@ -332,11 +373,15 @@ zabbix_export:
           name: 'Max trips'
           type: DEPENDENT
           key: macdt.v_trips_max
-          value_type: TEXT
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.v_trips_max
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: macdt.window
@@ -365,6 +410,7 @@ zabbix_export:
           name: 'Calculo de p'
           type: CALCULATED
           key: p.calculated
+          value_type: FLOAT
           params: 'min(last(//gtfs.v_trips) / last(//macdt.v_trips_max), {$MACDT.RHO_CAP})'
       macros:
         - macro: '{$MACDT.CAL.DIAS.WARN}'

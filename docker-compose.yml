@@ -48,7 +48,7 @@ services:
   zabbix-server-pgsql:
     networks:
       - zabbix_network
-    image: zabbix/zabbix-server-pgsql:latest
+    image: zabbix/zabbix-server-pgsql:ubuntu-7.4.3
     container_name: zabbix-server-pgsql
     restart: unless-stopped
     depends_on:
@@ -84,7 +84,7 @@ services:
   zabbix-dashboard:
     networks:
       - zabbix_network
-    image: zabbix/zabbix-web-nginx-pgsql:latest
+    image: zabbix/zabbix-web-nginx-pgsql:ubuntu-7.4.3
     container_name: zabbix-dashboard
     restart: unless-stopped
     depends_on:
