@@ -2,8 +2,10 @@
 """
 Sonda de latencia de la API de InfoBus para MACDT (capa I).
 
-Mide desde R4, atravesando Traefik por HTTPS, lo que de verdad percibe un
-cliente. Imprime UN objeto JSON: usenlo como item maestro y cuelguen items
+Se ejecuta desde dos puntos con el mismo script:
+  - interno (agente de R2, clave infobus.api):      http://orchestrator:8000 -> Daphne + consulta
+  - externo (agente de R4, clave infobus.api.ext):  https://<dominio>         -> red + TLS + Traefik + Daphne + consulta
+La diferencia externo - interno la calcula Zabbix (plantilla simovilab-infobus-ext). Imprime UN objeto JSON: usenlo como item maestro y cuelguen items
 dependientes con JSONPath, igual que gtfsrt_probe.py.
 
 Por que --repeat 10 y no 30 ni 100 (hallazgo de infobus/backend/infobus/settings.py):
@@ -20,11 +22,15 @@ Por que se reporta p50 de la rafaga y no p95 (consecuencia de lo anterior):
   Eso son ~600 muestras por hora y si tiene sentido estadistico. La rafaga
   entrega la tendencia central del ciclo, que es el regresor para calibrar beta.
 
-Por que se mide /health/ aparte:
+Por que se mide /health/ aparte, y dos veces:
   health_check es una vista Django plana, fuera de DRF, asi que no tiene
-  throttling. Y sirve de piso: health_ms es el costo de TLS + Traefik + Daphne
-  sin consulta. La resta lat_p50_ms - health_ms aisla el costo de la consulta,
-  que es lo que beta pretende modelar.
+  throttling. La primera peticion de la sesion (health_cold_ms) paga abrir la
+  conexion (DNS + TCP + TLS si es https). La segunda (health_ms) ya reusa la
+  conexion abierta, igual que las peticiones de la rafaga, asi que es el piso
+  comparable con lat_p50_ms. Por eso:
+      setup_ms     = health_cold_ms - health_ms  -> costo de abrir la conexion
+      query_p50_ms = lat_p50_ms - health_ms      -> costo de la consulta, que es
+                                                   lo que beta pretende modelar
 
 Por que se valida que la respuesta sea un 200 con cuerpo:
   NextTripView responde 400 si falta stop_id y 404 si la parada no existe. Las
@@ -100,8 +106,11 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
     health_url = base.rstrip("/") + HEALTH_PATH
     params = {"stop_id": stop_id}
 
-    # Piso de transporte: TLS + Traefik + Daphne, sin consulta.
+    # Primera peticion de la sesion: incluye abrir la conexion (DNS + TCP + TLS).
+    hc_status, hc_ms, _ = _medir(ses, health_url, timeout)
+    # Segunda: reusa la conexion. Es el piso comparable con la rafaga.
     h_status, h_ms, _ = _medir(ses, health_url, timeout)
+    h_ok = hc_status == 200 and h_status == 200
 
     # Calentamiento descartado: abre la conexion y no se mide.
     calentado = 0
@@ -138,9 +147,11 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
         "warmup": calentado,
         "stop_id": stop_id,
         # Piso de transporte
-        "health_ok": 1 if h_status == 200 else 0,
+        "health_ok": 1 if h_ok else 0,
         "health_status": h_status,
-        "health_ms": h_ms,
+        "health_cold_ms": hc_ms if hc_status == 200 else None,
+        "health_ms": h_ms if h_status == 200 else None,
+        "setup_ms": round(hc_ms - h_ms, 2) if h_ok else None,
     }
 
     if lat:
@@ -152,7 +163,7 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
             "lat_mean_ms": round(statistics.fmean(lat), 2),
             "lat_stdev_ms": round(statistics.stdev(lat), 2) if len(lat) > 1 else 0.0,
             # Costo atribuible a la consulta, aislado del transporte.
-            "query_p50_ms": round(_quantil(lat, 0.50) - h_ms, 2) if h_status == 200 else None,
+            "query_p50_ms": round(_quantil(lat, 0.50) - h_ms, 2) if h_ok else None,
             "bytes_mean": round(bytes_tot / len(lat)),
         })
     else:

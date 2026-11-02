@@ -1,0 +1,171 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 19a51f2ca0864028ba21eb9633248ac3
+      name: Templates/Simovilab
+  templates:
+    - uuid: 1bd3323464794fb7a34a7c28791f51ce
+      template: simovilab-infobus-ext
+      name: simovilab-infobus-ext
+      description: |
+        Capa I de MACDT, lado externo. Se vincula al host del servidor Zabbix (R4) con LOCAL_TEMPLATE_*.
+        El agente de R4 mide la API de InfoBus por Traefik y HTTPS, con el mismo infobus_probe.py.
+        La resta contra la medicion interna (red, TLS + Traefik) esta en simovilab-infobus,
+        que referencia este host por su nombre fijo, Zabbix-server.
+        Solo produce datos cuando la API este detras de Traefik.
+      groups:
+        - name: Templates/Simovilab
+      items:
+        - uuid: e7db2f710b0a4ba1bfca68365d4816f0
+          name: 'Sonda externa de la API de InfoBus'
+          type: ZABBIX_ACTIVE
+          key: infobus.api.ext
+          delay: 60s
+          history: 1d
+          value_type: TEXT
+          description: 'Maestro. Mismo infobus_probe.py, ejecutado por el agente de R4 contra el dominio publico (Traefik + HTTPS).'
+        - uuid: eb14d5700b1d4f4283622e8529ca07eb
+          name: 'Externo: API responde correctamente'
+          type: DEPENDENT
+          key: infobus.api.ext.ok
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: caba8d280bb1438da7b1e2041bd01d7f
+          name: 'Externo: peticiones estranguladas por la cuota'
+          type: DEPENDENT
+          key: infobus.api.ext.throttled
+          value_type: UNSIGNED
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.throttled
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 6683b5d7b7774ea2a2a5b2fdad9dd07d
+          name: 'Externo: L_api p50 del ciclo'
+          type: DEPENDENT
+          key: infobus.api.ext.lat_p50
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_p50_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 48eb4a2c0f03493a84b863e532acbafc
+          name: 'Externo: L_api p90 del ciclo'
+          type: DEPENDENT
+          key: infobus.api.ext.lat_p90
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_p90_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: a1e8182859114fd98e34463d40225d4e
+          name: 'Externo: costo de la consulta'
+          type: DEPENDENT
+          key: infobus.api.ext.query_p50
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.query_p50_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 1cdfd7748775408dbe6c99cc00d1cf99
+          name: 'Externo: piso con conexion abierta (red + TLS + Traefik + Daphne)'
+          type: DEPENDENT
+          key: infobus.api.ext.health_ms
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 591c9fea37de4d3eb4a772b912d126cb
+          name: 'Externo: primera peticion (abre la conexion)'
+          type: DEPENDENT
+          key: infobus.api.ext.health_cold_ms
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_cold_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: e2892ef9a94d4ab48175dc8526f5960b
+          name: 'Externo: costo de abrir la conexion (TCP + TLS)'
+          type: DEPENDENT
+          key: infobus.api.ext.setup_ms
+          units: ms
+          value_type: FLOAT
+          description: 'health_cold_ms - health_ms: saludo TCP y negociacion TLS de R4 a Traefik.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.setup_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 8c4d43f61cf248e59d1c8241e167ceb7
+          name: 'Externo: conexion TCP de R4 a Traefik (red)'
+          type: DEPENDENT
+          key: infobus.api.ext.tcp_connect_ms
+          units: ms
+          value_type: FLOAT
+          description: 'Mediana de 3 conexiones TCP al 443, sin DNS. Equivale a un ping por el puerto de la API.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tcp_connect_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext

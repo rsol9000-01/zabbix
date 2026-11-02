@@ -8,9 +8,11 @@ zabbix_export:
       template: simovilab-infobus
       name: simovilab-infobus
       description: |
-        Capa I de MACDT: latencia de la API de InfoBus, medida desde R4
-        atravesando Traefik por HTTPS. Es el RNF de rendimiento del TFG
-        y el objetivo de calibracion de beta.
+        Capa I de MACDT: latencia de la API de InfoBus, medida DESDE DENTRO
+        (agente de R2 directo al orchestrator, sin Traefik ni TLS). La
+        medicion externa la hace R4 (simovilab-infobus-ext, host Zabbix-server)
+        y la resta entre ambas esta aqui (items infobus.net.*). Es el RNF de rendimiento del TFG y el objetivo
+        de calibracion de beta.
 
         La sonda hace 10 peticiones por ciclo porque NextTripView declara
         throttle_scope "realtime" y la cuota es 30/min por IP. El p95 real
@@ -26,7 +28,7 @@ zabbix_export:
           delay: 60s
           history: 1d
           value_type: TEXT
-          description: 'Maestro. 10 peticiones a /api/next-trips/ desde R4 por HTTPS.'
+          description: 'Maestro. 10 peticiones a /api/next-trips/ desde R2, directo al orchestrator.'
         - uuid: 46315e08d097484b903040c1c0e309c2
           name: 'API de InfoBus responde correctamente'
           type: DEPENDENT
@@ -107,8 +109,8 @@ zabbix_export:
           units: ms
           value_type: FLOAT
           description: |
-            lat_p50 menos health_ms. Aisla el costo de la consulta del piso de
-            TLS + Traefik + Daphne, que no depende de la carga de transporte.
+            lat_p50 menos health_ms (con la conexion ya abierta). Aisla el costo
+            de la consulta del piso de transporte, que no depende de la carga.
             Es lo que beta pretende modelar.
           preprocessing:
             - type: JSONPATH
@@ -122,16 +124,55 @@ zabbix_export:
           master_item:
             key: infobus.api
         - uuid: dbd0683ceb1641aabec2053b43279e39
-          name: 'Piso de transporte: TLS + Traefik + Daphne'
+          name: 'Piso de transporte, conexion abierta'
           type: DEPENDENT
           key: infobus.api.health_ms
           units: ms
           value_type: FLOAT
-          description: '/health/ es una vista Django plana, sin throttling de DRF.'
+          description: '/health/ reusando la conexion. Vista Django plana, sin throttling de DRF.'
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.health_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 19a0d26a50b44c109f755f6729dcdacd
+          name: 'Primera peticion de la sesion (abre la conexion)'
+          type: DEPENDENT
+          key: infobus.api.health_cold_ms
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_cold_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 8e71c756e0dc4830ae52519da53ca317
+          name: 'Costo de abrir la conexion (TCP)'
+          type: DEPENDENT
+          key: infobus.api.setup_ms
+          units: ms
+          value_type: FLOAT
+          description: 'health_cold_ms - health_ms. Desde dentro es solo TCP en la red Docker: debe ser casi cero.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.setup_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
@@ -195,6 +236,53 @@ zabbix_export:
                   expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
                 - name: 'La sonda agota su cuota: la medicion no es valida'
                   expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
+        - uuid: 9417862345c64a3e8332638a5838c0f5
+          name: 'Conexion TCP al orchestrator'
+          type: DEPENDENT
+          key: infobus.api.tcp_connect_ms
+          units: ms
+          value_type: FLOAT
+          description: 'Desde dentro, en la red Docker: debe ser casi cero.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tcp_connect_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: be2242d75ea4436483a48c06969e06a2
+          name: 'Red: RTT de R4 a R2, promedio 15 min'
+          type: CALCULATED
+          key: infobus.net.rtt_ms
+          delay: 1m
+          value_type: FLOAT
+          units: ms
+          params: 'avg(/Zabbix-server/infobus.api.ext.tcp_connect_ms,15m)'
+          description: 'Conexion TCP de R4 al 443 de R2. Zabbix-server es el nombre fijo del host del servidor (LOCAL_HOST_NAME).'
+        - uuid: 556cdd6a9e9345069f1f96596c926dce
+          name: 'Externo - interno: red + TLS + Traefik'
+          type: CALCULATED
+          key: infobus.net.delta_ms
+          delay: 1m
+          value_type: FLOAT
+          units: ms
+          params: 'avg(/Zabbix-server/infobus.api.ext.health_ms,15m) - avg(//infobus.api.health_ms,15m)'
+          description: |
+            Resta de los pisos de transporte con la conexion abierta (/health/, sin consulta a la base),
+            promediados 15 min porque las dos sondas no corren en el mismo segundo.
+        - uuid: 085e5649f59042cc95db0551d9647c07
+          name: 'TLS + Traefik (sin red)'
+          type: CALCULATED
+          key: infobus.net.tls_traefik_ms
+          delay: 1m
+          value_type: FLOAT
+          units: ms
+          params: 'last(//infobus.net.delta_ms) - last(//infobus.net.rtt_ms)'
+          description: 'Externo - interno, menos el RTT de red.'
       macros:
         - macro: '{$T_LATENCY_WARN}'
           value: '130'
