@@ -2,8 +2,9 @@
 # NETWORKS
 ############################
 networks:
-  databus_internal:
+  app_internal:
     external: true
+    name: ${AGENT_DOCKER_NETWORK}
 ############################
 # SERVICES
 ############################
@@ -18,6 +19,7 @@ services:
         context: .
         dockerfile: Dockerfile
     image: simovilab/zabbix-agent2:ubuntu-7.4.3
+    pull_policy: build
     container_name: remote-zabbix-agent2
     hostname: ${REMOTE_AGENT_HOSTNAME}
     restart: unless-stopped
@@ -37,7 +39,8 @@ services:
       - ZBX_TLSCONNECT=${ZBX_TLSCONNECT}         
       - ZBX_TLSACCEPT=${ZBX_TLSACCEPT}         
       - ZBX_TLSPSKIDENTITY=${ZBX_TLSPSKIDENTITY} 
-      - ZBX_TLSPSKFILE=${ZBX_TLSPSKFILE}  
+      - ZBX_TLSPSKFILE=${ZBX_TLSPSKFILE}
+      - PGPASSWORD=${AGENT_PGPASSWORD:-postgres}
     volumes:
       - /proc:/proc:ro
       - /sys:/sys:ro

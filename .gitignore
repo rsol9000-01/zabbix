@@ -4,3 +4,5 @@ data/dashboard/certificados/*
 *.log
 .vscode/
 .idea/
+# Contraseñas de los plugins
+agent2/simovilab-plugins.conf

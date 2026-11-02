@@ -38,6 +38,11 @@ Por que una sola sesion HTTP:
 
 Uso:
   python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01
+
+  Por dentro, sin Traefik (contenedor orchestrator de infobus, HTTP en el 8000):
+  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost --stop-id bUCR_0_01
+  --host-header tiene que ser un valor de ALLOWED_HOSTS de infobus; si no, Django responde 400.
+  En ese modo health_ms ya no incluye TLS ni Traefik: mide solo Daphne.
   python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01 \
                            --repeat 10 --timeout 5
 
@@ -62,10 +67,14 @@ def _quantil(vals, q):
     return v[min(len(v) - 1, int(round(q * (len(v) - 1))))]
 
 
-def _sesion(insecure=False):
+def _sesion(insecure=False, host_header=None):
     import requests
     s = requests.Session()
     s.headers.update({"User-Agent": "macdt-infobus-probe/1"})
+    if host_header:
+        # Conexion directa a Daphne: Host valido para ALLOWED_HOSTS y
+        # X-Forwarded-Proto para que SECURE_SSL_REDIRECT no redirija a https
+        s.headers.update({"Host": host_header, "X-Forwarded-Proto": "https"})
     if insecure:
         s.verify = False
         import urllib3
@@ -85,8 +94,8 @@ def _medir(sesion, url, timeout, params=None):
         return 0, ms, 0
 
 
-def sondear(base, stop_id, repeat, timeout, insecure, warmup=True):
-    ses = _sesion(insecure)
+def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=None):
+    ses = _sesion(insecure, host_header)
     api_url = base.rstrip("/") + API_PATH
     health_url = base.rstrip("/") + HEALTH_PATH
     params = {"stop_id": stop_id}
@@ -168,6 +177,8 @@ def main():
     ap.add_argument("--insecure", action="store_true",
                     help="no verificar TLS (solo si el certificado aun no es valido)")
     ap.add_argument("--no-warmup", dest="no_warmup", action="store_true")
+    ap.add_argument("--host-header", dest="host_header",
+                    help="Host a enviar al conectar directo al orchestrator (valor de ALLOWED_HOSTS)")
     a = ap.parse_args()
 
     if a.repeat > 25:
@@ -177,7 +188,7 @@ def main():
 
     try:
         out = sondear(a.base, a.stop_id, a.repeat, a.timeout,
-                      a.insecure, warmup=not a.no_warmup)
+                      a.insecure, warmup=not a.no_warmup, host_header=a.host_header)
     except Exception as e:
         out = {"ok": 0, "error": str(e)[:200], "ts_sonda": int(time.time())}
 
