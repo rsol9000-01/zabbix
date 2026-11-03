@@ -14,7 +14,7 @@ services:
   ###########################
   zabbix-agent2:
     networks:
-      - databus_internal
+      - app_internal
     build:
         context: .
         dockerfile: Dockerfile
