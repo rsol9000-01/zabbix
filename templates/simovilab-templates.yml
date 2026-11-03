@@ -127,6 +127,7 @@ zabbix_export:
       tags:
         - tag: simovilab
           value: S.O
+
       dashboards:
         - uuid: a7328706b64249618e4248544158d239
           name: 'Servidor'
@@ -366,40 +367,84 @@ zabbix_export:
                       value: GHTAY
             - name: 'Contenedores'
               widgets:
-                - type: itemnavigator
-                  name: 'Contenedores Docker'
+                - type: honeycomb
+                  name: 'Contenedores arriba (verde) o detenidos (rojo)'
                   x: '0'
                   y: '0'
                   width: '72'
-                  height: '14'
+                  height: '5'
                   fields:
                     - type: STRING
                       name: items.0
-                      value: 'Container *: Status'
+                      value: 'Container *: Running'
                     - type: STRING
-                      name: items.1
-                      value: 'Container *: Started at'
-                    - type: STRING
-                      name: items.2
-                      value: 'Container *: Restart count'
-                    - type: STRING
-                      name: items.3
-                      value: 'Container *: CPU percent usage'
-                    - type: STRING
-                      name: items.4
-                      value: 'Container *: Memory usage total'
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("Container /(.*): .*", "\1")}'
                     - type: INTEGER
-                      name: group_by.0.attribute
-                      value: '3'
+                      name: show.0
+                      value: '1'
                     - type: STRING
-                      name: group_by.0.tag_name
-                      value: container
-                    - type: INTEGER
-                      name: show_lines
-                      value: '500'
+                      name: thresholds.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
                     - type: STRING
                       name: reference
-                      value: DKNAV          
+                      value: DKRUN
+                - type: honeycomb
+                  name: 'Último arranque o reinicio'
+                  x: '0'
+                  y: '5'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Container *: Started at'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("Container /(.*): .*", "\1")}'
+                    - type: STRING
+                      name: reference
+                      value: DKSTA
+                - type: honeycomb
+                  name: 'Cantidad de reinicios'
+                  x: '0'
+                  y: '10'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Container *: Restart count'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("Container /(.*): .*", "\1")}'
+                    - type: INTEGER
+                      name: secondary_label_decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: DKRST
   graphs:
     - uuid: b5ee4ff0f9644e78965e3e428f97d346
       name: 'host: CPU y memoria'
@@ -424,4 +469,4 @@ zabbix_export:
         - color: F63100
           item:
             host: 'simovilab servidor y sistema operativo'
-            key: 'system.cpu.load[percpu,avg1]'    
+            key: 'system.cpu.load[percpu,avg1]'
