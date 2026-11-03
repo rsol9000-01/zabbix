@@ -283,6 +283,24 @@ zabbix_export:
           units: ms
           params: 'last(//infobus.net.delta_ms) - last(//infobus.net.rtt_ms)'
           description: 'Externo - interno, menos el RTT de red.'
+        - uuid: faa0bd3f5cd54b55a856229001b5efd6
+          name: 'Estado del bucle MACDT'
+          type: TRAPPER
+          key: macdt.status
+          value_type: UNSIGNED
+          description: |
+            1 = el ciclo calculo y escribio el umbral.
+            0 = ciclo degradado: dato de rho ausente o viejo, o fallo de API.
+            En degradado el umbral vigente se conserva; no se escribe nada.
+          valuemap:
+            name: 'Estado MACDT'
+        - uuid: fb1120a1e6d041b8ad94406cf80af8dc
+          name: 'T_warn escrito por MACDT'
+          type: TRAPPER
+          key: macdt.t_warn
+          units: ms
+          value_type: FLOAT
+          description: 'El valor que el bucle puso en la macro de host. Para graficarlo contra rho.'
       macros:
         - macro: '{$T_LATENCY_WARN}'
           value: '130'

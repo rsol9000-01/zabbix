@@ -32,6 +32,12 @@ Por que se mide /health/ aparte, y dos veces:
       query_p50_ms = lat_p50_ms - health_ms      -> costo de la consulta, que es
                                                    lo que beta pretende modelar
 
+Por que tcp_connect_ms:
+  es el tiempo de abrir una conexion TCP al host y puerto de --base, con el DNS
+  ya resuelto: un viaje de ida y vuelta de red, como un ping, pero por el mismo
+  puerto de la API (el firewall no lo bloquea si la API responde). Se toma la
+  mediana de 3 intentos. Desde dentro (red Docker) debe ser casi cero.
+
 Por que se valida que la respuesta sea un 200 con cuerpo:
   NextTripView responde 400 si falta stop_id y 404 si la parada no existe. Las
   dos rutas son rapidas. Un stop_id mal configurado mediria el camino de error
@@ -59,6 +65,9 @@ import json
 import statistics
 import sys
 import time
+
+import socket
+from urllib.parse import urlsplit
 
 BASE = "https://infobus.ucr.ac.cr"
 API_PATH = "/api/next-trips/"
@@ -88,6 +97,27 @@ def _sesion(insecure=False, host_header=None):
     return s
 
 
+def _tcp_connect_ms(base, timeout, intentos=3):
+    """Mediana del tiempo de conexion TCP a host:puerto de base, sin DNS. None si falla."""
+    try:
+        u = urlsplit(base)
+        puerto = u.port or (443 if u.scheme == "https" else 80)
+        fam, tipo, proto, _, dir_ = socket.getaddrinfo(u.hostname, puerto, type=socket.SOCK_STREAM)[0]
+        tiempos = []
+        for _ in range(intentos):
+            s = socket.socket(fam, tipo, proto)
+            s.settimeout(timeout)
+            t0 = time.perf_counter()
+            try:
+                s.connect(dir_)
+                tiempos.append((time.perf_counter() - t0) * 1000)
+            finally:
+                s.close()
+        return round(statistics.median(tiempos), 2)
+    except Exception:
+        return None
+
+
 def _medir(sesion, url, timeout, params=None):
     """Devuelve (status, ms, bytes). No lanza: el fallo es en si una metrica."""
     t0 = time.perf_counter()
@@ -105,6 +135,9 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
     api_url = base.rstrip("/") + API_PATH
     health_url = base.rstrip("/") + HEALTH_PATH
     params = {"stop_id": stop_id}
+
+    # Red: conexion TCP pura, antes de cualquier peticion HTTP.
+    tcp_ms = _tcp_connect_ms(base, timeout)
 
     # Primera peticion de la sesion: incluye abrir la conexion (DNS + TCP + TLS).
     hc_status, hc_ms, _ = _medir(ses, health_url, timeout)
@@ -146,6 +179,8 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
         "errors": errores,
         "warmup": calentado,
         "stop_id": stop_id,
+        # Red
+        "tcp_connect_ms": tcp_ms,
         # Piso de transporte
         "health_ok": 1 if h_ok else 0,
         "health_status": h_status,
