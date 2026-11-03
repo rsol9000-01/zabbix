@@ -310,7 +310,7 @@ zabbix_export:
           key: macdt.gate
           valuemap:
             name: 'Horario operativo'
-          description: '1 dentro de L–V 06:10–21:58, 0 fuera. Compuerta de toda la Capa D'
+          description: '1 dentro de L–V 06:20–21:58, 0 fuera. Compuerta de toda la Capa D'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -335,11 +335,28 @@ zabbix_export:
                 - 1d
           master_item:
             key: macdt.window
+        - uuid: 9c2e4a7b1d3f4e8a8b6c0d2e4f6a8b1c
+          name: 'Huecos sin buses programados (texto)'
+          type: DEPENDENT
+          key: macdt.huecos_texto
+          value_type: TEXT
+          history: 7d
+          description: 'Minutos dentro de la ventana con cero viajes programados, en texto. Derivado del GTFS estático. Solo para mostrar en el dashboard.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.huecos_texto
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: macdt.window    
         - uuid: 7d2d2ed31f2542e3b037c1f9ad5a60e3
           name: 'scheduled slot'
           type: DEPENDENT
           key: macdt.hueco_programado
-          description: '1 en los tres huecos de cero programado. Sirve para suprimir, no para alertar'
+          description: '1 en los huecos de cero programado. Sirve para suprimir, no para alertar'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -474,7 +491,7 @@ zabbix_export:
                   name: 'Horario de servicio'
                   x: '0'
                   y: '0'
-                  width: '72'
+                  width: '36'
                   height: '2'
                   fields:
                     - type: ITEM
@@ -485,6 +502,21 @@ zabbix_export:
                     - type: STRING
                       name: reference
                       value: HRSVC
+                - type: item
+                  name: 'Huecos sin buses programados'
+                  x: '36'
+                  y: '0'
+                  width: '36'
+                  height: '2'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: macdt.huecos_texto
+                    - type: STRING
+                      name: reference
+                      value: HUECO      
                 - type: item
                   name: 'Horario de operación'
                   x: '0'

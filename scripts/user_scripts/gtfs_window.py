@@ -44,6 +44,23 @@ def _horario_texto(dias, inicio_min, fin_min):
         dias_txt = ",".join(DIAS_CORTOS[i] for i in idx)
     return "%s de %s a %s" % (dias_txt, _hora_12(inicio_min), _hora_12(fin_min))
 
+def _huecos_texto(huecos):
+    """[{'inicio':'08:21','fin':'08:24'}, ...] -> 'Sin buses programados: 8:21 a 8:24 a.m. · ...'"""
+    if not huecos:
+        return "Sin huecos: siempre hay buses programados"
+    partes = []
+    for h in huecos:
+        a = int(h["inicio"][:2]) * 60 + int(h["inicio"][3:])
+        b = int(h["fin"][:2]) * 60 + int(h["fin"][3:])
+        ta, tb = _hora_12(a), _hora_12(b)
+        if a == b:
+            partes.append(ta)
+        elif ta[-4:] == tb[-4:]:
+            partes.append("%s a %s" % (ta[:-5], tb))
+        else:
+            partes.append("%s a %s" % (ta, tb))
+    return "Sin buses programados: " + " · ".join(partes)
+
 def _sec(t):
     """GTFS HH:MM:SS -> segundos. Admite >24h (no asi el TimeField de databus)."""
     if not t:
@@ -258,6 +275,7 @@ def main():
             "minuto": "%02d:%02d" % (ahora.hour, ahora.minute),
             "service_id": sid,
             "horario_texto": _horario_texto(dias_sv, s["ventana"]["inicio_min"], s["ventana"]["fin_min"]),
+            "huecos_texto": _huecos_texto(s["huecos_cero"]),
             "gate_ventana": 1 if dentro else 0,
             "s_t": st,
             "v_trips_max": s["v_trips_max"],
