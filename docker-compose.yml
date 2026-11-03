@@ -172,3 +172,35 @@ services:
       zabbix-server-pgsql:
         condition: service_healthy
     restart: "no"
+  ###########################
+  # MACDT LOOP (efector del lazo MAPE-K)
+  ###########################
+  macdt-loop:
+    container_name: macdt-loop
+    build:
+        context: ./agent2/
+        dockerfile: Dockerfile_local
+    image: simovilab/macdt-loop:1.0
+    pull_policy: build
+    restart: unless-stopped
+    networks:
+      - zabbix_network
+    environment:
+      ZBX_API_URL: ${API_URL}
+      ZBX_API_USER: ${API_WEB_USER}
+      ZBX_API_PASS: ${API_WEB_PASS}
+      MACDT_HOST_DATABUS: ${MACDT_HOST_DATABUS}
+      MACDT_HOST_INFOBUS: ${MACDT_HOST_INFOBUS}
+      MACDT_TPL_DATABUS: ${MACDT_TPL_DATABUS:-simovilab-databus}
+      MACDT_TPL_INFOBUS: ${MACDT_TPL_INFOBUS:-simovilab-infobus}
+      MACDT_INTERVAL: ${MACDT_INTERVAL:-60}
+      MACDT_MAX_AGE: ${MACDT_MAX_AGE:-180}
+      ZBX_SERVER: ${ZBX_SERVER_IP}
+      ZBX_SERVER_PORT: 10051
+      TZ: ${TZ}
+    volumes:
+      - ./scripts/macdt/macdt_loop.py:/macdt_loop.py:ro
+      - macdt_state:/var/lib/macdt
+    depends_on:
+      zabbix-init:
+        condition: service_completed_successfully

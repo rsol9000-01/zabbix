@@ -1,0 +1,7 @@
+FROM python:3.12-alpine
+
+# Solo la dependencia va en la imagen. El script se monta como volumen para
+# poder corregirlo sin reconstruir, igual que los user_scripts del Agent2.
+RUN pip install --no-cache-dir requests==2.32.3
+
+ENTRYPOINT ["python3", "-u", "/macdt_loop.py"]
