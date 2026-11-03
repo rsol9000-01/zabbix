@@ -285,7 +285,7 @@ zabbix_export:
           description: 'Externo - interno, menos el RTT de red.'
         - uuid: faa0bd3f5cd54b55a856229001b5efd6
           name: 'Estado del bucle MACDT'
-          type: TRAPPER
+          type: TRAP
           key: macdt.status
           value_type: UNSIGNED
           description: |
@@ -294,9 +294,25 @@ zabbix_export:
             En degradado el umbral vigente se conserva; no se escribe nada.
           valuemap:
             name: 'Estado MACDT'
+          triggers:
+            - uuid: 17d29d1dd90c46aa95fb7a508c5bb616
+              expression: 'last(/simovilab-infobus/macdt.status)=0'
+              name: 'MACDT degradado: el umbral no se esta actualizando'
+              priority: WARNING
+              description: |
+                El bucle sigue vivo pero no pudo calcular: rho sin dato o viejo,
+                o fallo del API. Los triggers de latencia siguen operando con el
+                ultimo umbral valido.
+            - uuid: a190e9f925fe487891ea0bc2373bf4d1
+              expression: 'nodata(/simovilab-infobus/macdt.status,5m)=1'
+              name: 'El bucle MACDT no reporta: puede estar caido'
+              priority: AVERAGE
+              description: |
+                Distinto del anterior: aqui no llega ni el estado de degradado.
+                Un contenedor muerto se ve igual que un sistema sano sin este trigger.
         - uuid: fb1120a1e6d041b8ad94406cf80af8dc
           name: 'T_warn escrito por MACDT'
-          type: TRAPPER
+          type: TRAP
           key: macdt.t_warn
           units: ms
           value_type: FLOAT
@@ -329,3 +345,11 @@ zabbix_export:
         - macro: '{$Q_CRIT}'
           value: '150'
           description: 'ídem'
+      valuemaps:
+        - uuid: 7f2c0e1a4b6d4f8e9a3c5b7d1e0f2a48
+          name: 'Estado MACDT'
+          mappings:
+            - value: '0'
+              newvalue: Degradado
+            - value: '1'
+              newvalue: Operando    

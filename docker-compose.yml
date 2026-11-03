@@ -8,6 +8,7 @@ volumes:
   zabbix-snmptraps:
   zabbix_dashboard_config:
   zabbix_certificados:
+  macdt_state:
 ############################
 # NETWORKS
 ############################
@@ -161,6 +162,7 @@ services:
       - zabbix_network
     image: alpine/curl:latest
     env_file: .env
+    container_name: zabbix-init
     volumes:
       - ./${SCRIPT_POST_INSTALL}:/init.sh:ro
       - ./psk/zabbix_agentd.psk:/zabbix_agentd.psk:ro
