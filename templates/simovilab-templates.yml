@@ -92,18 +92,18 @@ zabbix_export:
         - uuid: 8ee1e44871c04839ada7457da5bc1d1f
           name: 'Disk space free (/)'
           type: ZABBIX_ACTIVE
-          key: 'vfs.fs.size[/,pfree]'
+          key: 'vfs.fs.size[/hostfs,pfree]'
           delay: 5m
           value_type: FLOAT
           units: '%'
           description: 'Porcentaje de espacio libre del sistema de archivos raíz (/).'
           triggers:
             - uuid: 9a9877bee4c64c47a95521de63591698
-              expression: 'max(/simovilab servidor y sistema operativo/vfs.fs.size[/,pfree],5m)<10'
+              expression: 'max(/simovilab servidor y sistema operativo/vfs.fs.size[/hostfs,pfree],5m)<10'
               name: 'Disk space critical (/)'
               priority: HIGH
             - uuid: d178dd3bf1c74e50bbaaf30afc950302
-              expression: 'max(/simovilab servidor y sistema operativo/vfs.fs.size[/,pfree],5m)<20'
+              expression: 'max(/simovilab servidor y sistema operativo/vfs.fs.size[/hostfs,pfree],5m)<20'
               name: 'Disk space low (/)'
               priority: WARNING
         - uuid: 57848c5a7c2342a287b0dfb1a393e346
@@ -251,7 +251,7 @@ zabbix_export:
                       name: reference
                       value: QPUTZ
                 - type: gauge
-                  name: 'Espacio libre (/ del agente)'
+                  name: 'Espacio libre en disco (/)'
                   x: '54'
                   y: '0'
                   width: '18'
@@ -261,7 +261,7 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: 'simovilab servidor y sistema operativo'
-                        key: 'vfs.fs.size[/,pfree]'
+                        key: 'vfs.fs.size[/hostfs,pfree]'
                     - type: STRING
                       name: min
                       value: '0'
@@ -364,6 +364,42 @@ zabbix_export:
                     - type: STRING
                       name: reference
                       value: GHTAY
+            - name: 'Contenedores'
+              widgets:
+                - type: itemnavigator
+                  name: 'Contenedores Docker'
+                  x: '0'
+                  y: '0'
+                  width: '72'
+                  height: '14'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Container *: Status'
+                    - type: STRING
+                      name: items.1
+                      value: 'Container *: Started at'
+                    - type: STRING
+                      name: items.2
+                      value: 'Container *: Restart count'
+                    - type: STRING
+                      name: items.3
+                      value: 'Container *: CPU percent usage'
+                    - type: STRING
+                      name: items.4
+                      value: 'Container *: Memory usage total'
+                    - type: INTEGER
+                      name: group_by.0.attribute
+                      value: '3'
+                    - type: STRING
+                      name: group_by.0.tag_name
+                      value: container
+                    - type: INTEGER
+                      name: show_lines
+                      value: '500'
+                    - type: STRING
+                      name: reference
+                      value: DKNAV          
   graphs:
     - uuid: b5ee4ff0f9644e78965e3e428f97d346
       name: 'host: CPU y memoria'
