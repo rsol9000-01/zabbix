@@ -431,5 +431,13 @@ chmod 644 psk/zabbix_agentd.psk
 echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
 docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d
 if [ "$FLAG_SERVER" = "true" ]; then
-  docker compose logs -f zabbix-init
+  INIT_ID=$(docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" ps -aq zabbix-init)
+  docker logs -f "$INIT_ID"
+  INIT_RC=$(docker wait "$INIT_ID")
+  if [ "$INIT_RC" = "0" ]; then
+    echo -e "✅  ${GREEN}zabbix-init terminó correctamente${NC}"
+  else
+    echo -e "❌  zabbix-init terminó con error (código $INIT_RC). Revise el log de arriba."
+    exit "$INIT_RC"
+  fi
 fi

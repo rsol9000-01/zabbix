@@ -471,20 +471,20 @@ zabbix_export:
             - name: 'Operación'
               widgets:
                 - type: item
-                    name: 'Horario de servicio'
-                    x: '0'
-                    y: '0'
-                    width: '72'
-                    height: '2'
-                    fields:
-                      - type: ITEM
-                        name: itemid.0
-                        value:
+                  name: 'Horario de servicio'
+                  x: '0'
+                  y: '0'
+                  width: '72'
+                  height: '2'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
                           host: simovilab-databus
                           key: macdt.horario_texto
-                      - type: STRING
-                        name: reference
-                        value: HRSVC
+                    - type: STRING
+                      name: reference
+                      value: HRSVC
                 - type: item
                   name: 'Horario de operación'
                   x: '0'
