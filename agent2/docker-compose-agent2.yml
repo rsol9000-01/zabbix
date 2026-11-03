@@ -45,6 +45,7 @@ services:
       - /proc:/proc:ro
       - /sys:/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/zabbix-disco:/hostfs:ro
       - ../psk/${ZBX_TLSPSKFILENAME}:${ZBX_TLSPSKFILE}:ro
       - ./${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}:ro
       - ./simovilab-plugins.conf:/etc/zabbix/zabbix_agent2.d/plugins.d/simovilab-plugins.conf:ro

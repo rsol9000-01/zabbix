@@ -127,3 +127,265 @@ zabbix_export:
       tags:
         - tag: simovilab
           value: S.O
+      dashboards:
+        - uuid: a7328706b64249618e4248544158d239
+          name: 'Servidor'
+          pages:
+            - name: 'Operación'
+              widgets:
+                - type: gauge
+                  name: 'CPU en uso'
+                  x: '0'
+                  y: '0'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'system.cpu.util'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: th.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '70'
+                    - type: STRING
+                      name: th.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '90'
+                    - type: STRING
+                      name: reference
+                      value: ORYOO
+                - type: gauge
+                  name: 'Memoria RAM en uso'
+                  x: '18'
+                  y: '0'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'vm.memory.size[pused]'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: th.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '75'
+                    - type: STRING
+                      name: th.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '90'
+                    - type: STRING
+                      name: reference
+                      value: QSGFZ
+                - type: gauge
+                  name: 'Carga por CPU (1 min)'
+                  x: '36'
+                  y: '0'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'system.cpu.load[percpu,avg1]'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '2'
+                    - type: STRING
+                      name: th.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '0.7'
+                    - type: STRING
+                      name: th.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: QPUTZ
+                - type: gauge
+                  name: 'Espacio libre (/ del agente)'
+                  x: '54'
+                  y: '0'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'vfs.fs.size[/,pfree]'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: th.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '10'
+                    - type: STRING
+                      name: th.2.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '20'
+                    - type: STRING
+                      name: reference
+                      value: FDOJE
+                - type: item
+                  name: 'Tiempo encendido'
+                  x: '0'
+                  y: '5'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'system.uptime'
+                    - type: STRING
+                      name: reference
+                      value: CRZWU
+                - type: item
+                  name: 'Conexiones TCP establecidas'
+                  x: '24'
+                  y: '5'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'host.tcp.established'
+                    - type: STRING
+                      name: reference
+                      value: BTMOU
+                - type: item
+                  name: 'Espera de disco (I/O wait)'
+                  x: '48'
+                  y: '5'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'system.cpu.util[,iowait]'
+                    - type: STRING
+                      name: reference
+                      value: XTUFT
+                - type: graph
+                  name: 'CPU y memoria'
+                  x: '0'
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        name: 'host: CPU y memoria'
+                    - type: STRING
+                      name: reference
+                      value: AQCBB
+                - type: graph
+                  name: 'Carga por CPU'
+                  x: '36'
+                  y: '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        name: 'host: carga por CPU'
+                    - type: STRING
+                      name: reference
+                      value: GHTAY
+  graphs:
+    - uuid: b5ee4ff0f9644e78965e3e428f97d346
+      name: 'host: CPU y memoria'
+      graph_items:
+        - color: 2774A4
+          item:
+            host: 'simovilab servidor y sistema operativo'
+            key: 'system.cpu.util'
+        - sortorder: '1'
+          color: 199C0D
+          item:
+            host: 'simovilab servidor y sistema operativo'
+            key: 'vm.memory.size[pused]'
+        - sortorder: '2'
+          color: F7941D
+          item:
+            host: 'simovilab servidor y sistema operativo'
+            key: 'system.cpu.util[,iowait]'
+    - uuid: 61b1080e6e6c412196712cd6ab805a2c
+      name: 'host: carga por CPU'
+      graph_items:
+        - color: F63100
+          item:
+            host: 'simovilab servidor y sistema operativo'
+            key: 'system.cpu.load[percpu,avg1]'    

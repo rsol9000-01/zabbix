@@ -33,6 +33,8 @@ zabbix_export:
           name: 'API de InfoBus responde correctamente'
           type: DEPENDENT
           key: infobus.api.ok
+          valuemap:
+            name: 'Estado API'
           value_type: UNSIGNED
           description: '1 solo si las 10 peticiones devolvieron 200 con cuerpo.'
           preprocessing:
@@ -180,6 +182,8 @@ zabbix_export:
           name: 'Disponibilidad de /health/'
           type: DEPENDENT
           key: infobus.api.health_ok
+          valuemap:
+            name: 'Estado API'
           value_type: UNSIGNED
           preprocessing:
             - type: JSONPATH
@@ -345,6 +349,177 @@ zabbix_export:
         - macro: '{$Q_CRIT}'
           value: '150'
           description: 'ídem'
+      dashboards:
+        - uuid: 486967a74607447290830f37d336c4bf
+          name: 'Operación infobus'
+          pages:
+            - name: 'Operación'
+              widgets:
+                - type: item
+                  name: 'T_LATENCY_WARN actual (escrito por MACDT)'
+                  x: '0'
+                  y: '0'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'macdt.t_warn'
+                    - type: STRING
+                      name: reference
+                      value: OKOSG
+                - type: item
+                  name: 'Estado del bucle MACDT'
+                  x: '24'
+                  y: '0'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'macdt.status'
+                    - type: STRING
+                      name: reference
+                      value: QHUJP
+                - type: item
+                  name: 'L_api p95 (última hora)'
+                  x: '48'
+                  y: '0'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'infobus.api.lat_p95_1h'
+                    - type: STRING
+                      name: reference
+                      value: AVCOU
+                - type: item
+                  name: 'API InfoBus'
+                  x: '0'
+                  y: '3'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'infobus.api.ok'
+                    - type: STRING
+                      name: reference
+                      value: INRCW
+                - type: item
+                  name: '/health/ disponible'
+                  x: '12'
+                  y: '3'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'infobus.api.health_ok'
+                    - type: STRING
+                      name: reference
+                      value: IKYHQ
+                - type: item
+                  name: 'L_api p50 (último ciclo)'
+                  x: '24'
+                  y: '3'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'infobus.api.lat_p50'
+                    - type: STRING
+                      name: reference
+                      value: JACSY
+                - type: item
+                  name: 'Costo de la consulta'
+                  x: '36'
+                  y: '3'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'infobus.api.query_p50'
+                    - type: STRING
+                      name: reference
+                      value: DMDJM
+                - type: item
+                  name: 'Piso de transporte'
+                  x: '48'
+                  y: '3'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'infobus.api.health_ms'
+                    - type: STRING
+                      name: reference
+                      value: CAVAG
+                - type: item
+                  name: 'Peticiones estranguladas'
+                  x: '60'
+                  y: '3'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        key: 'infobus.api.throttled'
+                    - type: STRING
+                      name: reference
+                      value: GBPMW
+                - type: graph
+                  name: 'Latencia de la API vs umbral de MACDT'
+                  x: '0'
+                  y: '6'
+                  width: '72'
+                  height: '7'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        name: 'infobus: latencia vs umbral MACDT'
+                    - type: STRING
+                      name: reference
+                      value: MNCSU
+                - type: graph
+                  name: 'Desglose de latencia'
+                  x: '0'
+                  y: '13'
+                  width: '72'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'simovilab-infobus'
+                        name: 'infobus: desglose de latencia'
+                    - type: STRING
+                      name: reference
+                      value: GYVIK    
       valuemaps:
         - uuid: 7f2c0e1a4b6d4f8e9a3c5b7d1e0f2a48
           name: 'Estado MACDT'
@@ -352,4 +527,41 @@ zabbix_export:
             - value: '0'
               newvalue: Degradado
             - value: '1'
-              newvalue: Operando    
+              newvalue: Operando
+        - uuid: 812477902d9b4110a382c0cfffd2d374
+          name: 'Estado API'
+          mappings:
+            - value: '0'
+              newvalue: 'Falla'
+            - value: '1'
+              newvalue: 'OK'
+  graphs:
+    - uuid: 3a38289a271f43a38c58ec5ea84732b1
+      name: 'infobus: latencia vs umbral MACDT'
+      graph_items:
+        - color: 199C0D
+          item:
+            host: 'simovilab-infobus'
+            key: 'infobus.api.lat_p50'
+        - sortorder: '1'
+          color: 2774A4
+          item:
+            host: 'simovilab-infobus'
+            key: 'infobus.api.lat_p95_1h'
+        - sortorder: '2'
+          color: F63100
+          item:
+            host: 'simovilab-infobus'
+            key: 'macdt.t_warn'
+    - uuid: 43ca52f3cd484678bd9bf8b4307cdfa7
+      name: 'infobus: desglose de latencia'
+      graph_items:
+        - color: 2774A4
+          item:
+            host: 'simovilab-infobus'
+            key: 'infobus.api.query_p50'
+        - sortorder: '1'
+          color: F7941D
+          item:
+            host: 'simovilab-infobus'
+            key: 'infobus.api.health_ms'          
