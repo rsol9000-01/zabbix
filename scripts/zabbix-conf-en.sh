@@ -154,7 +154,8 @@ import_template() {
                   triggers:        { createMissing: true, updateExisting: true },
                   graphs:          { createMissing: true, updateExisting: true },
                   discoveryRules:  { createMissing: true, updateExisting: true },
-                  valueMaps:       { createMissing: true, updateExisting: true }
+                  valueMaps:       { createMissing: true, updateExisting: true },
+                  templateDashboards: { createMissing: true, updateExisting: true }
               },
               source: $source
           },
@@ -190,6 +191,27 @@ import_template() {
   IMPORTED_IDS[$_file]="$_id"
   _TPL_ID="$_id"
 }
+#──── lookup_template NOMBRE -> plantilla que ya existe en Zabbix (oficial), sin archivo que importar
+lookup_template() {
+  local _name="$1" _id
+  echo -e "📋 Plantilla existente en Zabbix: ${ORANGE}${_name}${NC}"
+
+  _id=$(curl -s -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "$(jq -n --arg n "$_name" \
+        '{jsonrpc:"2.0",method:"template.get",params:{filter:{name:[$n]},output:["templateid"]},id:1}')" \
+    | jq -r '.result[0].templateid // empty')
+
+  if [ -z "$_id" ]; then
+      echo "❌ ERROR: Zabbix no tiene una plantilla llamada '${_name}'."
+      echo -e "   ${YELLOW}Copie el nombre exacto desde Data collection → Templates${NC}"
+      exit 1
+  fi
+
+  echo "   - ✅ '${_name}' lista, ID ${_id}"
+  _TPL_ID="$_id"
+}
 
 #──── resolve_templates FILES NAMES ETIQUETA -> deja el arreglo JSON en TPL_JSON
 resolve_templates() {
@@ -211,7 +233,11 @@ resolve_templates() {
   fi
 
   for _i in "${!_tpl_files[@]}"; do
-    import_template "/templates/$(trim "${_tpl_files[$_i]}")" "$(trim "${_tpl_names[$_i]}")"
+    if [ "$(trim "${_tpl_files[$_i]}")" = "-" ]; then
+      lookup_template "$(trim "${_tpl_names[$_i]}")"
+    else
+      import_template "/templates/$(trim "${_tpl_files[$_i]}")" "$(trim "${_tpl_names[$_i]}")"
+    fi
     _ids="${_ids}${_ids:+ }${_TPL_ID}"
   done
 

@@ -25,6 +25,24 @@ import argparse, collections, csv, io, json, sys, zipfile
 
 DOW = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
 
+DIAS_CORTOS = ["L", "K", "M", "J", "V", "S", "D"]
+
+def _hora_12(minutos):
+    """Minuto del dia -> '6:10 a.m.'"""
+    h, m = divmod(minutos, 60)
+    h = h % 24
+    sufijo = "a.m." if h < 12 else "p.m."
+    return "%d:%02d %s" % (h % 12 or 12, m, sufijo)
+
+
+def _horario_texto(dias, inicio_min, fin_min):
+    """['monday'..'friday'], 370, 1318 -> 'L-V de 6:10 a.m. a 9:58 p.m.'"""
+    idx = sorted(DOW.index(d) for d in dias)
+    if len(idx) > 1 and idx == list(range(idx[0], idx[-1] + 1)):
+        dias_txt = "%s-%s" % (DIAS_CORTOS[idx[0]], DIAS_CORTOS[idx[-1]])
+    else:
+        dias_txt = ",".join(DIAS_CORTOS[i] for i in idx)
+    return "%s de %s a %s" % (dias_txt, _hora_12(inicio_min), _hora_12(fin_min))
 
 def _sec(t):
     """GTFS HH:MM:SS -> segundos. Admite >24h (no asi el TimeField de databus)."""
@@ -239,6 +257,7 @@ def main():
             "static_zip_age_s": zip_age_s,
             "minuto": "%02d:%02d" % (ahora.hour, ahora.minute),
             "service_id": sid,
+            "horario_texto": _horario_texto(dias_sv, s["ventana"]["inicio_min"], s["ventana"]["fin_min"]),
             "gate_ventana": 1 if dentro else 0,
             "s_t": st,
             "v_trips_max": s["v_trips_max"],

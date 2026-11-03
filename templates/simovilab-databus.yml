@@ -175,6 +175,8 @@ zabbix_export:
           name: 'Raíz del árbol de alertas'
           type: DEPENDENT
           key: gtfs.fetch_ok
+          valuemap:
+               name: 'Estado feed GTFS-RT'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -306,12 +308,31 @@ zabbix_export:
           name: Schedule
           type: DEPENDENT
           key: macdt.gate
+          valuemap:
+            name: 'Horario operativo'
           description: '1 dentro de L–V 06:10–21:58, 0 fuera. Compuerta de toda la Capa D'
           preprocessing:
             - type: JSONPATH
               parameters:
                 - $.gate_ventana
               error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+        - uuid: 4f1c0b9e8d2a4e6f9b3a7c5d1e2f8a60
+          name: 'Horario de servicio (texto)'
+          type: DEPENDENT
+          key: macdt.horario_texto
+          value_type: CHAR
+          history: 7d
+          description: 'Ventana operativa en texto, derivada del GTFS estático. Solo para mostrar en el dashboard.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.horario_texto
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
           master_item:
             key: macdt.window
         - uuid: 7d2d2ed31f2542e3b037c1f9ad5a60e3
@@ -443,7 +464,300 @@ zabbix_export:
         - macro: '{$MACDT.ZIP.DESFASE.WARN}'
           value: '21600'
           description: '6 h de desfase entre origen y publicación'
-        
+      dashboards:
+        - uuid: 5ac291617b3e41ff8ae2312552c02852
+          name: 'Operación databus'
+          pages:
+            - name: 'Operación'
+              widgets:
+                - type: item
+                    name: 'Horario de servicio'
+                    x: '0'
+                    y: '0'
+                    width: '72'
+                    height: '2'
+                    fields:
+                      - type: ITEM
+                        name: itemid.0
+                        value:
+                          host: simovilab-databus
+                          key: macdt.horario_texto
+                      - type: STRING
+                        name: reference
+                        value: HRSVC
+                - type: item
+                  name: 'Horario de operación'
+                  x: '0'
+                  y: '2'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: macdt.gate
+                    - type: STRING
+                      name: reference
+                      value: KEMUB
+                - type: item
+                  name: 'Buses reportando posición'
+                  x: '12'
+                  y: '2'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_vehicles
+                    - type: STRING
+                      name: reference
+                      value: CRDLS
+                - type: item
+                  name: 'Viajes activos (V_trips)'
+                  x: '24'
+                  y: '2'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_trips
+                    - type: STRING
+                      name: reference
+                      value: BQGBC
+                - type: item
+                  name: 'Viajes programados ahora'
+                  x: '36'
+                  y: '2'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: macdt.s_t
+                    - type: STRING
+                      name: reference
+                      value: NNCHC
+                - type: item
+                  name: 'Edad del feed (V_age)'
+                  x: '48'
+                  y: '2'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.feed_age_tu_s
+                    - type: STRING
+                      name: reference
+                      value: RNBSD
+                - type: item
+                  name: 'Días de vigencia del GTFS'
+                  x: '60'
+                  y: '2'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: macdt.cal_dias_vigencia
+                    - type: STRING
+                      name: reference
+                      value: HUUSB
+                - type: gauge
+                  name: 'Cobertura GPS (V_gps)'
+                  x: '0'
+                  y: '5'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_gps_pct
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: th.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '70'
+                    - type: STRING
+                      name: th.2.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '85'
+                    - type: STRING
+                      name: reference
+                      value: SSMBH
+                - type: gauge
+                  name: 'Completitud predicciones'
+                  x: '18'
+                  y: '5'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.completeness_tu_pct
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: th.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: th.2.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '90'
+                    - type: STRING
+                      name: reference
+                      value: BREJN
+                - type: gauge
+                  name: 'Completitud posiciones'
+                  x: '36'
+                  y: '5'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.completeness_vp_pct
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: th.0.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: th.2.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '90'
+                    - type: STRING
+                      name: reference
+                      value: ERDSJ
+                - type: gauge
+                  name: 'Carga de transporte (ρ)'
+                  x: '54'
+                  y: '5'
+                  width: '18'
+                  height: '5'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: p.calculated
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: max
+                      value: '1.2'
+                    - type: STRING
+                      name: reference
+                      value: RVFDS
+                - type: graph
+                  name: 'Viajes activos vs programados'
+                  x: '0'
+                  y: '10'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: simovilab-databus
+                        name: 'databus: viajes activos vs programados'
+                    - type: STRING
+                      name: reference
+                      value: SUGLD
+                - type: graph
+                  name: 'Edad del feed GTFS-RT'
+                  x: '36'
+                  y: '10'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: simovilab-databus
+                        name: 'databus: edad del feed GTFS-RT'
+                    - type: STRING
+                      name: reference
+                      value: RWCSB
+      valuemaps:
+        - uuid: 79712a27fe554205bb90c88dc789b55e
+          name: 'Horario operativo'
+          mappings:
+            - value: '0'
+              newvalue: 'Fuera de horario'
+            - value: '1'
+              newvalue: 'En horario'
+        - uuid: 8fc61aefa69140aabc20f59cc5bf0025
+          name: 'Estado feed GTFS-RT'
+          mappings:
+            - value: '0'
+              newvalue: 'Feed no alcanzable'
+            - value: '1'
+              newvalue: 'OK'    
   triggers:
     - uuid: 41456f19773a4ddfa4c4249d8d47bcf2
       expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.WARN}'
@@ -513,3 +827,33 @@ zabbix_export:
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+  graphs:
+    - uuid: b8f11c5c891f4d8595d80dfcbc023d4b
+      name: 'databus: viajes activos vs programados'
+      graph_items:
+        - color: 199C0D
+          item:
+            host: simovilab-databus
+            key: gtfs.v_trips
+        - sortorder: '1'
+          color: 2774A4
+          item:
+            host: simovilab-databus
+            key: macdt.s_t
+        - sortorder: '2'
+          color: F63100
+          item:
+            host: simovilab-databus
+            key: macdt.v_trips_max
+    - uuid: fda05315846c4ea1bac22bf1237df7b9
+      name: 'databus: edad del feed GTFS-RT'
+      graph_items:
+        - color: 2774A4
+          item:
+            host: simovilab-databus
+            key: gtfs.feed_age_tu_s
+        - sortorder: '1'
+          color: F7941D
+          item:
+            host: simovilab-databus
+            key: gtfs.feed_age_vp_s        
