@@ -29,7 +29,7 @@ Plugins.PostgreSQL.Sessions.infobus.Password=postgres
 Plugins.Redis.Sessions.databus.Uri=tcp://state:6379
 Plugins.Redis.Sessions.databus.Password=redispassword
 
-Plugins.Redis.Sessions.infobus.Uri=tcp://state:6379
+Plugins.Redis.Sessions.infobus.Uri=tcp://memory:6379
 Plugins.Redis.Sessions.infobus.Password=changeme-use-a-strong-value
 
 # ────────────────────────────────────────────────────────────────────────────
