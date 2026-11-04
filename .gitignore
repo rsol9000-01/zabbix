@@ -6,4 +6,4 @@ psk/*
 # Contraseñas de los plugins
 agent2/simovilab-plugins.conf
 # Backups
-./backups
+backups/
