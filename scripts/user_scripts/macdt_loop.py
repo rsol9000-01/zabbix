@@ -241,20 +241,21 @@ def escribir_macro(z, host, macro, valor):
     return "update"
 
 
-def enviar_trapper(host, clave, valor):
-    """Protocolo Zabbix sender, implementado aqui para no depender de zabbix_sender."""
-    payload = json.dumps({
-        "request": "sender data",
-        "data": [{"host": host, "key": clave, "value": str(valor)}],
-    }).encode()
-    paquete = b"ZBXD\x01" + struct.pack("<Q", len(payload)) + payload
+def enviar_trapper(z, host, clave, valor):
+    """Envia el valor al item trapper por el API (history.push, Zabbix 7.0+).
+
+    No usa el puerto 10051: los hosts autorregistrados aceptan solo PSK, y una
+    conexion sin cifrar al trapper la rechaza el servidor sin dar error aqui.
+    """
     try:
-        with socket.create_connection((ZBX_SERVER, ZBX_SERVER_PORT), timeout=10) as s:
-            s.sendall(paquete)
-            s.recv(1024)
+        r = z.call("history.push", [{"host": host, "key": clave, "value": str(valor)}])
+        errores = [d["error"] for d in r.get("data", []) if d.get("error")]
+        if errores:
+            log(f"  aviso: Zabbix rechazo {clave}: {errores[0]}")
+            return False
         return True
     except Exception as e:
-        log(f"  aviso: no se pudo enviar {clave} por trapper: {e}")
+        log(f"  aviso: no se pudo enviar {clave}: {e}")
         return False
 
 
@@ -284,7 +285,7 @@ def ciclo(z, dry_run=False):
         log(f"DEGRADADO: {reg['motivo']}. Se conserva el umbral vigente.")
         registrar(reg)
         if not dry_run:
-            enviar_trapper(HOST_INFOBUS, "macdt.status", 0)
+            enviar_trapper(z, HOST_INFOBUS, "macdt.status", 0)
         return reg
 
     rho = rho_i["v"]
@@ -319,8 +320,8 @@ def ciclo(z, dry_run=False):
     guardar_estado(st_nuevo)
     reg["accion"] = accion
 
-    enviar_trapper(HOST_INFOBUS, "macdt.status", 1)
-    enviar_trapper(HOST_INFOBUS, "macdt.t_warn", t_warn)
+    enviar_trapper(z, HOST_INFOBUS, "macdt.status", 1)
+    enviar_trapper(z, HOST_INFOBUS, "macdt.t_warn", t_warn)
     registrar(reg)
 
     log(f"rho={rho:.2f} v_gps={v_gps} F={factor} -> T_warn={t_warn} ms ({accion})")
@@ -349,7 +350,7 @@ def main():
             try:
                 registrar({"ts": int(time.time()), "status": "error", "motivo": str(e)[:300]})
                 if not a.dry_run:
-                    enviar_trapper(HOST_INFOBUS, "macdt.status", 0)
+                    enviar_trapper(z, HOST_INFOBUS, "macdt.status", 0)
             except Exception:
                 pass
         if a.once:

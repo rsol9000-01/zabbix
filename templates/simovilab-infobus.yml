@@ -219,7 +219,7 @@ zabbix_export:
           key: infobus.api.lat_p95_1h
           units: ms
           value_type: FLOAT
-          params: 'percentile(/simovilab-infobus/infobus.api.lat_p50,1h,95)'
+          params: 'percentile(//infobus.api.lat_p50,1h,95)'
           description: 'El p95 del RNF. ~600 muestras por hora.'
           triggers:
             - uuid: 98edfb6df538451480794907aadbe5f5
