@@ -379,7 +379,7 @@ zabbix_export:
                       value: 'Container *: Running'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("Container /(.*): .*", "\1")}'
+                      value: '{{ITEM.NAME}.regsub("Container .([^:]+)", "\1")}'
                     - type: INTEGER
                       name: show.0
                       value: '1'
@@ -410,7 +410,7 @@ zabbix_export:
                       value: 'Container *: Started at'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("Container /(.*): .*", "\1")}'
+                      value: '{{ITEM.NAME}.regsub("Container .([^:]+)", "\1")}'
                     - type: STRING
                       name: reference
                       value: DKSTA
@@ -426,7 +426,7 @@ zabbix_export:
                       value: 'Container *: Restart count'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("Container /(.*): .*", "\1")}'
+                      value: '{{ITEM.NAME}.regsub("Container .([^:]+)", "\1")}'
                     - type: INTEGER
                       name: secondary_label_decimal_places
                       value: '0'
