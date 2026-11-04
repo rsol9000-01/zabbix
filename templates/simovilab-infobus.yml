@@ -367,6 +367,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'macdt.t_warn'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: OKOSG
@@ -382,6 +388,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'macdt.status'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: QHUJP
@@ -397,6 +409,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'infobus.api.lat_p95_1h'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: AVCOU
@@ -412,6 +430,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'infobus.api.ok'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: INRCW
@@ -427,6 +451,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'infobus.api.health_ok'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: IKYHQ
@@ -442,6 +472,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'infobus.api.lat_p50'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: JACSY
@@ -457,6 +493,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'infobus.api.query_p50'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: DMDJM
@@ -472,6 +514,12 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'infobus.api.health_ms'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: CAVAG
@@ -487,6 +535,9 @@ zabbix_export:
                       value:
                         host: 'simovilab-infobus'
                         key: 'infobus.api.throttled'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: GBPMW
