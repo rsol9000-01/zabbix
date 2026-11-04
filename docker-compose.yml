@@ -4,11 +4,11 @@
 ############################
 volumes:
   zabbix-postgresdb:
-  zabbix-server:
-  zabbix-snmptraps:
-  zabbix_dashboard_config:
-  zabbix_certificados:
+    name: zabbix-postgresdb
   macdt_state:
+    name: macdt_state
+  zabbix_certificados:
+    name: zabbix_certificados
 ############################
 # NETWORKS
 ############################
@@ -29,7 +29,6 @@ services:
     container_name: zabbix-postgres-bd
     restart: unless-stopped
     environment:
-      - ZBX_CACHEUPDATEFREQUENCY=5
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
@@ -56,6 +55,7 @@ services:
       zabbix-postgres-bd:
         condition: service_healthy
     environment:
+      - ZBX_CACHEUPDATEFREQUENCY=5
       - DB_SERVER_HOST=${ZBX_DB_IP}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -64,11 +64,6 @@ services:
       - TZ=${TZ}
     ports:
       - "10051:10051"
-    volumes:
-      - zabbix-server:/var/lib/zabbix
-      - ./alertscripts:/usr/lib/zabbix/alertscripts:ro
-      - ./externalscripts:/usr/lib/zabbix/externalscripts:ro
-      - zabbix-snmptraps:/var/lib/zabbix/snmptraps
     healthcheck:
       test:
         [
@@ -116,9 +111,6 @@ services:
       - "${PORT_HTTP}:8080"
     volumes:
       - zabbix_certificados:/etc/ssl/nginx:ro
-      - zabbix_dashboard_config:/usr/share/zabbix
-    #security_opt:
-    #  - seccomp=unconfined
   ##########################
   # ZABBIX AGENT 2
   ###########################
@@ -133,7 +125,7 @@ services:
     container_name: zabbix-agent2
     hostname: ${LOCAL_HOST_NAME}
     restart: unless-stopped
-    privileged: true
+    #privileged: true
     group_add:
      - "$DOCKER_GID"
     depends_on:
@@ -150,7 +142,7 @@ services:
     volumes:
       - /proc:/proc:ro
       - /sys:/sys:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /srv/zabbix-disco:/hostfs:ro
       - ./scripts/user_scripts/:/var/lib/zabbix/user_scripts/:ro
       - ./agent2/${ZBX_AGENT_CONFIG_FILE}:/etc/zabbix/zabbix_agent2.d/${ZBX_AGENT_CONFIG_FILE}:ro
