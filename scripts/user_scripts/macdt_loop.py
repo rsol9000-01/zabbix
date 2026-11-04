@@ -161,7 +161,7 @@ def leer_macros(z, plantillas, necesarias):
         tpl = z.call("template.get", {"filter": {"host": [nombre]}, "output": ["templateid"]})
         if not tpl:
             raise RuntimeError(f"no existe la plantilla '{nombre}'")
-        macros = z.call("usermacro.get", {"templateids": tpl[0]["templateid"],
+        macros = z.call("usermacro.get", {"hostids": tpl[0]["templateid"],
                                           "output": ["macro", "value"]})
         for m in macros:
             if m["macro"] in necesarias:
