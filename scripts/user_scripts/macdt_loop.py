@@ -20,6 +20,12 @@ Por que lee p.calculated en vez de calcular rho:
   ese item calculado ya aplica {$MACDT.RHO_CAP}. Recalcularlo aqui duplicaria la
   definicion y abriria la puerta a que divergieran.
 
+Por que el factor GPS solo actua con la compuerta abierta:
+  fuera de la ventana operativa o con V_gps viejo (mas de MACDT_MAX_AGE s), F = 1.0
+  y la histeresis se reinicia. Sin buses la sonda entrega v_gps_pct = null, Zabbix
+  lo descarta y el item conserva el ultimo valor del dia; usarlo endureceria el
+  umbral toda la noche sin un solo bus en servicio.
+
 Por que el umbral critico no se toca:
   {$T_LATENCY_CRIT} es el RNF. Un compromiso que se relaja bajo carga no es un
   compromiso. El bucle solo mueve la advertencia.
@@ -289,10 +295,19 @@ def ciclo(z, dry_run=False):
         return reg
 
     rho = rho_i["v"]
-    v_gps = items["gtfs.v_gps_pct"]["v"]
+    v_gps_i = items["gtfs.v_gps_pct"]
+    v_gps = v_gps_i["v"]
     gate = items["macdt.gate"]["v"]
 
     st = cargar_estado()
+    # Fuera de servicio (compuerta cerrada) o con dato viejo no hay cobertura GPS
+    # que evaluar: sin buses el item conserva el ultimo valor del dia, porque la
+    # sonda entrega null y Zabbix lo descarta. F_CRIT existe porque la degradacion
+    # del GPS afecta al pasajero; sin buses en servicio no hay pasajero afectado.
+    # No se endurece y se reinicia la histeresis.
+    if gate != 1 or ahora - v_gps_i["clock"] > MAX_AGE:
+        v_gps = None
+        st = {"hardened": False, "below": 0}
     factor, st_nuevo = factor_gps(v_gps, m["{$MACDT.V_GPS.CRIT}"],
                                   m["{$MACDT.V_GPS.WARN}"], m["{$MACDT.F_CRIT}"], st)
 

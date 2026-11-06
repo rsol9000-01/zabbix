@@ -27,8 +27,56 @@ zabbix_export:
           key: infobus.api
           delay: 60s
           history: 1d
+          timeout: 30s
           value_type: TEXT
-          description: 'Maestro. 10 peticiones a /api/next-trips/ desde R2, directo al orchestrator.'
+          description: 'Maestro. 10 peticiones a /api/next-trips/ desde R2, directo al orchestrator. Con --stop-id auto mide la parada con mas horas de paso en 5 h (peor caso). timeout 30s: la sonda tarda mas de 3 s en frio y, una vez por hora, revisa si cambio el GTFS.'
+        - uuid: 923b3c60c12f41e18788a94646949fd2
+          name: 'Parada medida por la sonda'
+          type: DEPENDENT
+          key: infobus.api.stop_id
+          value_type: CHAR
+          history: 90d
+          description: 'stop_id consultado en el ciclo. Con --stop-id auto es la parada del peor caso segun el GTFS vigente; cambia solo cuando cambia el GTFS.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.stop_id
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: infobus.api
+        - uuid: ec07fc29dfb44b33b4ca6ba562b59674
+          name: 'Horas de paso en 5 h de la parada medida (pico)'
+          type: DEPENDENT
+          key: infobus.api.stop_pico_5h
+          value_type: UNSIGNED
+          history: 90d
+          description: 'Pico de horas de paso programadas en una ventana de 5 h para la parada medida (lo que carga la consulta next-trips de infobus 9482328).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.stop_pico_5h
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: infobus.api
+        - uuid: 08da7cf133364d99b616faf4f8323bcb
+          name: 'Eleccion automatica de parada activa'
+          type: DEPENDENT
+          key: infobus.api.stop_auto
+          value_type: UNSIGNED
+          description: '1 si la parada salio del GTFS; 0 si se uso --stop-id-fallback porque nunca se pudo calcular.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.stop_auto
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
         - uuid: 46315e08d097484b903040c1c0e309c2
           name: 'API de InfoBus responde correctamente'
           type: DEPENDENT
@@ -615,4 +663,4 @@ zabbix_export:
           color: F7941D
           item:
             host: 'simovilab-infobus'
-            key: 'infobus.api.health_ms'          
+            key: 'infobus.api.health_ms'

@@ -48,8 +48,28 @@ Por que una sola sesion HTTP:
   primera muestra contamina la rafaga (medido en databus: 848 ms contra 12 ms).
   La peticion de calentamiento se descarta.
 
+Por que --stop-id auto (parada del peor caso):
+  en infobus 9482328, feed/services/queries.py::get_next_trips devuelve TODAS las
+  horas de paso de la parada en las proximas 5 h (arrival_time entre ahora y
+  ahora + 5 h, sin limite y sin filtrar por servicio) y hace 2 consultas SQL por
+  cada una. La latencia de next-trips crece con cuantas horas de paso tiene la
+  parada consultada en esa ventana. Con --stop-id auto la sonda mide la parada
+  con el pico mas alto de horas de paso en 5 h segun el GTFS, es decir, el peor
+  caso, que es el que corresponde comparar contra el RNF.
+
+  La eleccion depende solo del horario, que no cambia de un dia a otro. Se
+  calcula una vez por version del GTFS y se guarda en cache (--cache). Cada
+  --gtfs-check-s segundos (3600 por omision) se pregunta al servidor si el zip
+  cambio (If-Modified-Since / If-None-Match): con 304 no se descarga nada; con
+  200 se recalcula. Si la revision falla se sigue usando la parada guardada
+  (gtfs_check_ok = 0). Si nunca se pudo calcular, se usa --stop-id-fallback y
+  stop_auto = 0. El conteo replica la consulta de infobus: solo arrival_time,
+  todos los servicios, ventana [t, t + 5 h] sin cruzar medianoche.
+
 Uso:
   python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01
+  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost \
+                           --stop-id auto --transit-system 1
 
   Por dentro, sin Traefik (contenedor orchestrator de infobus, HTTP en el 8000):
   python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost --stop-id bUCR_0_01
@@ -58,13 +78,18 @@ Uso:
   python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01 \
                            --repeat 10 --timeout 5
 
-Dependencias: requests
+Dependencias: requests (la eleccion de parada usa solo la biblioteca estandar)
 """
 import argparse
+import csv
+import io
 import json
+import os
 import statistics
 import sys
+import tempfile
 import time
+import zipfile
 
 import socket
 from urllib.parse import urlsplit
@@ -72,6 +97,94 @@ from urllib.parse import urlsplit
 BASE = "https://infobus.ucr.ac.cr"
 API_PATH = "/api/next-trips/"
 HEALTH_PATH = "/health/"
+
+GTFS_URL = "https://feeds.simovi.org/bucr/schedule/gtfs.zip"
+VENTANA_S = 5 * 3600   # ventana fija de get_next_trips en infobus 9482328
+CACHE = os.path.join(tempfile.gettempdir(), "infobus_probe_parada.json")
+
+
+def _hms(t):
+    """HH:MM:SS de GTFS a segundos (admite 24:00 o mas). None si viene vacio."""
+    t = (t or "").strip()
+    if not t:
+        return None
+    h, m, s = t.split(":")
+    return int(h) * 3600 + int(m) * 60 + int(s)
+
+
+def _pico_por_parada(datos_zip):
+    """{stop_id: (pico de horas de paso en VENTANA_S, total del dia)} desde stop_times.txt."""
+    z = zipfile.ZipFile(io.BytesIO(datos_zip))
+    por_parada = {}
+    with z.open("stop_times.txt") as fh:
+        for f in csv.DictReader(io.TextIOWrapper(fh, "utf-8-sig")):
+            seg = _hms(f.get("arrival_time"))
+            if seg is not None:
+                por_parada.setdefault(f["stop_id"], []).append(seg)
+    res = {}
+    for parada, ts in por_parada.items():
+        ts.sort()
+        pico, j = 0, 0
+        for i in range(len(ts)):               # ventana [ts[i], ts[i] + VENTANA_S]
+            while j < len(ts) and ts[j] <= ts[i] + VENTANA_S:
+                j += 1
+            pico = max(pico, j - i)
+        res[parada] = (pico, len(ts))
+    return res
+
+
+def _leer_cache(ruta):
+    try:
+        with open(ruta) as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
+def _guardar_cache(ruta, datos):
+    tmp = ruta + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(datos, fh)
+    os.replace(tmp, ruta)                      # escritura atomica
+
+
+def elegir_parada(gtfs_url, check_s, ruta_cache, timeout=10):
+    """Parada con el pico mas alto de horas de paso en 5 h, con cache por version del GTFS."""
+    import urllib.error
+    import urllib.request
+    cache = _leer_cache(ruta_cache)
+    ahora = int(time.time())
+    if cache and cache.get("url") == gtfs_url and ahora - cache.get("checked_at", 0) < check_s:
+        return cache, 1
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) macdt-infobus-probe/1",
+               "Accept": "application/zip,application/octet-stream,*/*"}
+    if cache and cache.get("url") == gtfs_url:
+        if cache.get("last_modified"):
+            headers["If-Modified-Since"] = cache["last_modified"]
+        if cache.get("etag"):
+            headers["If-None-Match"] = cache["etag"]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(gtfs_url, headers=headers),
+                                    timeout=timeout) as r:
+            datos, lm, etag = r.read(), r.headers.get("Last-Modified"), r.headers.get("ETag")
+    except urllib.error.HTTPError as e:
+        if e.code == 304 and cache:            # sin cambios: se renueva la revision
+            cache["checked_at"] = ahora
+            _guardar_cache(ruta_cache, cache)
+            return cache, 1
+        return cache, 0
+    except Exception:
+        return cache, 0
+    picos = _pico_por_parada(datos)
+    if not picos:
+        return cache, 0
+    # mayor pico; empate: mas horas de paso en el dia; luego orden alfabetico
+    parada = sorted(picos, key=lambda p: (-picos[p][0], -picos[p][1], p))[0]
+    nuevo = {"url": gtfs_url, "stop_id": parada, "pico_5h": picos[parada][0],
+             "total_dia": picos[parada][1], "last_modified": lm, "etag": etag,
+             "checked_at": ahora}
+    _guardar_cache(ruta_cache, nuevo)
+    return nuevo, 1
 
 
 def _quantil(vals, q):
@@ -130,11 +243,15 @@ def _medir(sesion, url, timeout, params=None):
         return 0, ms, 0
 
 
-def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=None):
+def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=None,
+            transit_system=None):
     ses = _sesion(insecure, host_header)
     api_url = base.rstrip("/") + API_PATH
     health_url = base.rstrip("/") + HEALTH_PATH
     params = {"stop_id": stop_id}
+    if transit_system:
+        # infobus responde 500 si falta: usa "default" contra un campo numerico
+        params["transit_system"] = transit_system
 
     # Red: conexion TCP pura, antes de cualquier peticion HTTP.
     tcp_ms = _tcp_connect_ms(base, timeout)
@@ -216,7 +333,14 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", default=BASE, help="origen de infobus, con esquema")
     ap.add_argument("--stop-id", dest="stop_id", required=True,
-                    help="stop_id real del GTFS; si no existe, la API responde 404")
+                    help="stop_id real del GTFS, o 'auto' para medir la parada del peor caso")
+    ap.add_argument("--gtfs-url", dest="gtfs_url", default=GTFS_URL,
+                    help="GTFS estatico para elegir la parada con --stop-id auto")
+    ap.add_argument("--gtfs-check-s", dest="gtfs_check_s", type=int, default=3600,
+                    help="cada cuantos segundos se revisa si el GTFS cambio")
+    ap.add_argument("--stop-id-fallback", dest="stop_id_fallback", default="bUCR_0_01",
+                    help="parada a usar si nunca se pudo calcular la del peor caso")
+    ap.add_argument("--cache", default=CACHE, help="archivo de cache de la parada elegida")
     ap.add_argument("--repeat", type=int, default=10,
                     help="peticiones por ciclo; tope efectivo 30/min por la cuota realtime")
     ap.add_argument("--timeout", type=float, default=5.0)
@@ -225,6 +349,8 @@ def main():
     ap.add_argument("--no-warmup", dest="no_warmup", action="store_true")
     ap.add_argument("--host-header", dest="host_header",
                     help="Host a enviar al conectar directo al orchestrator (valor de ALLOWED_HOSTS)")
+    ap.add_argument("--transit-system", dest="transit_system",
+                    help="id numerico del TransitSystem en infobus (sin el, next-trips da 500)")
     a = ap.parse_args()
 
     if a.repeat > 25:
@@ -232,12 +358,29 @@ def main():
                           "ts_sonda": int(time.time())}))
         sys.exit(0)
 
+    extra = {}
+    if a.stop_id == "auto":
+        try:
+            sel, check_ok = elegir_parada(a.gtfs_url, a.gtfs_check_s, a.cache)
+        except Exception:
+            sel, check_ok = None, 0
+        if sel and sel.get("stop_id"):
+            a.stop_id = sel["stop_id"]
+            extra = {"stop_auto": 1, "stop_pico_5h": sel.get("pico_5h"),
+                     "gtfs_last_modified": sel.get("last_modified"), "gtfs_check_ok": check_ok}
+        else:
+            a.stop_id = a.stop_id_fallback
+            extra = {"stop_auto": 0, "stop_pico_5h": None,
+                     "gtfs_last_modified": None, "gtfs_check_ok": check_ok}
+
     try:
         out = sondear(a.base, a.stop_id, a.repeat, a.timeout,
-                      a.insecure, warmup=not a.no_warmup, host_header=a.host_header)
+                      a.insecure, warmup=not a.no_warmup, host_header=a.host_header,
+                      transit_system=a.transit_system)
     except Exception as e:
         out = {"ok": 0, "error": str(e)[:200], "ts_sonda": int(time.time())}
 
+    out.update(extra)
     print(json.dumps(out))
     sys.exit(0)
 
