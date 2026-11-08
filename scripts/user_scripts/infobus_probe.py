@@ -112,10 +112,16 @@ API_PATH = "/api/next-trips/"
 HEALTH_PATH = "/health/"
 
 GTFS_URL = "https://feeds.simovi.org/bucr/schedule/gtfs.zip"
-VENTANA_S = 5 * 3600   # ventana fija de get_next_trips en infobus 9482328
+# ---------------------------------------------------------------------------
+# Definir la duración fija de la ventana de análisis
+# ---------------------------------------------------------------------------
+VENTANA_S = 5 * 3600
 CACHE = os.path.join(tempfile.gettempdir(), "infobus_probe_parada.json")
 
 
+# ---------------------------------------------------------------------------
+# Convertir una hora GTFS a segundos desde el inicio del servicio
+# ---------------------------------------------------------------------------
 def _hms(t):
     """HH:MM:SS de GTFS a segundos (admite 24:00 o mas). None si viene vacio."""
     t = (t or "").strip()
@@ -125,6 +131,9 @@ def _hms(t):
     return int(h) * 3600 + int(m) * 60 + int(s)
 
 
+# ---------------------------------------------------------------------------
+# Calcular el pico de horas de paso por parada dentro de la ventana móvil
+# ---------------------------------------------------------------------------
 def _pico_por_parada(datos_zip):
     """{stop_id: (pico de horas de paso en VENTANA_S, total del dia)} desde stop_times.txt."""
     z = zipfile.ZipFile(io.BytesIO(datos_zip))
@@ -138,7 +147,10 @@ def _pico_por_parada(datos_zip):
     for parada, ts in por_parada.items():
         ts.sort()
         pico, j = 0, 0
-        for i in range(len(ts)):               # ventana [ts[i], ts[i] + VENTANA_S]
+        # -------------------------------------------------------------------
+        # Recorrer las horas de llegada y contar las que caben en cada ventana
+        # -------------------------------------------------------------------
+        for i in range(len(ts)):
             while j < len(ts) and ts[j] <= ts[i] + VENTANA_S:
                 j += 1
             pico = max(pico, j - i)
@@ -146,6 +158,9 @@ def _pico_por_parada(datos_zip):
     return res
 
 
+# ---------------------------------------------------------------------------
+# Leer del archivo de caché la parada calculada anteriormente
+# ---------------------------------------------------------------------------
 def _leer_cache(ruta):
     try:
         with open(ruta) as fh:
@@ -154,13 +169,19 @@ def _leer_cache(ruta):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Guardar los datos de caché mediante un reemplazo atómico
+# ---------------------------------------------------------------------------
 def _guardar_cache(ruta, datos):
     tmp = ruta + ".tmp"
     with open(tmp, "w") as fh:
         json.dump(datos, fh)
-    os.replace(tmp, ruta)                      # escritura atomica
+    os.replace(tmp, ruta)
 
 
+# ---------------------------------------------------------------------------
+# Elegir la parada con mayor carga y actualizar la caché según la versión GTFS
+# ---------------------------------------------------------------------------
 def elegir_parada(gtfs_url, check_s, ruta_cache, timeout=10):
     """Parada con el pico mas alto de horas de paso en 5 h, con cache por version del GTFS."""
     import urllib.error
@@ -181,7 +202,10 @@ def elegir_parada(gtfs_url, check_s, ruta_cache, timeout=10):
                                     timeout=timeout) as r:
             datos, lm, etag = r.read(), r.headers.get("Last-Modified"), r.headers.get("ETag")
     except urllib.error.HTTPError as e:
-        if e.code == 304 and cache:            # sin cambios: se renueva la revision
+        if e.code == 304 and cache:
+            # -------------------------------------------------------------------
+            # Renovar la fecha de comprobación si el servidor confirma que no cambió
+            # -------------------------------------------------------------------
             cache["checked_at"] = ahora
             _guardar_cache(ruta_cache, cache)
             return cache, 1
@@ -191,7 +215,9 @@ def elegir_parada(gtfs_url, check_s, ruta_cache, timeout=10):
     picos = _pico_por_parada(datos)
     if not picos:
         return cache, 0
-    # mayor pico; empate: mas horas de paso en el dia; luego orden alfabetico
+    # -----------------------------------------------------------------------
+    # Desempatar por total diario y luego por identificador de parada
+    # -----------------------------------------------------------------------
     parada = sorted(picos, key=lambda p: (-picos[p][0], -picos[p][1], p))[0]
     nuevo = {"url": gtfs_url, "stop_id": parada, "pico_5h": picos[parada][0],
              "total_dia": picos[parada][1], "last_modified": lm, "etag": etag,
@@ -200,6 +226,9 @@ def elegir_parada(gtfs_url, check_s, ruta_cache, timeout=10):
     return nuevo, 1
 
 
+# ---------------------------------------------------------------------------
+# Obtener un cuantil mediante el rango más cercano
+# ---------------------------------------------------------------------------
 def _quantil(vals, q):
     """Rango mas cercano, igual que gtfsrt_probe.py para que sean comparables."""
     if not vals:
@@ -208,13 +237,17 @@ def _quantil(vals, q):
     return v[min(len(v) - 1, int(round(q * (len(v) - 1))))]
 
 
+# ---------------------------------------------------------------------------
+# Crear una sesión HTTP y configurar encabezados y verificación TLS
+# ---------------------------------------------------------------------------
 def _sesion(insecure=False, host_header=None):
     import requests
     s = requests.Session()
     s.headers.update({"User-Agent": "macdt-infobus-probe/1"})
     if host_header:
-        # Conexion directa a Daphne: Host valido para ALLOWED_HOSTS y
-        # X-Forwarded-Proto para que SECURE_SSL_REDIRECT no redirija a https
+        # -------------------------------------------------------------------
+        # Enviar los encabezados que acepta Daphne en una conexión directa
+        # -------------------------------------------------------------------
         s.headers.update({"Host": host_header, "X-Forwarded-Proto": "https"})
     if insecure:
         s.verify = False
@@ -223,6 +256,9 @@ def _sesion(insecure=False, host_header=None):
     return s
 
 
+# ---------------------------------------------------------------------------
+# Medir la mediana de conexión TCP al host y puerto, sin incluir DNS
+# ---------------------------------------------------------------------------
 def _tcp_connect_ms(base, timeout, intentos=3):
     """Mediana del tiempo de conexion TCP a host:puerto de base, sin DNS. None si falla."""
     try:
@@ -244,6 +280,9 @@ def _tcp_connect_ms(base, timeout, intentos=3):
         return None
 
 
+# ---------------------------------------------------------------------------
+# Medir una solicitud HTTP y devolver su estado, duración y bytes recibidos
+# ---------------------------------------------------------------------------
 def _medir(sesion, url, timeout, params=None):
     """Devuelve (status, ms, bytes). No lanza: el fallo es en si una metrica."""
     t0 = time.perf_counter()
@@ -256,6 +295,9 @@ def _medir(sesion, url, timeout, params=None):
         return 0, ms, 0
 
 
+# ---------------------------------------------------------------------------
+# Medir la API, el servicio de salud y la conexión para una parada
+# ---------------------------------------------------------------------------
 def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=None,
             transit_system=None):
     ses = _sesion(insecure, host_header)
@@ -263,26 +305,36 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
     health_url = base.rstrip("/") + HEALTH_PATH
     params = {"stop_id": stop_id}
     if transit_system:
-        # infobus responde 500 si falta: usa "default" contra un campo numerico
+        # -------------------------------------------------------------------
+        # Incluir el sistema de transporte para evitar una consulta inválida
+        # -------------------------------------------------------------------
         params["transit_system"] = transit_system
 
-    # Red: conexion TCP pura, antes de cualquier peticion HTTP.
+    # -----------------------------------------------------------------------
+    # Medir la conexión TCP antes de enviar solicitudes HTTP
+    # -----------------------------------------------------------------------
     tcp_ms = _tcp_connect_ms(base, timeout)
 
-    # Primera peticion de la sesion: incluye abrir la conexion (DNS + TCP + TLS).
+    # -----------------------------------------------------------------------
+    # Medir el servicio de salud con una conexión nueva y luego reutilizada
+    # -----------------------------------------------------------------------
     hc_status, hc_ms, _ = _medir(ses, health_url, timeout)
-    # Segunda: reusa la conexion. Es el piso comparable con la rafaga.
     h_status, h_ms, _ = _medir(ses, health_url, timeout)
     h_ok = hc_status == 200 and h_status == 200
 
-    # Calentamiento descartado: abre la conexion y no se mide.
+    # -----------------------------------------------------------------------
+    # Calentar la conexión con una solicitud que no se incluye en las métricas
+    # -----------------------------------------------------------------------
     calentado = 0
     if warmup:
         w_status, _, _ = _medir(ses, api_url, timeout, params)
         calentado = 1 if w_status else 0
 
     lat, estados, bytes_tot = [], [], 0
-    lat204 = []                          # tiempos de las respuestas 204 (sin servicio)
+    # -----------------------------------------------------------------------
+    # Guardar por separado las duraciones de las respuestas sin servicio
+    # -----------------------------------------------------------------------
+    lat204 = []
     throttled = errores = sin_serv = 0
 
     for _ in range(repeat):
@@ -292,14 +344,19 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
             lat.append(ms)
             bytes_tot += nbytes
         elif status == 204:
-            sin_serv += 1                # dia sin servicio: respuesta correcta, sin latencia util
+            # -------------------------------------------------------------------
+            # Contabilizar por separado una respuesta correcta sin servicio
+            # -------------------------------------------------------------------
+            sin_serv += 1
             lat204.append(ms)
         elif status == 429:
             throttled += 1
         else:
             errores += 1
 
-    # Status representativo: el mas frecuente de la rafaga.
+    # -----------------------------------------------------------------------
+    # Usar como estado representativo el código más frecuente de la ráfaga
+    # -----------------------------------------------------------------------
     status_mode = max(set(estados), key=estados.count) if estados else 0
     ok = 1 if (len(lat) + sin_serv == repeat and status_mode in (200, 204)) else 0
 
@@ -310,18 +367,29 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
         "n": repeat,
         "n_ok": len(lat),
         "sin_servicio": 1 if sin_serv == repeat else 0,
-        "status_codes": sorted(set(estados)),        # codigos distintos de la rafaga, p. ej. [200] o [200, 204]
-        # Costo fijo medido en dias sin servicio (solo respuestas 204; null si no hubo)
+        # -------------------------------------------------------------------
+        # Enumerar los códigos HTTP distintos recibidos durante la ráfaga
+        # -------------------------------------------------------------------
+        "status_codes": sorted(set(estados)),
+        # -------------------------------------------------------------------
+        # Informar por separado las latencias de días sin servicio
+        # -------------------------------------------------------------------
         "lat_sin_servicio_p50_ms": _quantil(lat204, 0.50) if lat204 else None,
-        # Costo de la consulta vacia (204): capa de API + 4 consultas fijas, sin horas de paso
+        # -------------------------------------------------------------------
+        # Separar el costo de la respuesta vacía del costo de transporte HTTP
+        # -------------------------------------------------------------------
         "query_sin_servicio_p50_ms": (round(_quantil(lat204, 0.50) - h_ms, 2) if lat204 and h_ok else None),
         "throttled": throttled,
         "errors": errores,
         "warmup": calentado,
         "stop_id": stop_id,
-        # Red
+        # -------------------------------------------------------------------
+        # Exponer las métricas de conexión de red
+        # -------------------------------------------------------------------
         "tcp_connect_ms": tcp_ms,
-        # Piso de transporte
+        # -------------------------------------------------------------------
+        # Exponer las métricas base del transporte HTTP
+        # -------------------------------------------------------------------
         "health_ok": 1 if h_ok else 0,
         "health_status": h_status,
         "health_cold_ms": hc_ms if hc_status == 200 else None,
@@ -337,7 +405,9 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
             "lat_max_ms": max(lat),
             "lat_mean_ms": round(statistics.fmean(lat), 2),
             "lat_stdev_ms": round(statistics.stdev(lat), 2) if len(lat) > 1 else 0.0,
-            # Costo atribuible a la consulta, aislado del transporte.
+            # -------------------------------------------------------------------
+            # Aislar el tiempo de consulta del tiempo base del transporte
+            # -------------------------------------------------------------------
             "query_p50_ms": round(_quantil(lat, 0.50) - h_ms, 2) if h_ok else None,
             "bytes_mean": round(bytes_tot / len(lat)),
         })
@@ -351,6 +421,9 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
     return out
 
 
+# ---------------------------------------------------------------------------
+# Calcular y guardar el percentil 95 de los valores de la última hora
+# ---------------------------------------------------------------------------
 def _p95_1h(base, p50, ahora, ventana_s=3600, serie_tipo="200"):
     """p95 de los p50 de la ultima hora, guardados por la propia sonda.
 
@@ -380,6 +453,9 @@ def _p95_1h(base, p50, ahora, ventana_s=3600, serie_tipo="200"):
     return _quantil(vals, 0.95), len(vals)
 
 
+# ---------------------------------------------------------------------------
+# Construir las tablas HTML de estado y latencia para el widget de Zabbix
+# ---------------------------------------------------------------------------
 def _tabla_html(o, base):
     """Tabla 'API INFOBUS' para el widget Item history (columna en modo HTML).
 
@@ -387,13 +463,25 @@ def _tabla_html(o, base):
     asi que no se fija color de texto: solo los puntos y el estado llevan color propio.
     """
     verde, rojo, naranja = "#2E7D32", "#C62828", "#E65100"
+    # -----------------------------------------------------------------------
+    # Representar el estado de disponibilidad con un punto de color
+    # -----------------------------------------------------------------------
     def punto(vivo):
         return ('<span style="display:inline-block;width:12px;height:12px;border-radius:50%%;'
                 'background:%s;vertical-align:middle"></span>' % (verde if vivo else rojo))
+    # -----------------------------------------------------------------------
+    # Formatear una latencia en milisegundos o indicar que no está disponible
+    # -----------------------------------------------------------------------
     def ms(v):
         return "-" if v is None else "%g" % round(v, 1)
+    # -----------------------------------------------------------------------
+    # Formatear un código HTTP o indicar que no hubo conexión
+    # -----------------------------------------------------------------------
     def codigo(c):
         return "sin conexi\u00f3n" if not c else str(c)
+    # -----------------------------------------------------------------------
+    # Aplicar color al texto del estado cuando se indique
+    # -----------------------------------------------------------------------
     def estado(txt, color=None):
         return txt if not color else '<span style="color:%s;font-weight:bold">%s</span>' % (color, txt)
 
@@ -421,19 +509,29 @@ def _tabla_html(o, base):
         time.strftime("%H:%M:%S", time.localtime(o.get("ts_sonda") or time.time())))
     if o.get("error"):
         pie += " \u00b7 error: " + html.escape(str(o["error"]))
+    # -----------------------------------------------------------------------
+    # Crear una tabla HTML con encabezados, filas y estilos opcionales
+    # -----------------------------------------------------------------------
     def tabla(titulo, cols, filas, tdc=None):
         tdc = tdc or {}
-        # titulo subrayado en azul real, un salto y la tabla
+        # -------------------------------------------------------------------
+        # Resaltar el título y renderizar el contenido tabular
+        # -------------------------------------------------------------------
         return ('<div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">%s</div><br>'
                 '<table style="border-collapse:collapse"><tr>%s</tr>%s</table>'
                 % (titulo, "".join("<th %s>%s</th>" % (th, c) for c in cols),
                    "".join("<tr>%s</tr>" % "".join("<td %s>%s</td>" % (tdc.get(k, td), c) for k, c in enumerate(f))
                            for f in filas)))
 
-    # Tabla 2: latencias con descripcion para lectura humana
+    # -----------------------------------------------------------------------
+    # Explicar cada métrica de latencia con una descripción legible
+    # -----------------------------------------------------------------------
     sin_serv = o.get("sin_servicio") == 1
     nota = (" Hoy sin servicio: el valor es de la respuesta vac\u00eda (204), sin horas de paso."
             if sin_serv else "")
+    # -----------------------------------------------------------------------
+    # Seleccionar la latencia disponible e identificar las respuestas HTTP 204
+    # -----------------------------------------------------------------------
     def val(v, v204=None):
         """Valor de las respuestas 200; si no hay, el de las 204 marcado como tal."""
         if v is not None:
@@ -465,6 +563,9 @@ def _tabla_html(o, base):
             + "</div>")
 
 
+# ---------------------------------------------------------------------------
+# Leer argumentos, ejecutar la sonda y emitir las métricas en formato JSON
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

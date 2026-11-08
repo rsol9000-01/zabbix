@@ -37,7 +37,7 @@ zabbix_export:
           master_item:
             key: infobus.api.ext
         - uuid: caba8d280bb1438da7b1e2041bd01d7f
-          name: 'Externo: peticiones estranguladas por la cuota'
+          name: 'Externo: Too Many Requests (429): peticiones rechazadas por la cuota'
           type: DEPENDENT
           key: infobus.api.ext.throttled
           value_type: UNSIGNED
@@ -151,6 +151,17 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
+          triggers:
+            - uuid: 2f3668dbd0ed47e3a225374811151e31
+              expression: 'avg(/simovilab-infobus-ext/infobus.api.ext.setup_ms,10m)>{$INFOBUS.EXT.SETUP.FACTOR}*percentile(/simovilab-infobus-ext/infobus.api.ext.setup_ms,1d,50) and avg(/simovilab-infobus-ext/infobus.api.ext.setup_ms,10m)>{$INFOBUS.EXT.SETUP.MIN_MS}'
+              name: 'Externo: costo de abrir la conexión fuera de lo normal'
+              priority: WARNING
+              description: |
+                Lo que paga un usuario al abrir la conexión con https://infobus.ucr.ac.cr (DNS,
+                saludo TCP y negociación TLS con Traefik) subió más de {$INFOBUS.EXT.SETUP.FACTOR}
+                veces su mediana del último día, en promedio de 10 min, y pasa de
+                {$INFOBUS.EXT.SETUP.MIN_MS} ms. Revisar DNS público, red entre R4 y el proxy,
+                Traefik (certificado, carga) o el enlace de la sede.
         - uuid: 8c4d43f61cf248e59d1c8241e167ceb7
           name: 'Externo: conexion TCP de R4 a Traefik (red)'
           type: DEPENDENT
@@ -169,3 +180,10 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
+      macros:
+        - macro: '{$INFOBUS.EXT.SETUP.FACTOR}'
+          value: '2'
+          description: 'Veces la mediana diaria del costo de abrir la conexión pública (DNS + TCP + TLS) que dispara la alerta.'
+        - macro: '{$INFOBUS.EXT.SETUP.MIN_MS}'
+          value: '5'
+          description: 'Mínimo en ms para alertar el costo de abrir la conexión pública (piso por si la mediana diaria es muy baja).'

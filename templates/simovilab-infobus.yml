@@ -348,6 +348,25 @@ zabbix_export:
                   expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
                 - name: 'La sonda agota su cuota: la medicion no es valida'
                   expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
+                - name: 'L_api p95 sostenido sobre el umbral adaptativo de MACDT'
+                  expression: 'min(/simovilab-infobus/infobus.api.lat_p95_1h,{$T_LATENCY_WARN.SOSTENIDO})>{$T_LATENCY_WARN}'
+            - uuid: 1fc524dae8994f96b8fe9c66353814d0
+              expression: 'min(/simovilab-infobus/infobus.api.lat_p95_1h,{$T_LATENCY_WARN.SOSTENIDO})>{$T_LATENCY_WARN}'
+              name: 'L_api p95 sostenido sobre el umbral adaptativo de MACDT'
+              priority: HIGH
+              description: |
+                El p95 de la última hora estuvo por encima de T_WARN durante todo
+                {$T_LATENCY_WARN.SOSTENIDO} (nunca bajó del umbral en ese lapso): no es un pico,
+                es una degradación sostenida.
+                Estado definitivo: habilitada. Mientras MACDT no esté calibrado (T_WARN cerca del
+                piso y p95 diurno de ~290 ms por las horas de paso de next-trips, hallazgo H-01)
+                se dispara casi todo el día hábil; si hace falta, se deshabilita a mano de forma
+                temporal hasta aplicar la ecuación de tubería.
+              dependencies:
+                - name: 'La API de InfoBus no responde correctamente'
+                  expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
+                - name: 'La sonda agota su cuota: la medicion no es valida'
+                  expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
             - uuid: 3e04749615074eab87a0535f08e0e027
               expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_CRIT}'
               name: 'L_api p95 incumple el RNF de 200 ms'
@@ -439,6 +458,9 @@ zabbix_export:
           value_type: FLOAT
           description: 'El valor que el bucle puso en la macro de host. Para graficarlo contra rho.'
       macros:
+        - macro: '{$T_LATENCY_WARN.SOSTENIDO}'
+          value: 30m
+          description: 'Tiempo que el p95 debe mantenerse sobre T_WARN para la alerta Alta "sostenido".'
         - macro: '{$INFOBUS.SETUP.FACTOR}'
           value: '2'
           description: 'Veces la mediana diaria del costo de abrir la conexión que dispara la alerta.'
@@ -458,8 +480,8 @@ zabbix_export:
           value: '130'
           description: 'PROVISIONAL. Sale de la linea base de 7 dias.'
         - macro: '{$MACDT.T_FLOOR}'
-          value: '130'
-          description: 'Piso del umbral. Igual a T_BASE.'
+          value: '91'
+          description: 'Piso del umbral (decisión 2026-11-05: bajar de 130 a 91). Confirmar con la latencia nocturna.'
         - macro: '{$MACDT.T_RNF}'
           value: '200'
           description: 'Techo contractual. No se mueve.'

@@ -46,8 +46,10 @@ zabbix_export:
               expression: 'min(/simovilab-databus/databus.static.desfase_s,15m)>{$MACDT.ZIP.DESFASE.WARN}'
               name: 'El GTFS que publica databus está desactualizado'
               dependencies:
-                - name: 'databus no publica el GTFS estático'
+                - name: 'SIMOVI no sirve el GTFS estático'
                   expression: last(/simovilab-databus/macdt.static_zip_http)<>200
+                - name: 'databus no publica el GTFS estático'
+                  expression: last(/simovilab-databus/databus.static.http)<>200
         - uuid: 5cd27a5a2ccd4781bae8e48cd15921db
           name: 'databus: código HTTP del estático'
           type: DEPENDENT
@@ -59,6 +61,12 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: databus.static
+          triggers:
+            - uuid: ae8592f688154782b9e57f3ed1c11f0c
+              expression: last(/simovilab-databus/databus.static.http)<>200
+              name: 'databus no publica el GTFS estático'
+              priority: AVERAGE
+              description: 'El feed.zip que publica databus (/feed/schedule/feed.zip) no devolvió 200. Hoy databus no lo genera, así que esta alerta queda activa hasta que lo haga.'
         - uuid: d3c7378b4fb04a839608eacf51f16c29
           name: 'databus: lectura del estático correcta'
           type: DEPENDENT
@@ -225,6 +233,11 @@ zabbix_export:
               expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
               name: 'Capa D: sonda sin datos'
               priority: HIGH
+              description: 'Si el servidor no responde al ping, esta alerta queda suprimida por Server DOWN!!!.'
+              dependencies:
+                - name: 'Server DOWN!!!'
+                  expression: 'max(/simovilab servidor y sistema operativo/icmpping[,3],#3)=0'
+                  recovery_expression: 'last(/simovilab servidor y sistema operativo/icmpping[,3])=1'
         - uuid: f5eb2be0af924315b4dd3665610fac7a
           name: 'Sospecha de relleno de timestamps'
           type: DEPENDENT
@@ -492,7 +505,7 @@ zabbix_export:
           master_item:
             key: macdt.window
         - uuid: 4e9dedd5b10645929bae7342618dc21d
-          name: 'Publicacion de GTFS statico'
+          name: 'SIMOVI: código HTTP del GTFS estático'
           type: DEPENDENT
           key: macdt.static_zip_http
           preprocessing:
@@ -505,8 +518,9 @@ zabbix_export:
           triggers:
             - uuid: f2398441f5414df29633745f863e2f27
               expression: last(/simovilab-databus/macdt.static_zip_http)<>200
-              name: 'databus no publica el GTFS estático'
+              name: 'SIMOVI no sirve el GTFS estático'
               priority: AVERAGE
+              description: 'La descarga del gtfs.zip de SIMOVI no devolvió 200 en el primer intento. Sin ese archivo, MACDT no puede derivar la ventana de servicio.'
         - uuid: e046b49d630a4693af8e83d9a98cc03c
           name: 'Scheduled trips'
           type: DEPENDENT

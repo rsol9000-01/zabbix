@@ -27,6 +27,9 @@ DOW = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
 
 DIAS_CORTOS = ["L", "K", "M", "J", "V", "S", "D"]
 
+# ---------------------------------------------------------------------------
+# Convertir los minutos del día a una hora legible de 12 horas
+# ---------------------------------------------------------------------------
 def _hora_12(minutos):
     """Minuto del dia -> '6:10 a.m.'"""
     h, m = divmod(minutos, 60)
@@ -35,6 +38,9 @@ def _hora_12(minutos):
     return "%d:%02d %s" % (h % 12 or 12, m, sufijo)
 
 
+# ---------------------------------------------------------------------------
+# Describir los días y las horas de una ventana operativa
+# ---------------------------------------------------------------------------
 def _horario_texto(dias, inicio_min, fin_min):
     """['monday'..'friday'], 370, 1318 -> 'L-V de 6:10 a.m. a 9:58 p.m.'"""
     idx = sorted(DOW.index(d) for d in dias)
@@ -44,6 +50,9 @@ def _horario_texto(dias, inicio_min, fin_min):
         dias_txt = ",".join(DIAS_CORTOS[i] for i in idx)
     return "%s de %s a %s" % (dias_txt, _hora_12(inicio_min), _hora_12(fin_min))
 
+# ---------------------------------------------------------------------------
+# Describir los intervalos sin viajes programados
+# ---------------------------------------------------------------------------
 def _huecos_texto(huecos):
     """[{'inicio':'08:21','fin':'08:24'}, ...] -> 'Sin buses programados: 8:21 a 8:24 a.m. · ...'"""
     if not huecos:
@@ -61,6 +70,9 @@ def _huecos_texto(huecos):
             partes.append("%s a %s" % (ta, tb))
     return "Sin buses programados: " + " · ".join(partes)
 
+# ---------------------------------------------------------------------------
+# Convertir una hora GTFS a segundos desde el inicio del servicio
+# ---------------------------------------------------------------------------
 def _sec(t):
     """GTFS HH:MM:SS -> segundos. Admite >24h (no asi el TimeField de databus)."""
     if not t:
@@ -68,10 +80,15 @@ def _sec(t):
     p = t.strip().split(":")
     return int(p[0]) * 3600 + int(p[1]) * 60 + int(p[2])
 
-
+# ---------------------------------------------------------------------------
+# Leer del archivo ZIP los viajes, horarios y calendarios GTFS
+# ---------------------------------------------------------------------------
 def desde_zip(path):
     """Devuelve (spans, calendarios) leyendo el GTFS como archivo."""
     with zipfile.ZipFile(path) as z:
+        # -------------------------------------------------------------------
+        # Leer un archivo CSV contenido en el ZIP y devolver sus filas
+        # -------------------------------------------------------------------
         def rd(n):
             with z.open(n) as fh:
                 return list(csv.DictReader(io.TextIOWrapper(fh, "utf-8-sig")))
@@ -88,6 +105,9 @@ def desde_zip(path):
     return {k: tuple(v) for k, v in spans.items()}, trips, cal
 
 
+# ---------------------------------------------------------------------------
+# Consultar viajes y calendarios GTFS en la base de datos PostgreSQL
+# ---------------------------------------------------------------------------
 def desde_pg(dsn):
     """Igual, contra el feed vigente en PostgreSQL (feed_trip / feed_stoptime)."""
     import psycopg
@@ -121,6 +141,9 @@ def desde_pg(dsn):
     return spans, trips, cal
 
 
+# ---------------------------------------------------------------------------
+# Calcular ventanas, concurrencia, días de servicio y huecos programados
+# ---------------------------------------------------------------------------
 def analizar(spans, trips, cal):
     servicios = {c["service_id"] for c in cal} or {trips.get(t, "") for t in spans}
     out = {"servicios": {}}
@@ -165,12 +188,16 @@ def analizar(spans, trips, cal):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Descargar el archivo GTFS y obtener su código HTTP y antigüedad
+# ---------------------------------------------------------------------------
 def _bajar(url, timeout, host_header=None):
     """Baja el GTFS estatico. Devuelve (cuerpo, codigo HTTP, edad del archivo en s)."""
     import email.utils
     import urllib.request
-    # Sin User-Agent explicito urllib envia "Python-urllib/3.x", que el servidor
-    # de feeds.simovi.org responde con 404 (el navegador si recibe el zip).
+    # -----------------------------------------------------------------------
+    # Enviar un User-Agent de navegador para evitar el rechazo del servidor GTFS
+    # -----------------------------------------------------------------------
     pedido = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) zabbix-macdt/1.0",
         "Accept": "application/zip,application/octet-stream,*/*",
@@ -190,6 +217,9 @@ def _bajar(url, timeout, host_header=None):
     return cuerpo, codigo, edad
 
 
+# ---------------------------------------------------------------------------
+# Construir el resultado de error con la estructura del modo --now
+# ---------------------------------------------------------------------------
 def _now_degradado(error, http_estado):
     """JSON de falla para --now: mismas claves, con window_ok=0."""
     import datetime
@@ -209,6 +239,9 @@ def _now_degradado(error, http_estado):
     }
 
 
+# ---------------------------------------------------------------------------
+# Procesar los argumentos, analizar el GTFS e imprimir los resultados
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -242,8 +275,9 @@ def main():
             spans, trips, cal = desde_zip(a.zip) if a.zip else desde_pg(a.pg)
         r = analizar(spans, trips, cal)
     except Exception as e:
-        # Nunca abortar en --now: la falla ES la metrica. Un item en "no soportado"
-        # no se puede alertar; un JSON con window_ok=0 si.
+        # -------------------------------------------------------------------
+        # Devolver una métrica de error en --now para que Zabbix pueda alertarla
+        # -------------------------------------------------------------------
         import urllib.error
         if isinstance(e, urllib.error.HTTPError):
             http_estado = e.code

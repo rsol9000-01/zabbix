@@ -83,11 +83,15 @@ ZBX_SERVER_PORT = int(os.environ.get("ZBX_SERVER_PORT", "10051"))
 STATE_FILE = os.path.join(STATE_DIR, "state.json")
 HISTORY_FILE = os.path.join(STATE_DIR, "history.jsonl")
 
-# Items que el bucle necesita del host de databus
+# ---------------------------------------------------------------------------
+# Definir los ítems que se consultan en el host de databus
+# ---------------------------------------------------------------------------
 ITEMS_DATABUS = ["p.calculated", "gtfs.v_gps_pct", "macdt.gate",
                  "gtfs.v_trips", "macdt.v_trips_max", "gtfs.fetch_ok"]
 
-# Constantes que el bucle lee de las macros de plantilla
+# ---------------------------------------------------------------------------
+# Definir las macros de plantilla que contienen los parámetros de cálculo
+# ---------------------------------------------------------------------------
 MACROS_NEEDED = ["{$MACDT.T_BASE}", "{$MACDT.BETA}", "{$MACDT.F_CRIT}",
                  "{$MACDT.T_FLOOR}", "{$MACDT.T_RNF}",
                  "{$MACDT.V_GPS.CRIT}", "{$MACDT.V_GPS.WARN}"]
@@ -95,25 +99,37 @@ MACROS_NEEDED = ["{$MACDT.T_BASE}", "{$MACDT.BETA}", "{$MACDT.F_CRIT}",
 MACRO_OUT = "{$T_LATENCY_WARN}"
 
 
+# ---------------------------------------------------------------------------
+# Imprimir un mensaje con la hora local y vaciar el búfer de salida
+# ---------------------------------------------------------------------------
 def log(msg):
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Cliente mínimo del API de Zabbix
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Agrupar las operaciones necesarias para comunicarse con la API de Zabbix
+# ---------------------------------------------------------------------------
 class Zabbix:
+    # -----------------------------------------------------------------------
+    # Inicializar la sesión HTTP y las credenciales de acceso a Zabbix
+    # -----------------------------------------------------------------------
     def __init__(self, url, user, password):
         self.url, self.user, self.password = url, user, password
         self.token = None
         self.s = requests.Session()
         self.s.headers.update({"Content-Type": "application/json-rpc"})
 
+    # -----------------------------------------------------------------------
+    # Obtener un token de acceso y guardarlo en la sesión
+    # -----------------------------------------------------------------------
     def login(self):
         r = self._raw("user.login", {"username": self.user, "password": self.password}, auth=False)
         self.token = r
         self.s.headers.update({"Authorization": f"Bearer {self.token}"})
 
+    # -----------------------------------------------------------------------
+    # Enviar una solicitud JSON-RPC y devolver su resultado
+    # -----------------------------------------------------------------------
     def _raw(self, method, params, auth=True):
         if auth and not self.token:
             self.login()
@@ -125,6 +141,9 @@ class Zabbix:
             raise RuntimeError(f"{method}: {data['error'].get('data') or data['error'].get('message')}")
         return data["result"]
 
+    # -----------------------------------------------------------------------
+    # Ejecutar una llamada a la API y reautenticar si el token expiró
+    # -----------------------------------------------------------------------
     def call(self, method, params):
         """Reintenta una vez tras reautenticar: el token puede haber expirado."""
         try:
@@ -137,9 +156,9 @@ class Zabbix:
             raise
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Lectura
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Leer el último valor y la hora de actualización de cada ítem solicitado
+# ---------------------------------------------------------------------------
 def leer_items(z, host, keys):
     """Ultimo valor y su reloj por clave. item.get entrega lastvalue directo."""
     res = z.call("item.get", {
@@ -160,6 +179,9 @@ def leer_items(z, host, keys):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Leer de las plantillas las macros requeridas para calcular el umbral
+# ---------------------------------------------------------------------------
 def leer_macros(z, plantillas, necesarias):
     """Lee las constantes de las macros de plantilla. Las de infobus pisan a las de databus."""
     vals = {}
@@ -178,9 +200,9 @@ def leer_macros(z, plantillas, necesarias):
     return vals
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Estado del endurecimiento por GPS
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Cargar del disco el estado persistente del endurecimiento por GPS
+# ---------------------------------------------------------------------------
 def cargar_estado():
     try:
         with open(STATE_FILE) as f:
@@ -189,6 +211,9 @@ def cargar_estado():
         return {"hardened": False, "below": 0}
 
 
+# ---------------------------------------------------------------------------
+# Guardar de forma atómica el estado persistente del ciclo
+# ---------------------------------------------------------------------------
 def guardar_estado(st):
     os.makedirs(STATE_DIR, exist_ok=True)
     tmp = STATE_FILE + ".tmp"
@@ -197,6 +222,9 @@ def guardar_estado(st):
     os.replace(tmp, STATE_FILE)
 
 
+# ---------------------------------------------------------------------------
+# Aplicar el factor GPS con persistencia e histéresis
+# ---------------------------------------------------------------------------
 def factor_gps(v_gps, gps_crit, gps_warn, f_crit, st, persistencia=3):
     """Devuelve (F, estado_nuevo). Sin dato de GPS no endurece."""
     if v_gps is None:
@@ -216,17 +244,17 @@ def factor_gps(v_gps, gps_crit, gps_warn, f_crit, st, persistencia=3):
     return (f_crit if st["hardened"] else 1.0), st
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Cálculo
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Calcular el umbral de advertencia y limitarlo al rango permitido
+# ---------------------------------------------------------------------------
 def calcular_umbral(t_base, beta, rho, factor, t_floor, t_rnf):
     crudo = t_base * (1.0 + beta * rho) * factor
     return round(max(t_floor, min(crudo, t_rnf)), 1), round(crudo, 1)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Escritura
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Crear o actualizar una macro de host con el umbral calculado
+# ---------------------------------------------------------------------------
 def escribir_macro(z, host, macro, valor):
     """Crea o actualiza la macro DE HOST. Devuelve 'create' | 'update' | 'noop'."""
     h = z.call("host.get", {"filter": {"host": [host]}, "output": ["hostid"]})
@@ -247,6 +275,9 @@ def escribir_macro(z, host, macro, valor):
     return "update"
 
 
+# ---------------------------------------------------------------------------
+# Publicar un valor en un ítem trapper mediante la API de Zabbix
+# ---------------------------------------------------------------------------
 def enviar_trapper(z, host, clave, valor):
     """Envia el valor al item trapper por el API (history.push, Zabbix 7.0+).
 
@@ -265,15 +296,18 @@ def enviar_trapper(z, host, clave, valor):
         return False
 
 
+# ---------------------------------------------------------------------------
+# Añadir un registro JSON al historial persistente del proceso
+# ---------------------------------------------------------------------------
 def registrar(reg):
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(HISTORY_FILE, "a") as f:
         f.write(json.dumps(reg) + "\n")
 
 
-# ─────────────────────────────────────────────────────────────────────
-# Un ciclo
-# ─────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Leer los datos, calcular el umbral y aplicar las actualizaciones del ciclo
+# ---------------------------------------------------------------------------
 def ciclo(z, dry_run=False):
     ahora = int(time.time())
     reg = {"ts": ahora, "status": "ok"}
@@ -284,7 +318,9 @@ def ciclo(z, dry_run=False):
     rho_i = items["p.calculated"]
     edad = ahora - rho_i["clock"] if rho_i["clock"] else None
 
-    # Guarda de frescura: sin dato reciente no se escribe nada.
+    # -----------------------------------------------------------------------
+    # Conservar el umbral actual si el valor de carga está ausente o vencido
+    # -----------------------------------------------------------------------
     if rho_i["v"] is None or edad is None or edad > MAX_AGE:
         reg.update({"status": "degradado",
                     "motivo": f"rho sin dato o con {edad} s de antiguedad (tope {MAX_AGE})"})
@@ -300,11 +336,11 @@ def ciclo(z, dry_run=False):
     gate = items["macdt.gate"]["v"]
 
     st = cargar_estado()
-    # Fuera de servicio (compuerta cerrada) o con dato viejo no hay cobertura GPS
-    # que evaluar: sin buses el item conserva el ultimo valor del dia, porque la
-    # sonda entrega null y Zabbix lo descarta. F_CRIT existe porque la degradacion
-    # del GPS afecta al pasajero; sin buses en servicio no hay pasajero afectado.
-    # No se endurece y se reinicia la histeresis.
+    # -----------------------------------------------------------------------
+    # Reiniciar la histéresis cuando no haya servicio o la medición GPS venza
+    # Sin buses en servicio, el valor GPS retenido no representa la experiencia
+    # de pasajeros; por eso, no aplicar el factor de endurecimiento.
+    # -----------------------------------------------------------------------
     if gate != 1 or ahora - v_gps_i["clock"] > MAX_AGE:
         v_gps = None
         st = {"hardened": False, "below": 0}
@@ -343,6 +379,9 @@ def ciclo(z, dry_run=False):
     return reg
 
 
+# ---------------------------------------------------------------------------
+# Validar la configuración y ejecutar ciclos únicos o continuos
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -360,7 +399,9 @@ def main():
         try:
             ciclo(z, dry_run=a.dry_run)
         except Exception as e:
-            # Degradacion: el umbral vigente se conserva, el bucle sigue vivo.
+            # -------------------------------------------------------------------
+            # Registrar el fallo, mantener el umbral vigente y continuar el bucle
+            # -------------------------------------------------------------------
             log(f"ERROR en el ciclo: {e}")
             try:
                 registrar({"ts": int(time.time()), "status": "error", "motivo": str(e)[:300]})

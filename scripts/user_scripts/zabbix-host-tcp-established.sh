@@ -1,5 +1,8 @@
 #!/bin/sh
-# Conexiones TCP ESTABLISHED del servidor (IPv4 + IPv6).
-# Lee /proc/1/net del host (montado en el agente). Estado 01 = ESTABLISHED.
-# No necesita privileged ni nsenter.
+# ---------------------------------------------------------------------------
+# Contar las conexiones TCP establecidas del host
+# Leer las tablas IPv4 e IPv6 del host, montadas en el agente, y contar las
+# conexiones cuyo estado TCP sea 01 (ESTABLISHED), sin requerir privilegios
+# adicionales ni nsenter.
+# ---------------------------------------------------------------------------
 awk 'FNR>1 && $4=="01"' /proc/1/net/tcp /proc/1/net/tcp6 | wc -l

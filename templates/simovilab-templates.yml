@@ -25,6 +25,24 @@ zabbix_export:
               expression: 'min(/simovilab servidor y sistema operativo/host.tcp.established,5m)>1200'
               name: 'Too many established TCP connections'
               priority: HIGH
+        - uuid: a24b3ca9c0d64949ab2836fc70c4910c
+          name: 'Server UP/DOWN'
+          type: SIMPLE
+          key: 'icmpping[,3]'
+          delay: 10s
+          valuemap:
+            name: 'Estado ping'
+          description: |
+            Ping desde el servidor Zabbix (R4) a la IP de la interfaz del host: 3 paquetes cada 10 s.
+            1 = respondió al menos uno, 0 = no respondió ninguno.
+          triggers:
+            - uuid: 672585c4b0f5472098a3c097b433cd46
+              expression: 'max(/simovilab servidor y sistema operativo/icmpping[,3],#3)=0'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'last(/simovilab servidor y sistema operativo/icmpping[,3])=1'
+              name: 'Server DOWN!!!'
+              priority: DISASTER
+              description: 'Tres consultas seguidas (unos 30 s) sin respuesta a ningún ping. Se cierra con el primer ping respondido.'
         - uuid: 145b4c3d63ad4e01b8e90e15b968c475
           name: 'Load average per CPU (1 min)'
           type: ZABBIX_ACTIVE
@@ -57,7 +75,6 @@ zabbix_export:
             - uuid: 8735a3822a204313a26d403add2b25c4
               expression: 'min(/simovilab servidor y sistema operativo/system.cpu.util,5m)>70'
               name: 'CPU utilization high'
-              event_name: 'simovilab servidor y sistema operativo'
               priority: WARNING
         - uuid: 3e8ec8a1e9804b35a6ff50ae1d7c63de
           name: 'Disk I/O wait'
@@ -149,17 +166,43 @@ zabbix_export:
               tags:
                 - tag: contenedor
                   value: '{#NAME}'
+            - uuid: 3f3185c5e7484d8caa969d6a949597d9
+              name: 'Contenedor {#NAME}: código de salida'
+              type: DEPENDENT
+              key: 'simovilab.contenedor.exitcode["{#NAME}"]'
+              value_type: FLOAT
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - $.State.ExitCode
+              master_item:
+                key: 'docker.container_info["{#NAME}",short]'
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
+            - uuid: d9461ced450d4560b3cbd370e77c781e
+              name: 'Contenedor {#NAME}: reinicios automáticos'
+              type: DEPENDENT
+              key: 'simovilab.contenedor.restart_count["{#NAME}"]'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - $.RestartCount
+              master_item:
+                key: 'docker.container_info["{#NAME}",short]'
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
             - uuid: 1dd45f32aa4d4106b71ce07b478618c5
               name: 'Contenedor {#NAME}: corriendo'
               type: DEPENDENT
               key: 'simovilab.contenedor.running["{#NAME}"]'
-              value_type: UNSIGNED
               valuemap:
                 name: 'Contenedor corriendo'
               preprocessing:
                 - type: JSONPATH
                   parameters:
-                    - '$.State.Running'
+                    - $.State.Running
                 - type: BOOL_TO_DECIMAL
               master_item:
                 key: 'docker.container_info["{#NAME}",short]'
@@ -181,40 +224,11 @@ zabbix_export:
               name: 'Contenedor {#NAME}: hora de inicio'
               type: DEPENDENT
               key: 'simovilab.contenedor.started["{#NAME}"]'
-              value_type: UNSIGNED
               units: unixtime
               preprocessing:
                 - type: JSONPATH
                   parameters:
-                    - '$.State.StartedAt'
-              master_item:
-                key: 'docker.container_info["{#NAME}",short]'
-              tags:
-                - tag: contenedor
-                  value: '{#NAME}'
-            - uuid: 3f3185c5e7484d8caa969d6a949597d9
-              name: 'Contenedor {#NAME}: código de salida'
-              type: DEPENDENT
-              key: 'simovilab.contenedor.exitcode["{#NAME}"]'
-              value_type: FLOAT
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.State.ExitCode'
-              master_item:
-                key: 'docker.container_info["{#NAME}",short]'
-              tags:
-                - tag: contenedor
-                  value: '{#NAME}'
-            - uuid: d9461ced450d4560b3cbd370e77c781e
-              name: 'Contenedor {#NAME}: reinicios automáticos'
-              type: DEPENDENT
-              key: 'simovilab.contenedor.restart_count["{#NAME}"]'
-              value_type: UNSIGNED
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.RestartCount'
+                    - $.State.StartedAt
               master_item:
                 key: 'docker.container_info["{#NAME}",short]'
               tags:
@@ -229,6 +243,9 @@ zabbix_export:
                 El contenedor arrancó hace menos de {$CONTENEDOR.REINICIO.VENTANA} segundos (cambió su
                 hora de inicio): reinicio manual, reinicio automático por una caída o
                 reinicio del host. El problema se cierra solo al pasar la ventana.
+      tags:
+        - tag: simovilab
+          value: S.O
       macros:
         - macro: '{$CONTENEDOR.IGNORAR}'
           value: '-init|migrat|-run-'
@@ -236,28 +253,14 @@ zabbix_export:
         - macro: '{$CONTENEDOR.REINICIO.VENTANA}'
           value: '600'
           description: 'Segundos que el problema "se reinició" queda activo después de que el contenedor arranca.'
-      tags:
-        - tag: simovilab
-          value: S.O
-
-      valuemaps:
-        - uuid: 92eaba63ea4e4c33b55b9b6b548d1a6d
-          name: 'Contenedor corriendo'
-          mappings:
-            - value: '0'
-              newvalue: Detenido
-            - value: '1'
-              newvalue: Corriendo
       dashboards:
         - uuid: a7328706b64249618e4248544158d239
-          name: 'Servidor'
+          name: Servidor
           pages:
-            - name: 'Operación'
+            - name: Operación
               widgets:
                 - type: gauge
                   name: 'CPU en uso'
-                  x: '0'
-                  y: '0'
                   width: '18'
                   height: '5'
                   fields:
@@ -265,13 +268,16 @@ zabbix_export:
                       name: itemid.0
                       value:
                         host: 'simovilab servidor y sistema operativo'
-                        key: 'system.cpu.util'
+                        key: system.cpu.util
+                    - type: STRING
+                      name: max
+                      value: '100'
                     - type: STRING
                       name: min
                       value: '0'
                     - type: STRING
-                      name: max
-                      value: '100'
+                      name: reference
+                      value: ORYOO
                     - type: STRING
                       name: th.0.color
                       value: 0EC9AC
@@ -290,13 +296,37 @@ zabbix_export:
                     - type: STRING
                       name: th.2.threshold
                       value: '90'
+                - type: item
+                  name: 'Tiempo encendido'
+                  'y': '5'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: system.uptime
                     - type: STRING
                       name: reference
-                      value: ORYOO
+                      value: CRZWU
+                - type: graph
+                  name: 'CPU y memoria'
+                  'y': '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        name: 'host: CPU y memoria'
+                    - type: STRING
+                      name: reference
+                      value: AQCBB
                 - type: gauge
                   name: 'Memoria RAM en uso'
                   x: '18'
-                  y: '0'
                   width: '18'
                   height: '5'
                   fields:
@@ -306,11 +336,14 @@ zabbix_export:
                         host: 'simovilab servidor y sistema operativo'
                         key: 'vm.memory.size[pused]'
                     - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
                       name: min
                       value: '0'
                     - type: STRING
-                      name: max
-                      value: '100'
+                      name: reference
+                      value: QSGFZ
                     - type: STRING
                       name: th.0.color
                       value: 0EC9AC
@@ -329,13 +362,24 @@ zabbix_export:
                     - type: STRING
                       name: th.2.threshold
                       value: '90'
+                - type: item
+                  name: 'Conexiones TCP establecidas'
+                  x: '24'
+                  'y': '5'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: host.tcp.established
                     - type: STRING
                       name: reference
-                      value: QSGFZ
+                      value: BTMOU
                 - type: gauge
                   name: 'Carga por CPU (1 min)'
                   x: '36'
-                  y: '0'
                   width: '18'
                   height: '5'
                   fields:
@@ -345,11 +389,14 @@ zabbix_export:
                         host: 'simovilab servidor y sistema operativo'
                         key: 'system.cpu.load[percpu,avg1]'
                     - type: STRING
+                      name: max
+                      value: '2'
+                    - type: STRING
                       name: min
                       value: '0'
                     - type: STRING
-                      name: max
-                      value: '2'
+                      name: reference
+                      value: QPUTZ
                     - type: STRING
                       name: th.0.color
                       value: 0EC9AC
@@ -368,13 +415,39 @@ zabbix_export:
                     - type: STRING
                       name: th.2.threshold
                       value: '1'
+                - type: graph
+                  name: 'Carga por CPU'
+                  x: '36'
+                  'y': '8'
+                  width: '36'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        name: 'host: carga por CPU'
                     - type: STRING
                       name: reference
-                      value: QPUTZ
+                      value: GHTAY
+                - type: item
+                  name: 'Espera de disco (I/O wait)'
+                  x: '48'
+                  'y': '5'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: 'simovilab servidor y sistema operativo'
+                        key: 'system.cpu.util[,iowait]'
+                    - type: STRING
+                      name: reference
+                      value: XTUFT
                 - type: gauge
                   name: 'Espacio libre en disco (/)'
                   x: '54'
-                  y: '0'
                   width: '18'
                   height: '5'
                   fields:
@@ -384,11 +457,14 @@ zabbix_export:
                         host: 'simovilab servidor y sistema operativo'
                         key: 'vfs.fs.size[/hostfs,pfree]'
                     - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
                       name: min
                       value: '0'
                     - type: STRING
-                      name: max
-                      value: '100'
+                      name: reference
+                      value: FDOJE
                     - type: STRING
                       name: th.0.color
                       value: FF465C
@@ -407,99 +483,22 @@ zabbix_export:
                     - type: STRING
                       name: th.2.threshold
                       value: '20'
-                    - type: STRING
-                      name: reference
-                      value: FDOJE
-                - type: item
-                  name: 'Tiempo encendido'
-                  x: '0'
-                  y: '5'
-                  width: '24'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab servidor y sistema operativo'
-                        key: 'system.uptime'
-                    - type: STRING
-                      name: reference
-                      value: CRZWU
-                - type: item
-                  name: 'Conexiones TCP establecidas'
-                  x: '24'
-                  y: '5'
-                  width: '24'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab servidor y sistema operativo'
-                        key: 'host.tcp.established'
-                    - type: STRING
-                      name: reference
-                      value: BTMOU
-                - type: item
-                  name: 'Espera de disco (I/O wait)'
-                  x: '48'
-                  y: '5'
-                  width: '24'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab servidor y sistema operativo'
-                        key: 'system.cpu.util[,iowait]'
-                    - type: STRING
-                      name: reference
-                      value: XTUFT
-                - type: graph
-                  name: 'CPU y memoria'
-                  x: '0'
-                  y: '8'
-                  width: '36'
-                  height: '6'
-                  fields:
-                    - type: GRAPH
-                      name: graphid.0
-                      value:
-                        host: 'simovilab servidor y sistema operativo'
-                        name: 'host: CPU y memoria'
-                    - type: STRING
-                      name: reference
-                      value: AQCBB
-                - type: graph
-                  name: 'Carga por CPU'
-                  x: '36'
-                  y: '8'
-                  width: '36'
-                  height: '6'
-                  fields:
-                    - type: GRAPH
-                      name: graphid.0
-                      value:
-                        host: 'simovilab servidor y sistema operativo'
-                        name: 'host: carga por CPU'
-                    - type: STRING
-                      name: reference
-                      value: GHTAY
-            - name: 'Contenedores'
+            - name: Contenedores
               widgets:
                 - type: honeycomb
                   name: 'Contenedores arriba (verde) o detenidos (rojo)'
-                  x: '0'
-                  y: '0'
                   width: '72'
                   height: '5'
                   fields:
                     - type: STRING
                       name: items.0
-                      value: 'Container *: Running'
+                      value: 'Contenedor *: corriendo'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("Container .([^:]+)", "\1")}'
+                      value: '{{ITEM.NAME}.regsub("Contenedor .([^:]+)", "\1")}'
+                    - type: STRING
+                      name: reference
+                      value: DKRUN
                     - type: INTEGER
                       name: show.0
                       value: '1'
@@ -515,38 +514,36 @@ zabbix_export:
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
-                    - type: STRING
-                      name: reference
-                      value: DKRUN
                 - type: honeycomb
                   name: 'Último arranque o reinicio'
-                  x: '0'
-                  y: '5'
+                  'y': '5'
                   width: '72'
                   height: '5'
                   fields:
                     - type: STRING
                       name: items.0
-                      value: 'Container *: Started at'
+                      value: 'Contenedor *: hora de inicio'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("Container .([^:]+)", "\1")}'
+                      value: '{{ITEM.NAME}.regsub("Contenedor .([^:]+)", "\1")}'
                     - type: STRING
                       name: reference
                       value: DKSTA
                 - type: honeycomb
                   name: 'Cantidad de reinicios'
-                  x: '0'
-                  y: '10'
+                  'y': '10'
                   width: '72'
                   height: '5'
                   fields:
                     - type: STRING
                       name: items.0
-                      value: 'Container *: Restart count'
+                      value: 'Contenedor *: reinicios automáticos'
                     - type: STRING
                       name: primary_label
-                      value: '{{ITEM.NAME}.regsub("Container .([^:]+)", "\1")}'
+                      value: '{{ITEM.NAME}.regsub("Contenedor .([^:]+)", "\1")}'
+                    - type: STRING
+                      name: reference
+                      value: DKRST
                     - type: INTEGER
                       name: secondary_label_decimal_places
                       value: '0'
@@ -562,17 +559,36 @@ zabbix_export:
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
-                    - type: STRING
-                      name: reference
-                      value: DKRST
+      valuemaps:
+        - uuid: 9839fce9adf041868a71ce6618adb583
+          name: 'Estado ping'
+          mappings:
+            - value: '0'
+              newvalue: Caído
+            - value: '1'
+              newvalue: Arriba
+        - uuid: 92eaba63ea4e4c33b55b9b6b548d1a6d
+          name: 'Contenedor corriendo'
+          mappings:
+            - value: '0'
+              newvalue: Detenido
+            - value: '1'
+              newvalue: Corriendo
   graphs:
+    - uuid: 61b1080e6e6c412196712cd6ab805a2c
+      name: 'host: carga por CPU'
+      graph_items:
+        - color: F63100
+          item:
+            host: 'simovilab servidor y sistema operativo'
+            key: 'system.cpu.load[percpu,avg1]'
     - uuid: b5ee4ff0f9644e78965e3e428f97d346
       name: 'host: CPU y memoria'
       graph_items:
         - color: 2774A4
           item:
             host: 'simovilab servidor y sistema operativo'
-            key: 'system.cpu.util'
+            key: system.cpu.util
         - sortorder: '1'
           color: 199C0D
           item:
@@ -583,10 +599,3 @@ zabbix_export:
           item:
             host: 'simovilab servidor y sistema operativo'
             key: 'system.cpu.util[,iowait]'
-    - uuid: 61b1080e6e6c412196712cd6ab805a2c
-      name: 'host: carga por CPU'
-      graph_items:
-        - color: F63100
-          item:
-            host: 'simovilab servidor y sistema operativo'
-            key: 'system.cpu.load[percpu,avg1]'
