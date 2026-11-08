@@ -124,10 +124,130 @@ zabbix_export:
               expression: 'min(/simovilab servidor y sistema operativo/vm.memory.size[pused],5m)>75'
               name: 'Memory utilization high'
               priority: WARNING
+      discovery_rules:
+        - uuid: 59680b0210264a4794cc7b4aa7dfe718
+          name: 'Contenedores (todos, incluidos los detenidos)'
+          type: ZABBIX_ACTIVE
+          key: 'docker.containers.discovery[true]'
+          delay: 5m
+          filter:
+            conditions:
+              - macro: '{#NAME}'
+                value: '{$CONTENEDOR.IGNORAR}'
+                operator: NOT_MATCHES_REGEX
+          description: |
+            Descubre todos los contenedores Docker del host, también los detenidos (parámetro true),
+            para alertar cuando uno se apaga o se reinicia. Complementa a Docker by Zabbix agent 2,
+            que solo descubre los que están corriendo y solo alerta salidas con código de error.
+          item_prototypes:
+            - uuid: d5ba951d63514666b8e904993f53fef1
+              name: 'Contenedor {#NAME}: info (short)'
+              type: ZABBIX_ACTIVE
+              key: 'docker.container_info["{#NAME}",short]'
+              history: '0'
+              value_type: TEXT
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
+            - uuid: 1dd45f32aa4d4106b71ce07b478618c5
+              name: 'Contenedor {#NAME}: corriendo'
+              type: DEPENDENT
+              key: 'simovilab.contenedor.running["{#NAME}"]'
+              value_type: UNSIGNED
+              valuemap:
+                name: 'Contenedor corriendo'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.State.Running'
+                - type: BOOL_TO_DECIMAL
+              master_item:
+                key: 'docker.container_info["{#NAME}",short]'
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
+              trigger_prototypes:
+                - uuid: 44e3f169c6ba40a7ad2c5048d54fe1b7
+                  expression: 'last(/simovilab servidor y sistema operativo/simovilab.contenedor.running["{#NAME}"])=0'
+                  name: 'Contenedor {#NAME} apagado'
+                  priority: AVERAGE
+                  description: |
+                    El contenedor existe pero no está corriendo: se apagó (docker stop, compose
+                    down de un servicio) o terminó, con o sin error. Cubre también la salida limpia
+                    (código 0), que la plantilla Docker by Zabbix agent 2 no alerta. Para ignorar
+                    contenedores que terminan a propósito (p. ej. zabbix-init), ajustar la macro
+                    {$CONTENEDOR.IGNORAR}.
+            - uuid: 879682cfb42644468f9629dd4a7bb195
+              name: 'Contenedor {#NAME}: hora de inicio'
+              type: DEPENDENT
+              key: 'simovilab.contenedor.started["{#NAME}"]'
+              value_type: UNSIGNED
+              units: unixtime
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.State.StartedAt'
+              master_item:
+                key: 'docker.container_info["{#NAME}",short]'
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
+            - uuid: 3f3185c5e7484d8caa969d6a949597d9
+              name: 'Contenedor {#NAME}: código de salida'
+              type: DEPENDENT
+              key: 'simovilab.contenedor.exitcode["{#NAME}"]'
+              value_type: FLOAT
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.State.ExitCode'
+              master_item:
+                key: 'docker.container_info["{#NAME}",short]'
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
+            - uuid: d9461ced450d4560b3cbd370e77c781e
+              name: 'Contenedor {#NAME}: reinicios automáticos'
+              type: DEPENDENT
+              key: 'simovilab.contenedor.restart_count["{#NAME}"]'
+              value_type: UNSIGNED
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.RestartCount'
+              master_item:
+                key: 'docker.container_info["{#NAME}",short]'
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
+          trigger_prototypes:
+            - uuid: ab802e609a0046cd9467c21ef22f401d
+              expression: 'last(/simovilab servidor y sistema operativo/simovilab.contenedor.running["{#NAME}"])=1 and now()-last(/simovilab servidor y sistema operativo/simovilab.contenedor.started["{#NAME}"])<{$CONTENEDOR.REINICIO.VENTANA}'
+              name: 'Contenedor {#NAME} se reinició'
+              priority: WARNING
+              description: |
+                El contenedor arrancó hace menos de {$CONTENEDOR.REINICIO.VENTANA} segundos (cambió su
+                hora de inicio): reinicio manual, reinicio automático por una caída o
+                reinicio del host. El problema se cierra solo al pasar la ventana.
+      macros:
+        - macro: '{$CONTENEDOR.IGNORAR}'
+          value: '-init|migrat|-run-'
+          description: 'Regex de nombres de contenedor que no se vigilan (terminan a propósito: init, migraciones, docker compose run).'
+        - macro: '{$CONTENEDOR.REINICIO.VENTANA}'
+          value: '600'
+          description: 'Segundos que el problema "se reinició" queda activo después de que el contenedor arranca.'
       tags:
         - tag: simovilab
           value: S.O
 
+      valuemaps:
+        - uuid: 92eaba63ea4e4c33b55b9b6b548d1a6d
+          name: 'Contenedor corriendo'
+          mappings:
+            - value: '0'
+              newvalue: Detenido
+            - value: '1'
+              newvalue: Corriendo
       dashboards:
         - uuid: a7328706b64249618e4248544158d239
           name: 'Servidor'

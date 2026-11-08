@@ -77,6 +77,35 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
+        - uuid: 0e0920e623c043728350dc88d8aeca05
+          name: 'Día sin servicio (next-trips responde 204)'
+          type: DEPENDENT
+          key: infobus.api.sin_servicio
+          valuemap:
+            name: 'Servicio del día'
+          value_type: UNSIGNED
+          description: '1 cuando toda la ráfaga respondió 204: el calendario GTFS no tiene servicio hoy (en bUCR, sábado y domingo). Esos ciclos no tienen latencia.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.sin_servicio
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 69bcb15219e54392ae5df19317c75fd4
+          name: 'Tabla API INFOBUS (HTML)'
+          type: DEPENDENT
+          key: infobus.api.tabla_html
+          history: 1d
+          value_type: TEXT
+          description: 'Tabla HTML con /health/ y next-trips: alive, estado, código HTTP y latencia (200/204). Se muestra en el widget Item history con la columna en modo HTML.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tabla_html
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
         - uuid: 46315e08d097484b903040c1c0e309c2
           name: 'API de InfoBus responde correctamente'
           type: DEPENDENT
@@ -84,7 +113,7 @@ zabbix_export:
           valuemap:
             name: 'Estado API'
           value_type: UNSIGNED
-          description: '1 solo si las 10 peticiones devolvieron 200 con cuerpo.'
+          description: '1 si las 10 peticiones devolvieron 200 con cuerpo, o 204 (día sin servicio, respuesta correcta de infobus). Ver infobus.api.sin_servicio.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -118,6 +147,35 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
+        - uuid: 8c5c7829ba894b21b4dfc2b713e9c1b3
+          name: 'Latencia en día sin servicio (respuestas 204)'
+          type: DEPENDENT
+          key: infobus.api.lat_sin_servicio
+          units: ms
+          value_type: FLOAT
+          description: 'Mediana de las respuestas 204 del ciclo. Sin servicio, next-trips solo hace 4 consultas fijas (feed, parada, agencia, calendario): mide el costo fijo de la petición (T_0) sin el costo de las horas de paso. Vacío en días hábiles.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_sin_servicio_p50_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+          triggers:
+            - uuid: bbb1292c2c6940f6b8cd9ea56f4e9084
+              expression: 'avg(/simovilab-infobus/infobus.api.lat_sin_servicio,10m)>{$INFOBUS.T204.FACTOR}*percentile(/simovilab-infobus/infobus.api.lat_sin_servicio,1d,50)'
+              name: 'Latencia de día sin servicio fuera de lo normal (204)'
+              priority: WARNING
+              description: |
+                Sin servicio, next-trips responde 204 con 4 consultas fijas, así que su
+                tiempo debe ser casi constante (es el costo fijo T_0). Se dispara cuando el
+                promedio de 10 min supera {$INFOBUS.T204.FACTOR} veces la mediana del
+                último día. Un pico aquí no lo explica el horario: revisar carga del
+                servidor, base de datos o red de infobus.
         - uuid: 4bef03e67e88483da7cd53d216f08a29
           name: 'L_api p90 del ciclo'
           type: DEPENDENT
@@ -209,12 +267,12 @@ zabbix_export:
           master_item:
             key: infobus.api
         - uuid: 8e71c756e0dc4830ae52519da53ca317
-          name: 'Costo de abrir la conexion (TCP)'
+          name: 'Costo de abrir la conexión (DNS + TCP)'
           type: DEPENDENT
           key: infobus.api.setup_ms
           units: ms
           value_type: FLOAT
-          description: 'health_cold_ms - health_ms. Desde dentro es solo TCP en la red Docker: debe ser casi cero.'
+          description: 'health_cold_ms - health_ms: resolver el nombre (DNS de Docker) y el saludo TCP antes de la primera petición. Desde dentro de la red Docker y por http (sin TLS). Medido 2026-11-07: mediana 4.4 ms, p95 7.5 ms. Puede salir negativo (2-3 % de las muestras): es una sola resta entre dos peticiones y el ruido es de unos ±3 ms.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -226,6 +284,17 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
+          triggers:
+            - uuid: 5947d207697e4de1920d0ff36c82d360
+              expression: 'avg(/simovilab-infobus/infobus.api.setup_ms,10m)>{$INFOBUS.SETUP.FACTOR}*percentile(/simovilab-infobus/infobus.api.setup_ms,1d,50) and avg(/simovilab-infobus/infobus.api.setup_ms,10m)>{$INFOBUS.SETUP.MIN_MS}'
+              name: 'Costo de abrir la conexión fuera de lo normal'
+              priority: WARNING
+              description: |
+                El promedio de 10 min supera {$INFOBUS.SETUP.FACTOR} veces la mediana del último
+                día (medido 2026-11-07: mediana 4.4 ms, así que dispara sobre ~9 ms). También
+                exige superar {$INFOBUS.SETUP.MIN_MS} ms, para no alertar si la mediana fuera
+                muy baja. Revisar DNS de Docker, red del host o saturación del servidor web
+                (aceptar conexiones nuevas).
         - uuid: 38675e6d46ff4483a6164904d5f18580
           name: 'Disponibilidad de /health/'
           type: DEPENDENT
@@ -241,7 +310,7 @@ zabbix_export:
           master_item:
             key: infobus.api
         - uuid: e9db3dd0d0cb4988ae012b4ebbfa9b3b
-          name: 'Peticiones estranguladas por la cuota'
+          name: 'Too Many Requests (429): peticiones rechazadas por la cuota'
           type: DEPENDENT
           key: infobus.api.throttled
           value_type: UNSIGNED
@@ -370,6 +439,15 @@ zabbix_export:
           value_type: FLOAT
           description: 'El valor que el bucle puso en la macro de host. Para graficarlo contra rho.'
       macros:
+        - macro: '{$INFOBUS.SETUP.FACTOR}'
+          value: '2'
+          description: 'Veces la mediana diaria del costo de abrir la conexión que dispara la alerta.'
+        - macro: '{$INFOBUS.SETUP.MIN_MS}'
+          value: '5'
+          description: 'Mínimo en ms para alertar el costo de abrir la conexión (piso por si la mediana diaria es muy baja).'
+        - macro: '{$INFOBUS.T204.FACTOR}'
+          value: '2'
+          description: 'Veces la mediana diaria de la latencia 204 que dispara la alerta de día sin servicio.'
         - macro: '{$T_LATENCY_WARN}'
           value: '130'
           description: 'Semilla igual a T_BASE. Lo sobrescribe el bucle MACDT en F5.'
@@ -407,7 +485,7 @@ zabbix_export:
                   name: 'T_LATENCY_WARN actual (escrito por MACDT)'
                   x: '0'
                   y: '0'
-                  width: '24'
+                  width: '18'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -419,16 +497,65 @@ zabbix_export:
                       name: value_size
                       value: '25'
                     - type: INTEGER
-                      name: value_size
+                      name: decimal_size
                       value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: bg_color
+                      value: '1F2937'
+                    - type: STRING
+                      name: value_color
+                      value: 'FFFFFF'
+                    - type: STRING
+                      name: units_color
+                      value: 'FFFFFF'
+                    - type: STRING
+                      name: desc_color
+                      value: 'FFFFFF'
+                    - type: STRING
+                      name: time_color
+                      value: 'FFFFFF'
                     - type: STRING
                       name: reference
                       value: OKOSG
+                - type: clock
+                  name: 'Hora local'
+                  x: '18'
+                  y: '0'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: clock_type
+                      value: '1'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: time_format
+                      value: '1'
+                    - type: STRING
+                      name: bg_color
+                      value: '1F2937'
+                    - type: STRING
+                      name: date_color
+                      value: 'FFFFFF'
+                    - type: STRING
+                      name: time_color
+                      value: 'FFFFFF'
+                    - type: INTEGER
+                      name: time_bold
+                      value: '1'
                 - type: item
                   name: 'Estado del bucle MACDT'
-                  x: '24'
+                  x: '36'
                   y: '0'
-                  width: '24'
+                  width: '18'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -440,16 +567,19 @@ zabbix_export:
                       name: value_size
                       value: '25'
                     - type: INTEGER
-                      name: value_size
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
                       value: '25'
                     - type: STRING
                       name: reference
                       value: QHUJP
                 - type: item
                   name: 'L_api p95 (última hora)'
-                  x: '48'
+                  x: '54'
                   y: '0'
-                  width: '24'
+                  width: '18'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -461,121 +591,44 @@ zabbix_export:
                       name: value_size
                       value: '25'
                     - type: INTEGER
-                      name: value_size
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
                       value: '25'
                     - type: STRING
                       name: reference
                       value: AVCOU
-                - type: item
-                  name: 'API InfoBus'
+                - type: itemhistory
+                  name: 'API INFOBUS'
+                  hide_header: 'YES'
                   x: '0'
                   y: '3'
-                  width: '12'
-                  height: '3'
+                  width: '48'
+                  height: '9'
                   fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        key: 'infobus.api.ok'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
                     - type: STRING
-                      name: reference
-                      value: INRCW
-                - type: item
-                  name: '/health/ disponible'
-                  x: '12'
-                  y: '3'
-                  width: '12'
-                  height: '3'
-                  fields:
+                      name: columns.0.name
+                      value: 'API INFOBUS'
                     - type: ITEM
-                      name: itemid.0
+                      name: columns.0.itemid
                       value:
-                        host: 'simovilab-infobus'
-                        key: 'infobus.api.health_ok'
+                        host: simovilab-infobus
+                        key: infobus.api.tabla_html
                     - type: INTEGER
-                      name: value_size
-                      value: '25'
+                      name: columns.0.display
+                      value: '4'
                     - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: STRING
-                      name: reference
-                      value: IKYHQ
+                      name: show_lines
+                      value: '1'
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
                 - type: item
-                  name: 'L_api p50 (último ciclo)'
-                  x: '24'
-                  y: '3'
-                  width: '12'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        key: 'infobus.api.lat_p50'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: STRING
-                      name: reference
-                      value: JACSY
-                - type: item
-                  name: 'Costo de la consulta'
-                  x: '36'
-                  y: '3'
-                  width: '12'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        key: 'infobus.api.query_p50'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: STRING
-                      name: reference
-                      value: DMDJM
-                - type: item
-                  name: 'Piso de transporte'
+                  name: 'Too Many Requests (429)'
                   x: '48'
                   y: '3'
-                  width: '12'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        key: 'infobus.api.health_ms'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: STRING
-                      name: reference
-                      value: CAVAG
-                - type: item
-                  name: 'Peticiones estranguladas'
-                  x: '60'
-                  y: '3'
-                  width: '12'
+                  width: '24'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -586,13 +639,19 @@ zabbix_export:
                     - type: INTEGER
                       name: value_size
                       value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: GBPMW
                 - type: graph
                   name: 'Latencia de la API vs umbral de MACDT'
                   x: '0'
-                  y: '6'
+                  y: '12'
                   width: '72'
                   height: '7'
                   fields:
@@ -607,7 +666,7 @@ zabbix_export:
                 - type: graph
                   name: 'Desglose de latencia'
                   x: '0'
-                  y: '13'
+                  y: '19'
                   width: '72'
                   height: '6'
                   fields:
@@ -620,6 +679,13 @@ zabbix_export:
                       name: reference
                       value: GYVIK    
       valuemaps:
+        - uuid: 144477bdffd146ddb545f822d7c3d940
+          name: 'Servicio del día'
+          mappings:
+            - value: '0'
+              newvalue: 'Con servicio'
+            - value: '1'
+              newvalue: 'Sin servicio hoy'
         - uuid: 7f2c0e1a4b6d4f8e9a3c5b7d1e0f2a48
           name: 'Estado MACDT'
           mappings:
@@ -652,6 +718,11 @@ zabbix_export:
           item:
             host: 'simovilab-infobus'
             key: 'macdt.t_warn'
+        - sortorder: '3'
+          color: 9C27B0
+          item:
+            host: 'simovilab-infobus'
+            key: 'infobus.api.lat_sin_servicio'
     - uuid: 43ca52f3cd484678bd9bf8b4307cdfa7
       name: 'infobus: desglose de latencia'
       graph_items:
@@ -664,3 +735,13 @@ zabbix_export:
           item:
             host: 'simovilab-infobus'
             key: 'infobus.api.health_ms'
+        - sortorder: '2'
+          color: 9C27B0
+          item:
+            host: 'simovilab-infobus'
+            key: 'infobus.api.lat_sin_servicio'
+        - sortorder: '3'
+          color: 00BCD4
+          item:
+            host: 'simovilab-infobus'
+            key: 'infobus.api.setup_ms'

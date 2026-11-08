@@ -106,6 +106,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
       - PHP_TZ=${PHP_TZ}
+      - TZ=${TZ}
     ports:
       - "${PORT_HTTPS}:8443"
       - "${PORT_HTTP}:8080"

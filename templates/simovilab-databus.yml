@@ -85,7 +85,7 @@ zabbix_export:
                 - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: a7e3e0ad4a144978a0489e01ac0dae42
           name: 'V_completeness de posiciones'
           type: DEPENDENT
@@ -101,7 +101,7 @@ zabbix_export:
                 - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: 57d014534aa643bd8158d819ba0a409e
           name: 'Calibrar el --stale contra la cadencia real'
           type: DEPENDENT
@@ -117,7 +117,7 @@ zabbix_export:
                 - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: 77455c60df804f9ab0a5a9bcecb36767
           name: 'V_age del publicador de predicciones'
           type: DEPENDENT
@@ -134,7 +134,7 @@ zabbix_export:
                 - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
           triggers:
             - uuid: efad2902e2af46d1be1ea9a77b235008
               expression: 'min(/simovilab-databus/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.WARN}'
@@ -145,7 +145,7 @@ zabbix_export:
                 - name: 'Capa D: feed GTFS-RT no alcanzable'
                   expression: last(/simovilab-databus/gtfs.fetch_ok)=0
                 - name: 'Capa D: sonda sin datos'
-                  expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+                  expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
             - uuid: 61525e6b5b024f529e155002e5bdaf0f
               expression: 'min(/simovilab-databus/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.CRIT}'
               name: 'Feed GTFS-RT muy atrasado'
@@ -170,7 +170,7 @@ zabbix_export:
                 - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: ac8bd068c7fa4632bbb5d1d5aa5d4821
           name: 'Raíz del árbol de alertas'
           type: DEPENDENT
@@ -183,7 +183,7 @@ zabbix_export:
                 - $.fetch_ok
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
           triggers:
             - uuid: 82cc484e671b4469b52e6c23f1b15f69
               expression: last(/simovilab-databus/gtfs.fetch_ok)=0
@@ -201,7 +201,7 @@ zabbix_export:
                 - $.fetch_tu_ms
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: 1265b51a1ea54b73a8101576b458f79e
           name: 'Latencia del endpoint de posiciones'
           type: DEPENDENT
@@ -214,15 +214,15 @@ zabbix_export:
                 - $.fetch_vp_ms
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: ad123756995f412aadec85af1734c392
           name: gtfs-Maestro
           type: ZABBIX_ACTIVE
-          key: gtfs.probe
+          key: 'gtfs.probe[{$MACDT.STALE_S}]'
           value_type: TEXT
           triggers:
             - uuid: 08dbb1cc37cc40bbadc195148ca17da2
-              expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+              expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
               name: 'Capa D: sonda sin datos'
               priority: HIGH
         - uuid: f5eb2be0af924315b4dd3665610fac7a
@@ -240,7 +240,7 @@ zabbix_export:
                 - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: d9befc0de79f4b8c8805ceb46024d79c
           name: 'V_gps. Entrada de F_crit'
           type: DEPENDENT
@@ -256,7 +256,7 @@ zabbix_export:
                 - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: d791b34261844ac3b04998eed6b32b43
           name: 'V_trips. Entrada de F_load y G_load'
           type: DEPENDENT
@@ -267,7 +267,7 @@ zabbix_export:
                 - $.v_trips
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: 29f21536310440bfb62cee6282bac73f
           name: 'Denominador real de V_gps'
           type: DEPENDENT
@@ -278,7 +278,118 @@ zabbix_export:
                 - $.v_vehicles
               error_handler: DISCARD_VALUE
           master_item:
-            key: gtfs.probe
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: f43b0a2f609e451c87eaea995d41ce7a
+          name: 'Vehículos con GPS fresco'
+          type: DEPENDENT
+          key: gtfs.v_gps_frescos
+          value_type: UNSIGNED
+          description: 'Vehículos del feed con posición de hace --stale segundos o menos (60 s). Numerador de V_gps.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_gps_frescos
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: 19e1a95eb3614a53b6e43f02ecf3d9d0
+          name: 'Vehículos con GPS viejo'
+          type: DEPENDENT
+          key: gtfs.v_gps_viejos
+          value_type: UNSIGNED
+          description: 'Vehículos del feed con posición de hace más de --stale segundos (o con hora en el futuro). Un viaje que terminó y databus no cerró aparece aquí.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_gps_viejos
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: 10b40d6e387d4ed0afe08e8449f7820a
+          name: 'Vehículos sin timestamp'
+          type: DEPENDENT
+          key: gtfs.v_gps_sin_ts
+          value_type: UNSIGNED
+          description: 'Vehículos del feed sin hora en su posición: no se puede saber si el dato es actual.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_gps_sin_ts
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: 5e8c5db255cd49a3aebd48b2368cc3ee
+          name: 'Viajes sin paradas por delante'
+          type: DEPENDENT
+          key: gtfs.v_trips_sin_paradas
+          value_type: UNSIGNED
+          description: 'Viajes del feed de predicciones sin ninguna parada pendiente. Si se mantienen, el viaje terminó y databus no lo cerró: inflan V_trips y rho.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.v_trips_sin_paradas
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: 745852326cbc45668f28f43fcc0db5d2
+          name: 'Umbral de GPS fresco usado por la sonda'
+          type: DEPENDENT
+          key: gtfs.stale_s
+          value_type: UNSIGNED
+          units: s
+          description: 'Valor de --stale con el que corrió la sonda (viene de la macro {$MACDT.STALE_S}).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.stale_s
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: f4471beaf8484ada8339b65bd83600f9
+          name: 'Edad máxima de la posición GPS'
+          type: DEPENDENT
+          key: gtfs.data_age_max_s
+          value_type: FLOAT
+          units: s
+          description: 'Ahora menos el timestamp de la posición del vehículo más atrasado.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.data_age_max_s
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: 500b8f925eb94636948e78963ae0f413
+          name: 'Edad de la posición GPS por vehículo'
+          type: DEPENDENT
+          key: gtfs.vehiculos_texto
+          value_type: TEXT
+          description: 'Ahora menos el timestamp de la posición de cada vehículo, del más atrasado al más fresco. La lista completa va en $.vehiculos del maestro.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.vehiculos_texto
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
+        - uuid: 2c2952c910714a8e9a4fa685906efaff
+          name: 'Tabla de vehículos del feed (HTML)'
+          type: DEPENDENT
+          key: gtfs.vehiculos_html
+          history: 1d
+          value_type: TEXT
+          description: 'Tabla HTML por vehículo: viaje, última hora reportada, edad, estado y paradas por delante, con el umbral {$MACDT.STALE_S} en el encabezado. Se muestra en el widget Item history en modo HTML.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.vehiculos_html
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'gtfs.probe[{$MACDT.STALE_S}]'
         - uuid: 97c60557f17e4d639c6fada7c1a4d675
           name: 'Calendar age'
           type: DEPENDENT
@@ -463,6 +574,9 @@ zabbix_export:
         - macro: '{$MACDT.RHO_CAP}'
           value: '1.2'
           description: 'Tope de ρ'
+        - macro: '{$MACDT.STALE_S}'
+          value: '60'
+          description: 'Segundos para contar como fresca la posición de un vehículo. La recibe la sonda gtfs.probe como --stale. Mantener alineada con TELEMETRY_GRACE_S de databus (60 s).'
         - macro: '{$MACDT.TSFILL.WARN}'
           value: '50'
           description: 'SIMULADO. Calibrar en F6'
@@ -497,8 +611,8 @@ zabbix_export:
                     - type: ITEM
                       name: itemid.0
                       value:
-                          host: simovilab-databus
-                          key: macdt.horario_texto
+                        host: simovilab-databus
+                        key: macdt.horario_texto
                     - type: STRING
                       name: reference
                       value: HRSVC
@@ -516,11 +630,38 @@ zabbix_export:
                         key: macdt.huecos_texto
                     - type: STRING
                       name: reference
-                      value: HUECO      
+                      value: HUECO
+                - type: itemhistory
+                  name: 'Vehículos del feed: edad de la posición GPS (ahora − timestamp)'
+                  x: '0'
+                  y: '4'
+                  width: '72'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: columns.0.name
+                      value: 'Vehículos'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.vehiculos_html
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: VEHTB
                 - type: item
                   name: 'Horario de operación'
                   x: '0'
-                  y: '4'
+                  y: '8'
                   width: '12'
                   height: '3'
                   fields:
@@ -531,29 +672,20 @@ zabbix_export:
                         key: macdt.gate
                     - type: INTEGER
                       name: value_size
-                      value: '25'    
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: KEMUB
                 - type: item
-                  name: 'Buses reportando posición'
+                  name: 'Viajes en el feed (V_trips)'
                   x: '12'
-                  y: '4'
-                  width: '12'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-databus
-                        key: gtfs.v_vehicles
-                    - type: STRING
-                      name: reference
-                      value: CRDLS
-                - type: item
-                  name: 'Viajes activos (V_trips)'
-                  x: '24'
-                  y: '4'
+                  y: '8'
                   width: '12'
                   height: '3'
                   fields:
@@ -562,13 +694,46 @@ zabbix_export:
                       value:
                         host: simovilab-databus
                         key: gtfs.v_trips
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: BQGBC
                 - type: item
+                  name: 'Viajes máximos programados'
+                  x: '24'
+                  y: '8'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: macdt.v_trips_max
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: VTMAX
+                - type: item
                   name: 'Viajes programados ahora'
                   x: '36'
-                  y: '4'
+                  y: '8'
                   width: '12'
                   height: '3'
                   fields:
@@ -577,13 +742,262 @@ zabbix_export:
                       value:
                         host: simovilab-databus
                         key: macdt.s_t
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: NNCHC
                 - type: item
-                  name: 'Edad del feed (V_age)'
+                  name: 'Carga de transporte (ρ)'
                   x: '48'
-                  y: '4'
+                  y: '8'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: p.calculated
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: RVFDS
+                - type: item
+                  name: 'Viajes sin paradas por delante'
+                  x: '60'
+                  y: '8'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_trips_sin_paradas
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: VTSPD
+                - type: item
+                  name: 'Vehículos en el feed'
+                  x: '0'
+                  y: '11'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_vehicles
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: CRDLS
+                - type: item
+                  name: 'Con GPS fresco'
+                  x: '12'
+                  y: '11'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_gps_frescos
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: GPSFR
+                - type: item
+                  name: 'Con GPS viejo'
+                  x: '24'
+                  y: '11'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_gps_viejos
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: GPSVJ
+                - type: item
+                  name: 'Sin timestamp'
+                  x: '36'
+                  y: '11'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_gps_sin_ts
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: GPSST
+                - type: item
+                  name: 'Cobertura GPS % (V_gps)'
+                  x: '48'
+                  y: '11'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.v_gps_pct
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: SSMBH
+                - type: item
+                  name: 'Umbral de GPS fresco'
+                  x: '60'
+                  y: '11'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.stale_s
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: STALE
+                - type: item
+                  name: 'Edad máxima del GPS'
+                  x: '0'
+                  y: '14'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.data_age_max_s
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: AGEMX
+                - type: item
+                  name: 'Edad p95 del GPS'
+                  x: '12'
+                  y: '14'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.data_age_p95_s
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: AGE95
+                - type: item
+                  name: 'Edad del feed (V_age)'
+                  x: '24'
+                  y: '14'
                   width: '12'
                   height: '3'
                   fields:
@@ -592,13 +1006,70 @@ zabbix_export:
                       value:
                         host: simovilab-databus
                         key: gtfs.feed_age_tu_s
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: RNBSD
                 - type: item
+                  name: 'Completitud predicciones %'
+                  x: '36'
+                  y: '14'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.completeness_tu_pct
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: BREJN
+                - type: item
+                  name: 'Completitud posiciones %'
+                  x: '48'
+                  y: '14'
+                  width: '12'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: gtfs.completeness_vp_pct
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: ERDSJ
+                - type: item
                   name: 'Días de vigencia del GTFS'
                   x: '60'
-                  y: '4'
+                  y: '14'
                   width: '12'
                   height: '3'
                   fields:
@@ -607,151 +1078,22 @@ zabbix_export:
                       value:
                         host: simovilab-databus
                         key: macdt.cal_dias_vigencia
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
                     - type: STRING
                       name: reference
                       value: HUUSB
-                - type: gauge
-                  name: 'Cobertura GPS (V_gps)'
-                  x: '0'
-                  y: '7'
-                  width: '18'
-                  height: '5'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-databus
-                        key: gtfs.v_gps_pct
-                    - type: STRING
-                      name: min
-                      value: '0'
-                    - type: STRING
-                      name: max
-                      value: '100'
-                    - type: STRING
-                      name: th.0.color
-                      value: FF465C
-                    - type: STRING
-                      name: th.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: th.1.color
-                      value: FFD54F
-                    - type: STRING
-                      name: th.1.threshold
-                      value: '70'
-                    - type: STRING
-                      name: th.2.color
-                      value: 0EC9AC
-                    - type: STRING
-                      name: th.2.threshold
-                      value: '85'
-                    - type: STRING
-                      name: reference
-                      value: SSMBH
-                - type: gauge
-                  name: 'Completitud predicciones'
-                  x: '18'
-                  y: '7'
-                  width: '18'
-                  height: '5'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-databus
-                        key: gtfs.completeness_tu_pct
-                    - type: STRING
-                      name: min
-                      value: '0'
-                    - type: STRING
-                      name: max
-                      value: '100'
-                    - type: STRING
-                      name: th.0.color
-                      value: FF465C
-                    - type: STRING
-                      name: th.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: th.1.color
-                      value: FFD54F
-                    - type: STRING
-                      name: th.1.threshold
-                      value: '80'
-                    - type: STRING
-                      name: th.2.color
-                      value: 0EC9AC
-                    - type: STRING
-                      name: th.2.threshold
-                      value: '90'
-                    - type: STRING
-                      name: reference
-                      value: BREJN
-                - type: gauge
-                  name: 'Completitud posiciones'
-                  x: '36'
-                  y: '7'
-                  width: '18'
-                  height: '5'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-databus
-                        key: gtfs.completeness_vp_pct
-                    - type: STRING
-                      name: min
-                      value: '0'
-                    - type: STRING
-                      name: max
-                      value: '100'
-                    - type: STRING
-                      name: th.0.color
-                      value: FF465C
-                    - type: STRING
-                      name: th.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: th.1.color
-                      value: FFD54F
-                    - type: STRING
-                      name: th.1.threshold
-                      value: '80'
-                    - type: STRING
-                      name: th.2.color
-                      value: 0EC9AC
-                    - type: STRING
-                      name: th.2.threshold
-                      value: '90'
-                    - type: STRING
-                      name: reference
-                      value: ERDSJ
-                - type: gauge
-                  name: 'Carga de transporte (ρ)'
-                  x: '54'
-                  y: '7'
-                  width: '18'
-                  height: '5'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-databus
-                        key: p.calculated
-                    - type: STRING
-                      name: min
-                      value: '0'
-                    - type: STRING
-                      name: max
-                      value: '1.2'
-                    - type: STRING
-                      name: reference
-                      value: RVFDS
                 - type: graph
-                  name: 'Viajes activos vs programados'
+                  name: 'Viajes en el feed vs programados y máximo'
                   x: '0'
-                  y: '12'
+                  y: '17'
                   width: '36'
                   height: '6'
                   fields:
@@ -764,10 +1106,55 @@ zabbix_export:
                       name: reference
                       value: SUGLD
                 - type: graph
-                  name: 'Edad del feed GTFS-RT'
+                  name: 'Vehículos del feed por estado del GPS'
                   x: '36'
-                  y: '12'
+                  y: '17'
                   width: '36'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: simovilab-databus
+                        name: 'databus: vehículos por estado del GPS'
+                    - type: STRING
+                      name: reference
+                      value: GPSGR
+                - type: graph
+                  name: 'Carga de transporte (ρ)'
+                  x: '0'
+                  y: '23'
+                  width: '24'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: simovilab-databus
+                        name: 'databus: carga de transporte (rho)'
+                    - type: STRING
+                      name: reference
+                      value: RHOGR
+                - type: graph
+                  name: 'Edad de la posición GPS'
+                  x: '24'
+                  y: '23'
+                  width: '24'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: simovilab-databus
+                        name: 'databus: edad de la posición GPS'
+                    - type: STRING
+                      name: reference
+                      value: AGEGR
+                - type: graph
+                  name: 'Edad del feed GTFS-RT'
+                  x: '48'
+                  y: '23'
+                  width: '24'
                   height: '6'
                   fields:
                     - type: GRAPH
@@ -802,7 +1189,7 @@ zabbix_export:
         - name: 'Capa D: feed GTFS-RT no alcanzable'
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
-          expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: c507ce1b741b49db9e3dc7c1be0917a5
       expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.CRIT}'
       name: 'Cobertura GPS crítica'
@@ -818,7 +1205,7 @@ zabbix_export:
         - name: 'Capa D: feed GTFS-RT no alcanzable'
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
-          expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: abdaec51aaf5480e8f43d9a54715f9ad
       expression: 'last(/simovilab-databus/macdt.gate)=1 and last(/simovilab-databus/macdt.s_t)>=2 and (min(/simovilab-databus/macdt.s_t,5m)-max(/simovilab-databus/gtfs.v_trips,5m))>=last(/simovilab-databus/macdt.s_t)/2'
       name: 'Déficit de viajes'
@@ -827,7 +1214,7 @@ zabbix_export:
         - name: 'Capa D: feed GTFS-RT no alcanzable'
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
-          expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: c55d8ed4f8e046c2843159fa995ca3eb
       expression: 'min(/simovilab-databus/gtfs.v_trips,5m)>last(/simovilab-databus/macdt.v_trips_max)'
       name: 'Más viajes que el máximo programado'
@@ -836,7 +1223,7 @@ zabbix_export:
         - name: 'Capa D: feed GTFS-RT no alcanzable'
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
-          expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: 2982be5f6b4044bb8514e2c5c9997e54
       expression: 'last(/simovilab-databus/macdt.gate)=1 and last(/simovilab-databus/macdt.s_t)>=1 and max(/simovilab-databus/gtfs.v_trips,3m)=0'
       name: 'Sin viajes activos'
@@ -845,7 +1232,7 @@ zabbix_export:
         - name: 'Capa D: feed GTFS-RT no alcanzable'
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
-          expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: d2e66eb955194ef28b7c8bcf549da2a3
       expression: 'last(/simovilab-databus/macdt.gate)=1 and last(/simovilab-databus/macdt.s_t)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
       name: 'Sin viajes activos sostenido'
@@ -861,8 +1248,48 @@ zabbix_export:
         - name: 'Capa D: feed GTFS-RT no alcanzable'
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
-          expression: 'nodata(/simovilab-databus/gtfs.probe,5m)=1'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
   graphs:
+    - uuid: ed5e4be868c94a58ab5136b81cf5e68b
+      name: 'databus: edad de la posición GPS'
+      graph_items:
+        - color: 2774A4
+          item:
+            host: simovilab-databus
+            key: gtfs.data_age_p95_s
+        - sortorder: '1'
+          color: FF465C
+          item:
+            host: simovilab-databus
+            key: gtfs.data_age_max_s
+    - uuid: 2fd28e352d9d4ceeab296bde75a10331
+      name: 'databus: vehículos por estado del GPS'
+      type: STACKED
+      graph_items:
+        - color: 0EC9AC
+          item:
+            host: simovilab-databus
+            key: gtfs.v_gps_frescos
+        - sortorder: '1'
+          color: FFA000
+          item:
+            host: simovilab-databus
+            key: gtfs.v_gps_viejos
+        - sortorder: '2'
+          color: FF465C
+          item:
+            host: simovilab-databus
+            key: gtfs.v_gps_sin_ts
+    - uuid: 4e8c6a40e2614e5d9c1fb9512532df02
+      name: 'databus: carga de transporte (rho)'
+      yaxismax: '1.2'
+      ymin_type_1: FIXED
+      ymax_type_1: FIXED
+      graph_items:
+        - color: 2774A4
+          item:
+            host: simovilab-databus
+            key: p.calculated
     - uuid: b8f11c5c891f4d8595d80dfcbc023d4b
       name: 'databus: viajes activos vs programados'
       graph_items:
@@ -880,6 +1307,11 @@ zabbix_export:
           item:
             host: simovilab-databus
             key: macdt.v_trips_max
+        - sortorder: '3'
+          color: 9C27B0
+          item:
+            host: simovilab-databus
+            key: gtfs.v_trips_sin_paradas
     - uuid: fda05315846c4ea1bac22bf1237df7b9
       name: 'databus: edad del feed GTFS-RT'
       graph_items:
@@ -891,4 +1323,4 @@ zabbix_export:
           color: F7941D
           item:
             host: simovilab-databus
-            key: gtfs.feed_age_vp_s        
+            key: gtfs.feed_age_vp_s

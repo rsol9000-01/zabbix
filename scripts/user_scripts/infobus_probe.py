@@ -43,6 +43,18 @@ Por que se valida que la respuesta sea un 200 con cuerpo:
   dos rutas son rapidas. Un stop_id mal configurado mediria el camino de error
   y reportaria una latencia excelente y falsa. Si el status no es 200, ok = 0.
 
+Excepcion: 204 = dia sin servicio (no es una falla):
+  get_next_trips devuelve None cuando el calendario no tiene servicio para la
+  fecha (en bUCR: sabado y domingo) y NextTripView responde 204. Es una
+  respuesta correcta de infobus, asi que si la rafaga completa responde 200 o
+  204, ok = 1. Si todas fueron 204, sin_servicio = 1 y las latencias quedan en
+  null: el tiempo de una respuesta vacia no es comparable con el de un dia
+  habil y contaminaria el p95.
+  El tiempo de las 204 se reporta aparte en lat_sin_servicio_p50_ms: en ese
+  camino get_next_trips solo hace 4 consultas fijas (feed, parada, agencia,
+  calendario) y se detiene, asi que mide el costo fijo de la peticion (T_0 de
+  la tuberia de umbrales) sin el costo de las horas de paso.
+
 Por que una sola sesion HTTP:
   la primera peticion paga DNS, saludo TCP y TLS. Sin reuso de conexion la
   primera muestra contamina la rafaga (medido en databus: 848 ms contra 12 ms).
@@ -81,6 +93,7 @@ Uso:
 Dependencias: requests (la eleccion de parada usa solo la biblioteca estandar)
 """
 import argparse
+import html
 import csv
 import io
 import json
@@ -269,7 +282,8 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
         calentado = 1 if w_status else 0
 
     lat, estados, bytes_tot = [], [], 0
-    throttled = errores = 0
+    lat204 = []                          # tiempos de las respuestas 204 (sin servicio)
+    throttled = errores = sin_serv = 0
 
     for _ in range(repeat):
         status, ms, nbytes = _medir(ses, api_url, timeout, params)
@@ -277,6 +291,9 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
         if status == 200:
             lat.append(ms)
             bytes_tot += nbytes
+        elif status == 204:
+            sin_serv += 1                # dia sin servicio: respuesta correcta, sin latencia util
+            lat204.append(ms)
         elif status == 429:
             throttled += 1
         else:
@@ -284,7 +301,7 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
 
     # Status representativo: el mas frecuente de la rafaga.
     status_mode = max(set(estados), key=estados.count) if estados else 0
-    ok = 1 if (len(lat) == repeat and status_mode == 200) else 0
+    ok = 1 if (len(lat) + sin_serv == repeat and status_mode in (200, 204)) else 0
 
     out = {
         "ts_sonda": int(time.time()),
@@ -292,6 +309,12 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
         "status": status_mode,
         "n": repeat,
         "n_ok": len(lat),
+        "sin_servicio": 1 if sin_serv == repeat else 0,
+        "status_codes": sorted(set(estados)),        # codigos distintos de la rafaga, p. ej. [200] o [200, 204]
+        # Costo fijo medido en dias sin servicio (solo respuestas 204; null si no hubo)
+        "lat_sin_servicio_p50_ms": _quantil(lat204, 0.50) if lat204 else None,
+        # Costo de la consulta vacia (204): capa de API + 4 consultas fijas, sin horas de paso
+        "query_sin_servicio_p50_ms": (round(_quantil(lat204, 0.50) - h_ms, 2) if lat204 and h_ok else None),
         "throttled": throttled,
         "errors": errores,
         "warmup": calentado,
@@ -326,6 +349,120 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
         })
 
     return out
+
+
+def _p95_1h(base, p50, ahora, ventana_s=3600, serie_tipo="200"):
+    """p95 de los p50 de la ultima hora, guardados por la propia sonda.
+
+    Replica el item calculado de Zabbix percentile(/HOST/infobus.api.lat_p50,1h,95)
+    para poder mostrarlo en la tabla HTML (el HTML lo arma la sonda y no puede leer
+    items de Zabbix). Un archivo por --base, para no mezclar la sonda interna con la
+    publica. Puede diferir un poco del item de Zabbix: la ventana no es identica.
+    """
+    import hashlib
+    ruta = os.path.join(tempfile.gettempdir(),
+                        "infobus_probe_p50_%s_%s.json" % (serie_tipo, hashlib.md5(base.encode()).hexdigest()[:8]))
+    try:
+        with open(ruta) as f:
+            serie = [x for x in json.load(f) if ahora - x[0] <= ventana_s]
+    except Exception:
+        serie = []
+    if p50 is not None:
+        serie.append([int(ahora), p50])
+    try:
+        tmp = ruta + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(serie, f)
+        os.replace(tmp, ruta)
+    except Exception:
+        pass
+    vals = [x[1] for x in serie]
+    return _quantil(vals, 0.95), len(vals)
+
+
+def _tabla_html(o, base):
+    """Tabla 'API INFOBUS' para el widget Item history (columna en modo HTML).
+
+    Zabbix la muestra dentro de un iframe que hereda la fuente y el color del tema,
+    asi que no se fija color de texto: solo los puntos y el estado llevan color propio.
+    """
+    verde, rojo, naranja = "#2E7D32", "#C62828", "#E65100"
+    def punto(vivo):
+        return ('<span style="display:inline-block;width:12px;height:12px;border-radius:50%%;'
+                'background:%s;vertical-align:middle"></span>' % (verde if vivo else rojo))
+    def ms(v):
+        return "-" if v is None else "%g" % round(v, 1)
+    def codigo(c):
+        return "sin conexi\u00f3n" if not c else str(c)
+    def estado(txt, color=None):
+        return txt if not color else '<span style="color:%s;font-weight:bold">%s</span>' % (color, txt)
+
+    h_vivo = bool(o.get("health_ok"))
+    api_vivo = bool(o.get("ok"))
+    if not api_vivo:
+        api_estado = estado("Falla", rojo)
+    elif o.get("sin_servicio"):
+        api_estado = estado("Sin servicio", naranja)
+    else:
+        api_estado = "Activo"
+    codigos = o.get("status_codes") or ([o["status"]] if "status" in o else [])
+    filas = [
+        ("/health/", punto(h_vivo), "Activo" if h_vivo else estado("Sin respuesta", rojo),
+         codigo(o.get("health_status")), "%s ms" % ms(o.get("health_ms")) if o.get("health_ms") is not None else "-"),
+        ("API (next-trips)", punto(api_vivo), api_estado,
+         "/".join(codigo(c) for c in codigos) or "-",
+         "%s/%s ms" % (ms(o.get("lat_p50_ms")), ms(o.get("lat_sin_servicio_p50_ms")))),
+    ]
+    th = 'style="text-align:left;padding:4px 12px;border-bottom:2px solid #8888;white-space:nowrap"'
+    td = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap"'
+    cols = ("Servicio", "Alive", "Estado", "C\u00f3digo", "Latencia (200/204)")
+    pie = "%s \u00b7 parada %s \u00b7 %s" % (
+        html.escape(base), html.escape(str(o.get("stop_id") or "-")),
+        time.strftime("%H:%M:%S", time.localtime(o.get("ts_sonda") or time.time())))
+    if o.get("error"):
+        pie += " \u00b7 error: " + html.escape(str(o["error"]))
+    def tabla(titulo, cols, filas, tdc=None):
+        tdc = tdc or {}
+        # titulo subrayado en azul real, un salto y la tabla
+        return ('<div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">%s</div><br>'
+                '<table style="border-collapse:collapse"><tr>%s</tr>%s</table>'
+                % (titulo, "".join("<th %s>%s</th>" % (th, c) for c in cols),
+                   "".join("<tr>%s</tr>" % "".join("<td %s>%s</td>" % (tdc.get(k, td), c) for k, c in enumerate(f))
+                           for f in filas)))
+
+    # Tabla 2: latencias con descripcion para lectura humana
+    sin_serv = o.get("sin_servicio") == 1
+    nota = (" Hoy sin servicio: el valor es de la respuesta vac\u00eda (204), sin horas de paso."
+            if sin_serv else "")
+    def val(v, v204=None):
+        """Valor de las respuestas 200; si no hay, el de las 204 marcado como tal."""
+        if v is not None:
+            return "%s ms" % ms(v)
+        return "-" if v204 is None else "(204: %s ms)" % ms(v204)
+    lat = [
+        ("Latencia piso", val(o.get("health_ms")),
+         "Lo m\u00ednimo que tarda infobus en contestar por HTTP con la conexi\u00f3n ya abierta "
+         "(/health/: sin API, sin cuota y sin base de datos). Si sube, el problema est\u00e1 en la red "
+         "o en el servidor web, no en la consulta."),
+        ("Costo de la consulta", val(o.get("query_p50_ms"), o.get("query_sin_servicio_p50_ms")),
+         "Lo que tarda next-trips por encima del piso: capa de API, consultas a la base de datos y "
+         "armado de la respuesta. Crece con las horas de paso de las pr\u00f3ximas 5 h en la parada." + nota),
+        ("Percentil 50", val(o.get("lat_p50_ms"), o.get("lat_sin_servicio_p50_ms")),
+         "Tiempo t\u00edpico de next-trips en este ciclo: la mitad de las 10 consultas tard\u00f3 menos "
+         "que esto y la otra mitad m\u00e1s." + nota),
+        ("Percentil 95 (\u00faltima hora)", val(o.get("lat_p95_1h_sonda_ms"), o.get("lat_sin_servicio_p95_1h_sonda_ms")),
+         "De los tiempos t\u00edpicos de cada minuto de la \u00faltima hora, el 95 %% qued\u00f3 por debajo "
+         "de este valor: solo 3 de cada 60 minutos fueron m\u00e1s lentos. Es el valor que se compara "
+         "con el umbral T_WARN y con el RNF de 200 ms (%s minutos con dato).%s"
+         % (o.get("n_p95_1h_sonda") or o.get("n_sin_servicio_p95_1h_sonda") or 0, nota)),
+    ]
+    td_desc = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"'
+    td_val = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"'
+    return ('<div style="font-size:calc(1em + 6px)"><br><br>'
+            + tabla("API INFOBUS", cols, filas)
+            + '<div style="opacity:.7;font-size:.75em;margin-top:4px">%s</div><br>' % pie
+            + tabla("LATENCIAS", ("Medida", "Valor", "Qu\u00e9 significa"), lat, {1: td_val, 2: td_desc})
+            + "</div>")
 
 
 def main():
@@ -381,6 +518,10 @@ def main():
         out = {"ok": 0, "error": str(e)[:200], "ts_sonda": int(time.time())}
 
     out.update(extra)
+    out["lat_p95_1h_sonda_ms"], out["n_p95_1h_sonda"] = _p95_1h(a.base, out.get("lat_p50_ms"), time.time())
+    out["lat_sin_servicio_p95_1h_sonda_ms"], out["n_sin_servicio_p95_1h_sonda"] = _p95_1h(
+        a.base, out.get("lat_sin_servicio_p50_ms"), time.time(), serie_tipo="204")
+    out["tabla_html"] = _tabla_html(out, a.base)
     print(json.dumps(out))
     sys.exit(0)
 
