@@ -1,0 +1,340 @@
+#!/usr/bin/env python3
+"""
+Derive MACDT operating parameters from the GTFS Schedule.
+
+Calculate the following values without hard-coding them:
+  - H_op        : operating window (first departure / last arrival) by service day
+  - D_op        : days of service during the week
+  - V_trips_max : maximum scheduled trip concurrency (rho normalizer)
+  - S(t)        : scheduled concurrency per minute (completeness baseline)
+  - gaps        : minutes within the window with no scheduled trips
+
+Why derive these values instead of setting them manually: when the GTFS changes
+(new schedule or route), thresholds follow the schedule without modifying
+Zabbix. Run this script after each GTFS import.
+
+Usage:
+  python3 gtfs_window-en.py --zip GTFS_bUCR.zip
+  python3 gtfs_window-en.py --pg "host=... dbname=databus user=zbx_ro password=..."
+  python3 gtfs_window-en.py --zip f.zip --macros
+
+Dependencies: none for --zip; psycopg[binary] for --pg
+"""
+import os
+import time
+import argparse, collections, csv, io, json, sys, zipfile
+
+DOW = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
+
+DIAS_CORTOS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+# ---------------------------------------------------------------------------
+# Convertir los minutos del día a una hora legible de 12 horas
+# ---------------------------------------------------------------------------
+def _hora_12(minutos):
+    """Minuto del dia -> '6:10 a.m.'"""
+    h, m = divmod(minutos, 60)
+    h = h % 24
+    sufijo = "a.m." if h < 12 else "p.m."
+    return "%d:%02d %s" % (h % 12 or 12, m, sufijo)
+
+
+# ---------------------------------------------------------------------------
+# Describir los días y las horas de una ventana operativa
+# ---------------------------------------------------------------------------
+def _horario_texto(dias, inicio_min, fin_min):
+    """['monday'..'friday'], 370, 1318 -> 'L-V de 6:10 a.m. a 9:58 p.m.'"""
+    idx = sorted(DOW.index(d) for d in dias)
+    if len(idx) > 1 and idx == list(range(idx[0], idx[-1] + 1)):
+        dias_txt = "%s-%s" % (DIAS_CORTOS[idx[0]], DIAS_CORTOS[idx[-1]])
+    else:
+        dias_txt = ",".join(DIAS_CORTOS[i] for i in idx)
+    return "%s from %s to %s" % (dias_txt, _hora_12(inicio_min), _hora_12(fin_min))
+
+# ---------------------------------------------------------------------------
+# Describir los intervalos sin viajes programados
+# ---------------------------------------------------------------------------
+def _huecos_texto(huecos):
+    """[{'inicio':'08:21','fin':'08:24'}, ...] -> 'Sin buses programados: 8:21 a 8:24 a.m. · ...'"""
+    if not huecos:
+        return "No gaps: buses are scheduled throughout the window"
+    partes = []
+    for h in huecos:
+        a = int(h["inicio"][:2]) * 60 + int(h["inicio"][3:])
+        b = int(h["fin"][:2]) * 60 + int(h["fin"][3:])
+        ta, tb = _hora_12(a), _hora_12(b)
+        if a == b:
+            partes.append(ta)
+        elif ta[-4:] == tb[-4:]:
+            partes.append("%s to %s" % (ta[:-5], tb))
+        else:
+            partes.append("%s to %s" % (ta, tb))
+    return "No scheduled buses: " + " · ".join(partes)
+
+# ---------------------------------------------------------------------------
+# Convertir una hora GTFS a segundos desde el inicio del servicio
+# ---------------------------------------------------------------------------
+def _sec(t):
+    """GTFS HH:MM:SS -> segundos. Admite >24h (no asi el TimeField de databus)."""
+    if not t:
+        return None
+    p = t.strip().split(":")
+    return int(p[0]) * 3600 + int(p[1]) * 60 + int(p[2])
+
+# ---------------------------------------------------------------------------
+# Leer del archivo ZIP los viajes, horarios y calendarios GTFS
+# ---------------------------------------------------------------------------
+def desde_zip(path):
+    """Devuelve (spans, calendarios) leyendo el GTFS como archivo."""
+    with zipfile.ZipFile(path) as z:
+        # -------------------------------------------------------------------
+        # Leer un archivo CSV contenido en el ZIP y devolver sus filas
+        # -------------------------------------------------------------------
+        def rd(n):
+            with z.open(n) as fh:
+                return list(csv.DictReader(io.TextIOWrapper(fh, "utf-8-sig")))
+        trips = {t["trip_id"]: t.get("service_id", "") for t in rd("trips.txt")}
+        cal = rd("calendar.txt")
+        spans = collections.defaultdict(lambda: [10**9, -1])
+        for r in rd("stop_times.txt"):
+            a = _sec(r.get("arrival_time")) or _sec(r.get("departure_time"))
+            d = _sec(r.get("departure_time")) or _sec(r.get("arrival_time"))
+            if a is None or d is None:
+                continue
+            s = spans[r["trip_id"]]
+            s[0], s[1] = min(s[0], d), max(s[1], a)
+    return {k: tuple(v) for k, v in spans.items()}, trips, cal
+
+
+# ---------------------------------------------------------------------------
+# Consultar viajes y calendarios GTFS en la base de datos PostgreSQL
+# ---------------------------------------------------------------------------
+def desde_pg(dsn):
+    """Igual, contra el feed vigente en PostgreSQL (feed_trip / feed_stoptime)."""
+    import psycopg
+    q_span = """
+        SELECT st.trip_id, t.service_id,
+               MIN(COALESCE(st.departure_time, st.arrival_time)) AS ini,
+               MAX(COALESCE(st.arrival_time, st.departure_time)) AS fin
+        FROM feed_stoptime st
+        JOIN feed_trip t ON t.trip_id = st.trip_id AND t.feed_id = st.feed_id
+        JOIN feed_feed f ON f.feed_id = st.feed_id AND f.is_current
+        GROUP BY st.trip_id, t.service_id
+    """
+    q_cal = """
+        SELECT c.service_id, c.monday, c.tuesday, c.wednesday, c.thursday,
+               c.friday, c.saturday, c.sunday, c.start_date, c.end_date
+        FROM feed_calendar c
+        JOIN feed_feed f ON f.feed_id = c.feed_id AND f.is_current
+    """
+    spans, trips, cal = {}, {}, []
+    with psycopg.connect(dsn) as cx, cx.cursor() as cur:
+        cur.execute(q_span)
+        for tid, sid, ini, fin in cur.fetchall():
+            spans[tid] = (ini.hour*3600 + ini.minute*60 + ini.second,
+                          fin.hour*3600 + fin.minute*60 + fin.second)
+            trips[tid] = sid
+        cur.execute(q_cal)
+        for row in cur.fetchall():
+            cal.append(dict(zip(
+                ["service_id"] + DOW + ["start_date", "end_date"],
+                [row[0]] + [bool(x) for x in row[1:8]] + [str(row[8]), str(row[9])])))
+    return spans, trips, cal
+
+
+# ---------------------------------------------------------------------------
+# Calcular ventanas, concurrencia, días de servicio y huecos programados
+# ---------------------------------------------------------------------------
+def analizar(spans, trips, cal):
+    servicios = {c["service_id"] for c in cal} or {trips.get(t, "") for t in spans}
+    out = {"servicios": {}}
+    for sid in sorted(servicios):
+        sp = {t: v for t, v in spans.items() if trips.get(t, "") == sid} or spans
+        if not sp:
+            continue
+        ini, fin = min(v[0] for v in sp.values()), max(v[1] for v in sp.values())
+        conc = collections.Counter()
+        for lo, hi in sp.values():
+            for m in range(lo // 60, hi // 60 + 1):
+                conc[m] += 1
+        minutos = list(range(ini // 60, fin // 60 + 1))
+        win = [conc.get(m, 0) for m in minutos]
+        n = len(win)
+        pc = lambda p: sorted(win)[min(n - 1, round(p * (n - 1)))]
+        huecos, z = [], [m for m in minutos if conc.get(m, 0) == 0]
+        for m in z:
+            if huecos and m == huecos[-1][1] + 1:
+                huecos[-1][1] = m
+            else:
+                huecos.append([m, m])
+        c = next((x for x in cal if x["service_id"] == sid), None)
+        out["servicios"][sid] = {
+            "dias": [d for d in DOW
+                     if c and str(c.get(d, "0")).strip() in ("1", "True", "true")] if c else None,
+            "vigencia": [c["start_date"], c["end_date"]] if c else None,
+            "ventana": {"inicio_min": ini // 60, "fin_min": fin // 60,
+                        "inicio": "%02d:%02d" % (ini // 3600, ini % 3600 // 60),
+                        "fin": "%02d:%02d" % (fin // 3600, fin % 3600 // 60),
+                        "duracion_min": n, "duracion_h": round(n / 60, 2)},
+            "viajes_dia": len(sp),
+            "concurrencia": {"media": round(sum(win) / n, 2), "P50": pc(.50),
+                             "P75": pc(.75), "P90": pc(.90), "P99": pc(.99),
+                             "max": max(win)},
+            "v_trips_max": pc(.99),
+            "huecos_cero": [{"inicio": "%02d:%02d" % (a // 60, a % 60),
+                             "fin": "%02d:%02d" % (b // 60, b % 60),
+                             "minutos": b - a + 1} for a, b in huecos],
+            "programado_por_minuto": {str(m): conc.get(m, 0) for m in minutos},
+        }
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Descargar el archivo GTFS y obtener su código HTTP y antigüedad
+# ---------------------------------------------------------------------------
+def _bajar(url, timeout, host_header=None):
+    """Baja el GTFS estatico. Devuelve (cuerpo, codigo HTTP, edad del archivo en s)."""
+    import email.utils
+    import urllib.request
+    # -----------------------------------------------------------------------
+    # Enviar un User-Agent de navegador para evitar el rechazo del servidor GTFS
+    # -----------------------------------------------------------------------
+    pedido = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) zabbix-macdt/1.0",
+        "Accept": "application/zip,application/octet-stream,*/*",
+    })
+    if host_header:
+        pedido.add_header("Host", host_header)
+    with urllib.request.urlopen(pedido, timeout=timeout) as r:
+        cuerpo = r.read()
+        codigo = r.status
+        lm = r.headers.get("Last-Modified")
+    edad = None
+    if lm:
+        try:
+            edad = round(time.time() - email.utils.parsedate_to_datetime(lm).timestamp(), 1)
+        except Exception:
+            edad = None
+    return cuerpo, codigo, edad
+
+
+# ---------------------------------------------------------------------------
+# Construir el resultado de error con la estructura del modo --now
+# ---------------------------------------------------------------------------
+def _now_degradado(error, http_estado):
+    """JSON de falla para --now: mismas claves, con window_ok=0."""
+    import datetime
+    ahora = datetime.datetime.now()
+    return {
+        "window_ok": 0,
+        "error": str(error)[:200],
+        "static_zip_http": http_estado,
+        "minuto": "%02d:%02d" % (ahora.hour, ahora.minute),
+        "service_id": None,
+        "gate_ventana": 0,
+        "s_t": 0,
+        "v_trips_max": None,
+        "hueco_cero_programado": 0,
+        "dias_a_fin_vigencia": None,
+        "static_zip_age_s": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Procesar los argumentos, analizar el GTFS e imprimir los resultados
+# ---------------------------------------------------------------------------
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--zip"); g.add_argument("--pg")
+    g.add_argument("--url", help="Static GTFS URL, for example "
+                                 "http://orchestrator:8000/feed/schedule/feed.zip")
+    ap.add_argument("--host-header", dest="host_header",
+                    help="Host header to send with --url; use a value in "
+                         "databus ALLOWED_HOSTS (avoids a 400 DisallowedHost response)")
+    ap.add_argument("--timeout", type=float, default=20.0)
+    ap.add_argument("--macros", action="store_true", help="print only Zabbix macros")
+    ap.add_argument("--now", action="store_true",
+                    help="print current-minute S(t) and operating-window gate (Zabbix Script item)")
+    ap.add_argument("--servicio", help="service_id to use for the macros")
+    a = ap.parse_args()
+
+    http_estado, zip_age_s = None, None
+    try:
+        if a.url:
+            cuerpo, http_estado, zip_age_s = _bajar(a.url, a.timeout, a.host_header)
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as fh:
+                fh.write(cuerpo)
+                tmp = fh.name
+            try:
+                spans, trips, cal = desde_zip(tmp)
+            finally:
+                os.unlink(tmp)
+        else:
+            spans, trips, cal = desde_zip(a.zip) if a.zip else desde_pg(a.pg)
+        r = analizar(spans, trips, cal)
+    except Exception as e:
+        # -------------------------------------------------------------------
+        # Devolver una métrica de error en --now para que Zabbix pueda alertarla
+        # -------------------------------------------------------------------
+        import urllib.error
+        if isinstance(e, urllib.error.HTTPError):
+            http_estado = e.code
+        if not a.now:
+            raise
+        print(json.dumps(_now_degradado(e, http_estado), ensure_ascii=False))
+        return
+
+    if not a.macros and not a.now:
+        print(json.dumps(r, indent=2, ensure_ascii=False))
+        return
+
+    sid = a.servicio or max(r["servicios"], key=lambda s: r["servicios"][s]["viajes_dia"])
+    s = r["servicios"][sid]
+
+    if a.now:
+        import datetime
+        ahora = datetime.datetime.now()
+        m = ahora.hour * 60 + ahora.minute
+        dias_sv = s["dias"] or DOW[:5]
+        habil = DOW[ahora.weekday()] in dias_sv
+        dentro = habil and s["ventana"]["inicio_min"] <= m <= s["ventana"]["fin_min"]
+        st = s["programado_por_minuto"].get(str(m), 0) if dentro else 0
+        vig = s["vigencia"]
+        print(json.dumps({
+            "window_ok": 1,
+            "static_zip_http": http_estado,
+            "static_zip_age_s": zip_age_s,
+            "minuto": "%02d:%02d" % (ahora.hour, ahora.minute),
+            "service_id": sid,
+            "horario_texto": _horario_texto(dias_sv, s["ventana"]["inicio_min"], s["ventana"]["fin_min"]),
+            "huecos_texto": _huecos_texto(s["huecos_cero"]),
+            "gate_ventana": 1 if dentro else 0,
+            "s_t": st,
+            "v_trips_max": s["v_trips_max"],
+            "hueco_cero_programado": 1 if (dentro and st == 0) else 0,
+            "dias_a_fin_vigencia": (
+                (datetime.datetime.strptime(vig[1], "%Y%m%d").date() - ahora.date()).days
+                if vig else None),
+        }, ensure_ascii=False))
+        return
+    dias = s["dias"] or DOW[:5]
+    print(json.dumps({
+        "{$MACDT.SERVICE_ID}": sid,
+        "{$MACDT.VTRIPS_MAX}": s["v_trips_max"],
+        "{$MACDT.WIN_START}": s["ventana"]["inicio"],
+        "{$MACDT.WIN_END}": s["ventana"]["fin"],
+        "{$MACDT.WIN_DAYS}": ",".join(str(DOW.index(d) + 1) for d in dias),
+        "{$MACDT.HOP_MIN_DIA}": s["ventana"]["duracion_min"],
+        "{$MACDT.HOP_HORAS_MES}": round(
+            s["ventana"]["duracion_min"] / 60 * len(dias) * 52 / 12, 1),
+        "{$MACDT.PERIOD_ZBX}": "%s-%s,%s-%s" % (
+            DOW.index(dias[0]) + 1, DOW.index(dias[-1]) + 1,
+            s["ventana"]["inicio"], s["ventana"]["fin"]),
+    }, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
