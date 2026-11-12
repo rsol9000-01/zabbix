@@ -13,7 +13,7 @@ Docker Compose deployment for monitoring [databus](https://github.com/simovilab/
 - **Server (`server`):** Zabbix Server, PostgreSQL, the web frontend, a local agent, the `zabbix-init` container that configures Zabbix through its API, and the **MACDT** loop, which adjusts the infobus latency threshold to the transit load.
 - **Agent (`agent`):** a Zabbix Agent 2 on each application server. It auto-registers with the server under its role (`databus` or `infobus`), is encrypted with PSK, and runs the domain probes (GTFS, GTFS-RT and the infobus API).
 
-<img width="80%" alt="Zabbix on Docker architecture" src="./diagramas/zabbix-docker.png" />
+<img width="80%" alt="Zabbix on Docker architecture" src="./diagramas/zabbix-docker.svg" />
 
 ## Architecture
 

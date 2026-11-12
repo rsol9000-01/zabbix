@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Servicios internos de infobus con sus agentes">
+<title>Nivel 2B — R2 · infobus</title>
+<style>
+text{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#17202a}
+text.m{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+text.cap{fill:#5b6b7c}
+.edge{stroke:#c3cdd8;stroke-width:1.7;fill:none}
+.edge-p{stroke:#c2680f;stroke-width:1.7;fill:none;stroke-dasharray:6 4}
+.edge-s{stroke:#a8406f;stroke-width:1.7;fill:none;stroke-dasharray:2 4;stroke-linecap:round}
+.edge-o{stroke:#1d6b45;stroke-width:1.8;fill:none}
+.band{fill:#eef1f5;stroke:#dde4ec;stroke-width:1}
+</style>
+<rect x="0" y="0" width="1200" height="750" fill="#ffffff"/>
+
+    <defs>
+      <marker id="c" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c3cdd8"/></marker>
+      <marker id="cp" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c2680f"/></marker>
+    </defs>
+
+    <rect x="20" y="24" width="190" height="66" rx="7" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.6"/>
+    <text class="m" x="115" y="48" font-size="12.5" font-weight="600" text-anchor="middle">GTFS desde R3</text>
+    <text class="m cap" x="115" y="66" font-size="10.5" text-anchor="middle">Schedule + Realtime</text>
+    <text class="m cap" x="115" y="82" font-size="10.5" text-anchor="middle">HTTP polling</text>
+
+    <rect x="250" y="24" width="770" height="40" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text class="m" x="266" y="49" font-size="12.5" font-weight="600">Traefik — TLS · traefik_proxy (orchestrator · lake · frontend)</text>
+
+    <rect x="1040" y="16" width="150" height="56" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="1.6"/>
+    <text class="m" x="1115" y="38" font-size="11.5" font-weight="700" text-anchor="middle" fill="#a14e07">agent2 de R4</text>
+    <text class="m cap" x="1115" y="56" font-size="10.5" text-anchor="middle">infobus.api.ext</text>
+    <path class="edge-p" d="M1040 44 H1020" marker-end="url(#cp)"/>
+
+    <text class="m cap" x="20" y="134" font-size="11" letter-spacing="1.4">PROCESAMIENTO</text>
+    <rect x="20" y="144" width="176" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="2.2"/>
+    <text class="m" x="108" y="166" font-size="12.5" font-weight="600" text-anchor="middle">engine</text>
+    <text class="m cap" x="108" y="183" font-size="10.5" text-anchor="middle">Celery worker</text>
+    <rect x="212" y="144" width="176" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="2.2"/>
+    <text class="m" x="300" y="166" font-size="12.5" font-weight="600" text-anchor="middle">orchestrator</text>
+    <text class="m cap" x="300" y="183" font-size="10.5" text-anchor="middle">Django/Daphne :8000</text>
+    <rect x="404" y="144" width="156" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="482" y="166" font-size="12.5" font-weight="600" text-anchor="middle">scheduler</text>
+    <text class="m cap" x="482" y="183" font-size="10.5" text-anchor="middle">Celery Beat</text>
+    <rect x="576" y="144" width="186" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="669" y="166" font-size="12.5" font-weight="600" text-anchor="middle">streams</text>
+    <text class="m cap" x="669" y="183" font-size="10.5" text-anchor="middle">consumidor Redis Streams</text>
+    <rect x="778" y="144" width="176" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="866" y="166" font-size="12.5" font-weight="600" text-anchor="middle">frontend</text>
+    <text class="m cap" x="866" y="183" font-size="10.5" text-anchor="middle">Nuxt · landing, docs, panel</text>
+
+    <text class="m cap" x="20" y="250" font-size="11" letter-spacing="1.4">ESTADO Y PERSISTENCIA</text>
+    <rect x="20" y="260" width="176" height="52" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="108" y="282" font-size="12.5" font-weight="600" text-anchor="middle">broker</text>
+    <text class="m cap" x="108" y="299" font-size="10.5" text-anchor="middle">RabbitMQ 4.3.5</text>
+    <rect x="212" y="260" width="176" height="52" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="300" y="282" font-size="12.5" font-weight="600" text-anchor="middle">state (alias memory)</text>
+    <text class="m cap" x="300" y="299" font-size="10.5" text-anchor="middle">Redis 8.10.1 :6379</text>
+    <rect x="404" y="260" width="176" height="52" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="492" y="282" font-size="12.5" font-weight="600" text-anchor="middle">database</text>
+    <text class="m cap" x="492" y="299" font-size="10.5" text-anchor="middle">PostgreSQL + PostGIS</text>
+    <rect x="596" y="260" width="166" height="52" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.6"/>
+    <text class="m" x="679" y="282" font-size="12.5" font-weight="600" text-anchor="middle">lake</text>
+    <text class="m cap" x="679" y="299" font-size="10.5" text-anchor="middle">MinIO · data lake</text>
+
+    <text class="m cap" x="20" y="366" font-size="11" letter-spacing="1.4">CONTEXTO · SIN SERVICIO EN PRODUCCIÓN</text>
+    <rect x="20" y="376" width="176" height="52" rx="6" fill="#ffffff" stroke="#c3cdd8" stroke-width="1.4" stroke-dasharray="5 4"/>
+    <text class="m" x="108" y="398" font-size="12.5" font-weight="600" text-anchor="middle" fill="#5b6b7c">context · MCP</text>
+    <text class="m cap" x="108" y="415" font-size="10.5" text-anchor="middle">código en el repo</text>
+    <rect x="212" y="376" width="176" height="52" rx="6" fill="#ffffff" stroke="#c3cdd8" stroke-width="1.4" stroke-dasharray="5 4"/>
+    <text class="m" x="300" y="398" font-size="12.5" font-weight="600" text-anchor="middle" fill="#5b6b7c">trips · OTP</text>
+    <text class="m cap" x="300" y="415" font-size="10.5" text-anchor="middle">en ARCHITECTURE.md</text>
+
+    <rect x="850" y="260" width="180" height="190" rx="7" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.6"/>
+    <text x="866" y="286" font-size="14" font-weight="700">Interfaces</text>
+    <text class="m cap" x="866" y="310" font-size="11">REST · GraphQL</text>
+    <text class="m cap" x="866" y="330" font-size="11">WebSocket · SSE</text>
+    <text class="m" x="866" y="350" font-size="11" font-weight="600" fill="#a14e07">/api/next-trips/</text>
+    <text class="m" x="866" y="366" font-size="11" font-weight="600" fill="#a14e07">/health/</text>
+    <text class="m cap" x="866" y="392" font-size="10.5">MCP · SPARQL · ETA ·</text>
+    <text class="m cap" x="866" y="406" font-size="10.5">Trip Planning: en la</text>
+    <text class="m cap" x="866" y="420" font-size="10.5">arquitectura, sin</text>
+    <text class="m cap" x="866" y="434" font-size="10.5">servicio en prod</text>
+
+    <path class="edge" d="M115 90 V144" marker-end="url(#c)"/>
+    <text class="m cap" x="124" y="122" font-size="10.5">polling</text>
+    
+    <path class="edge" d="M300 64 V144" marker-end="url(#c)"/>
+    <path class="edge" d="M866 64 V144" marker-end="url(#c)"/>
+    <path class="edge" d="M990 64 V260" marker-end="url(#c)"/>
+    <path class="edge" d="M108 196 V260" marker-end="url(#c)"/>
+    <path class="edge" d="M240 196 V230 H150 V260" marker-end="url(#c)" opacity=".55"/>
+    <path class="edge" d="M300 196 V260" marker-end="url(#c)"/>
+    <path class="edge" d="M370 196 V244 H470 V260" marker-end="url(#c)" opacity=".55"/>
+
+    <!-- agente zabbix -->
+    <rect x="596" y="500" width="434" height="180" rx="8" fill="#fbead6" stroke="#c2680f" stroke-width="2"/>
+    <text class="m" x="616" y="526" font-size="13" font-weight="700" fill="#a14e07">zabbix-agent2 · infobus_internal · activo</text>
+    <text class="m cap" x="616" y="548" font-size="11">infobus.api → orchestrator:8000 (Host: localhost)</text>
+    <text class="m cap" x="616" y="567" font-size="11">TCP ×3 · /health/ ×2 · next-trips ×10</text>
+    <text class="m cap" x="616" y="586" font-size="11">stop_id auto ← GTFS estático (saliente)</text>
+    <text class="m cap" x="616" y="605" font-size="11">N(t) · L_api p50/p90/max · query_p50 · 429</text>
+    <text class="m cap" x="616" y="624" font-size="11">host.tcp.established · Docker · contenedores</text>
+    <text class="m" x="616" y="643" font-size="11" fill="#8a5a00">plugins PostgreSQL/Redis: sesiones, sin ítems</text>
+    <text class="m" x="616" y="666" font-size="11" font-weight="600" fill="#a14e07">→ R4 :10051 · TLS PSK · checks activos</text>
+    <path class="edge-p" d="M640 500 V470 H396 V196" marker-end="url(#cp)"/>
+
+    <!-- agente wazuh -->
+    <rect x="20" y="500" width="540" height="180" rx="8" fill="#f6e0ea" stroke="#a8406f" stroke-width="2"/>
+    <text class="m" x="40" y="526" font-size="13" font-weight="700" fill="#8a2b55">wazuh.agent · grupo infobus</text>
+    <text class="m cap" x="40" y="548" font-size="11">registros JSON de los contenedores (docker.sock :ro)</text>
+    <text class="m cap" x="40" y="567" font-size="11">FIM tiempo real: INFOBUS_PATH, sin diff de .env</text>
+    <text class="m cap" x="40" y="586" font-size="11">100102/100103 Host rechazado · escaneo de nombres</text>
+    <text class="m cap" x="40" y="605" font-size="11">100104 5xx · 100105/100106 404 y enumeración</text>
+    <text class="m cap" x="40" y="624" font-size="11">100107 auth Redis · 100108–100112 eventos de streams</text>
+    <text class="m cap" x="40" y="643" font-size="11">100120 secretos · 100122 socket Docker</text>
+    <text class="m" x="40" y="666" font-size="11" font-weight="600" fill="#8a2b55">→ R4 :1515 enrolamiento · :1514 eventos</text>
+  
+<line x1="0" y1="700" x2="1200" y2="700" stroke="#dde4ec"/>
+<rect x="0" y="700" width="1200" height="50" fill="#eef1f5"/>
+<rect x="20" y="719" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6e99" stroke-width="1.5"/>
+<text x="42" y="731" font-size="13" class="cap">Servicio de aplicación</text>
+<rect x="224" y="719" width="14" height="14" rx="3" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.5"/>
+<text x="246" y="731" font-size="13" class="cap">Estado / persistencia</text>
+<rect x="421" y="719" width="14" height="14" rx="3" fill="#fbead6" stroke="#c2680f" stroke-width="1.5"/>
+<text x="443" y="731" font-size="13" class="cap">Sondas de Zabbix</text>
+<rect x="582" y="719" width="14" height="14" rx="3" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.5"/>
+<text x="604" y="731" font-size="13" class="cap">Agente de Wazuh</text>
+<rect x="736" y="719" width="14" height="14" rx="3" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+<text x="758" y="731" font-size="13" class="cap">Frontera del sistema</text>
+</svg>

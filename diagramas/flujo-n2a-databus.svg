@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 830" width="1200" height="830" role="img" aria-label="Servicios internos de databus con sus agentes">
+<title>Nivel 2A — R3 · databus</title>
+<style>
+text{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#17202a}
+text.m{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+text.cap{fill:#5b6b7c}
+.edge{stroke:#c3cdd8;stroke-width:1.7;fill:none}
+.edge-p{stroke:#c2680f;stroke-width:1.7;fill:none;stroke-dasharray:6 4}
+.edge-s{stroke:#a8406f;stroke-width:1.7;fill:none;stroke-dasharray:2 4;stroke-linecap:round}
+.edge-o{stroke:#1d6b45;stroke-width:1.8;fill:none}
+.band{fill:#eef1f5;stroke:#dde4ec;stroke-width:1}
+</style>
+<rect x="0" y="0" width="1200" height="830" fill="#ffffff"/>
+
+    <defs>
+      <marker id="b" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c3cdd8"/></marker>
+      <marker id="bp" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c2680f"/></marker>
+      <marker id="bs" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#a8406f"/></marker>
+    </defs>
+
+    <rect x="20" y="20" width="150" height="44" rx="6" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+    <text class="m" x="95" y="47" font-size="12.5" text-anchor="middle">MQTT :8883</text>
+    <rect x="190" y="20" width="150" height="44" rx="6" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+    <text class="m" x="265" y="47" font-size="12.5" text-anchor="middle">REST / HTTPS</text>
+    <rect x="1040" y="20" width="150" height="44" rx="6" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+    <text class="m" x="1115" y="47" font-size="12" text-anchor="middle">feeds.simovi.org</text>
+
+    <rect x="20" y="92" width="1000" height="42" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text class="m" x="36" y="118" font-size="12.5" font-weight="600">Traefik — TLS, enrutamiento por host · red externa traefik_proxy</text>
+    <path class="edge" d="M95 64 V92" marker-end="url(#b)"/>
+    <path class="edge" d="M265 64 V92" marker-end="url(#b)"/>
+
+    <text class="m cap" x="20" y="166" font-size="11" letter-spacing="1.4">BORDE</text>
+    <rect x="20" y="176" width="156" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="98" y="198" font-size="12.5" font-weight="600" text-anchor="middle">telemetry-broker</text>
+    <text class="m cap" x="98" y="215" font-size="10.5" text-anchor="middle">NanoMQ 0.24.9</text>
+    <rect x="192" y="176" width="156" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="2.2"/>
+    <text class="m" x="270" y="198" font-size="12.5" font-weight="600" text-anchor="middle">orchestrator</text>
+    <text class="m cap" x="270" y="215" font-size="10.5" text-anchor="middle">Django/Daphne :8000</text>
+    <rect x="364" y="176" width="150" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="439" y="198" font-size="12.5" font-weight="600" text-anchor="middle">user-interface</text>
+    <text class="m cap" x="439" y="215" font-size="10.5" text-anchor="middle">Nuxt</text>
+    <rect x="530" y="176" width="110" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="585" y="198" font-size="12.5" font-weight="600" text-anchor="middle">docs</text>
+    <text class="m cap" x="585" y="215" font-size="10.5" text-anchor="middle">nginx</text>
+    <rect x="656" y="176" width="166" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="739" y="198" font-size="12.5" font-weight="600" text-anchor="middle">analytics-engine</text>
+    <text class="m cap" x="739" y="215" font-size="10.5" text-anchor="middle">Prefect 3</text>
+    <rect x="838" y="176" width="182" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="929" y="198" font-size="12.5" font-weight="600" text-anchor="middle">task-monitoring</text>
+    <text class="m cap" x="929" y="215" font-size="10.5" text-anchor="middle">Flower 2.0</text>
+
+    <text class="m cap" x="20" y="278" font-size="11" letter-spacing="1.4">PROCESAMIENTO · Celery</text>
+    <rect x="20" y="288" width="176" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="108" y="310" font-size="12.5" font-weight="600" text-anchor="middle">realtime-engine</text>
+    <text class="m cap" x="108" y="327" font-size="10.5" text-anchor="middle">worker tiempo real</text>
+    <rect x="212" y="288" width="176" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="300" y="310" font-size="12.5" font-weight="600" text-anchor="middle">schedule-engine</text>
+    <text class="m cap" x="300" y="327" font-size="10.5" text-anchor="middle">construye GTFS-RT</text>
+    <rect x="404" y="288" width="150" height="52" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="479" y="310" font-size="12.5" font-weight="600" text-anchor="middle">scheduler</text>
+    <text class="m cap" x="479" y="327" font-size="10.5" text-anchor="middle">Celery Beat</text>
+
+    <text class="m cap" x="20" y="390" font-size="11" letter-spacing="1.4">ESTADO Y PERSISTENCIA</text>
+    <rect x="20" y="400" width="176" height="52" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="108" y="422" font-size="12.5" font-weight="600" text-anchor="middle">message-broker</text>
+    <text class="m cap" x="108" y="439" font-size="10.5" text-anchor="middle">RabbitMQ 4</text>
+    <rect x="212" y="400" width="176" height="52" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="300" y="422" font-size="12.5" font-weight="600" text-anchor="middle">state</text>
+    <text class="m cap" x="300" y="439" font-size="10.5" text-anchor="middle">Redis 7 :6379</text>
+    <rect x="404" y="400" width="176" height="52" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="492" y="422" font-size="12.5" font-weight="600" text-anchor="middle">database</text>
+    <text class="m cap" x="492" y="439" font-size="10.5" text-anchor="middle">PostgreSQL + PostGIS</text>
+
+    <rect x="212" y="500" width="176" height="52" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.6"/>
+    <text class="m" x="300" y="522" font-size="12.5" font-weight="600" text-anchor="middle">feed_files</text>
+    <text class="m cap" x="300" y="539" font-size="10.5" text-anchor="middle">volumen GTFS-RT</text>
+
+    <path class="edge" d="M98 134 V176" marker-end="url(#b)"/>
+    <path class="edge" d="M270 134 V176" marker-end="url(#b)"/>
+    <path class="edge" d="M98 228 V288" marker-end="url(#b)"/>
+    <text class="m cap" x="106" y="262" font-size="10.5">telemetría</text>
+    <path class="edge" d="M240 228 V268 H108 V288" marker-end="url(#b)" opacity=".5"/>
+    <path class="edge" d="M270 228 V256 H479 V288" marker-end="url(#b)" opacity=".5"/>
+    <path class="edge" d="M108 340 V400" marker-end="url(#b)"/>
+    <text class="m cap" x="116" y="374" font-size="10.5">observaciones</text>
+    <path class="edge" d="M300 340 V400" marker-end="url(#b)"/>
+    <path class="edge" d="M479 340 V368 H492 V400" marker-end="url(#b)"/>
+    <path class="edge" d="M300 452 V500" marker-end="url(#b)"/>
+    <text class="m cap" x="308" y="480" font-size="10.5">escribe artefactos</text>
+    <path class="edge" d="M388 526 H430 V248 H300 V228" marker-end="url(#b)"/>
+    <text class="m cap" x="440" y="392" font-size="10.5">sirve por HTTP</text>
+
+    <rect x="620" y="500" width="200" height="52" rx="6" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+    <text class="m" x="720" y="522" font-size="12.5" font-weight="600" text-anchor="middle">GTFS-RT público</text>
+    <text class="m cap" x="720" y="539" font-size="10.5" text-anchor="middle">→ R2 infobus</text>
+    <path class="edge" d="M430 300 H620 V500" marker-end="url(#b)" opacity=".55"/>
+
+    <!-- agente zabbix -->
+    <rect x="620" y="600" width="560" height="160" rx="8" fill="#fbead6" stroke="#c2680f" stroke-width="2"/>
+    <text class="m" x="640" y="626" font-size="13" font-weight="700" fill="#a14e07">zabbix-agent2 · red databus_internal · activo</text>
+    <text class="m cap" x="640" y="648" font-size="11">gtfs.probe[{$MACDT.STALE_S}] → orchestrator:8000/feed/realtime</text>
+    <text class="m cap" x="640" y="667" font-size="11">databus.static → orchestrator:8000/feed/schedule/feed.zip</text>
+    <text class="m cap" x="640" y="686" font-size="11">macdt.window → feeds.simovi.org/bucr/schedule/gtfs.zip</text>
+    <text class="m cap" x="640" y="705" font-size="11">host.tcp.established · Docker (socket) · contenedores</text>
+    <text class="m" x="640" y="724" font-size="11" fill="#8a5a00">plugins PostgreSQL/Redis: sesiones definidas, sin ítems</text>
+    <text class="m" x="640" y="746" font-size="11" font-weight="600" fill="#a14e07">→ R4 :10051 · TLS PSK · checks activos</text>
+    <path class="edge-p" d="M620 630 H600 V244 H330 V228" marker-end="url(#bp)"/>
+    <path class="edge-p" d="M1160 600 V64" marker-end="url(#bp)"/>
+    <text class="m" x="1150" y="300" font-size="10.5" text-anchor="end" fill="#a14e07">macdt.window</text>
+    <text class="m" x="1150" y="314" font-size="10.5" text-anchor="end" fill="#a14e07">HTTPS saliente</text>
+
+    <!-- agente wazuh -->
+    <rect x="20" y="600" width="560" height="160" rx="8" fill="#f6e0ea" stroke="#a8406f" stroke-width="2"/>
+    <text class="m" x="40" y="626" font-size="13" font-weight="700" fill="#8a2b55">wazuh.agent · grupo databus</text>
+    <text class="m cap" x="40" y="648" font-size="11">registros JSON de los contenedores (docker.sock :ro)</text>
+    <text class="m cap" x="40" y="667" font-size="11">FIM tiempo real: DATABUS_PATH, sin diff de .env</text>
+    <text class="m cap" x="40" y="686" font-size="11">FIM: volumen databus_feed_files (GTFS publicado)</text>
+    <text class="m cap" x="40" y="705" font-size="11">100101 importación GTFS falló · 100109 clona en arranque</text>
+    <text class="m cap" x="40" y="724" font-size="11">100120 secretos · 100121 GTFS cambió · 100122 socket</text>
+    <text class="m" x="40" y="746" font-size="11" font-weight="600" fill="#8a2b55">→ R4 :1515 enrolamiento · :1514 eventos</text>
+    <path class="edge-s" d="M300 600 V552" marker-end="url(#bs)"/>
+  
+<line x1="0" y1="780" x2="1200" y2="780" stroke="#dde4ec"/>
+<rect x="0" y="780" width="1200" height="50" fill="#eef1f5"/>
+<rect x="20" y="799" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6e99" stroke-width="1.5"/>
+<text x="42" y="811" font-size="13" class="cap">Servicio de aplicación</text>
+<rect x="224" y="799" width="14" height="14" rx="3" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.5"/>
+<text x="246" y="811" font-size="13" class="cap">Estado / persistencia</text>
+<rect x="421" y="799" width="14" height="14" rx="3" fill="#fbead6" stroke="#c2680f" stroke-width="1.5"/>
+<text x="443" y="811" font-size="13" class="cap">Agente y sondas de Zabbix</text>
+<rect x="646" y="799" width="14" height="14" rx="3" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.5"/>
+<text x="668" y="811" font-size="13" class="cap">Agente de Wazuh</text>
+<rect x="800" y="799" width="14" height="14" rx="3" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+<text x="822" y="811" font-size="13" class="cap">Frontera del sistema</text>
+</svg>

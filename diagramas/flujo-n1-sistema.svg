@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" width="1200" height="780" role="img" aria-label="Diagrama de sistema con tres servidores y dos planos">
+<title>Nivel 1 — Vista de sistema</title>
+<style>
+text{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#17202a}
+text.m{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+text.cap{fill:#5b6b7c}
+.edge{stroke:#c3cdd8;stroke-width:1.7;fill:none}
+.edge-p{stroke:#c2680f;stroke-width:1.7;fill:none;stroke-dasharray:6 4}
+.edge-s{stroke:#a8406f;stroke-width:1.7;fill:none;stroke-dasharray:2 4;stroke-linecap:round}
+.edge-o{stroke:#1d6b45;stroke-width:1.8;fill:none}
+.band{fill:#eef1f5;stroke:#dde4ec;stroke-width:1}
+</style>
+<rect x="0" y="0" width="1200" height="780" fill="#ffffff"/>
+
+    <defs>
+      <marker id="a" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c3cdd8"/></marker>
+      <marker id="ap" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c2680f"/></marker>
+      <marker id="as" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#a8406f"/></marker>
+      <marker id="ao" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#1d6b45"/></marker>
+    </defs>
+
+    <rect class="band" x="8" y="14" width="1184" height="270" rx="8"/>
+    <rect class="band" x="8" y="300" width="1184" height="420" rx="8"/>
+    <text class="m cap" x="24" y="36" font-size="11.5" letter-spacing="1.6">PLANO DE DATOS</text>
+    <text class="m cap" x="24" y="322" font-size="11.5" letter-spacing="1.6">PLANO DE OBSERVACIÓN</text>
+
+    <!-- externos -->
+    <rect x="26" y="56" width="152" height="74" rx="7" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.6"/>
+    <text x="102" y="84" font-size="14.5" font-weight="600" text-anchor="middle">Flota</text>
+    <text class="m cap" x="102" y="104" font-size="11.5" text-anchor="middle">telemetría a bordo</text>
+    <text class="m cap" x="102" y="120" font-size="11.5" text-anchor="middle">ruta BUCR</text>
+
+    <rect x="26" y="170" width="152" height="74" rx="7" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.6"/>
+    <text x="102" y="196" font-size="13.5" font-weight="600" text-anchor="middle">feeds.simovi.org</text>
+    <text class="m cap" x="102" y="216" font-size="11.5" text-anchor="middle">GTFS Schedule</text>
+    <text class="m cap" x="102" y="232" font-size="11.5" text-anchor="middle">fuente autoritativa</text>
+
+    <!-- R3 -->
+    <rect x="262" y="48" width="208" height="208" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
+    <text class="m" x="278" y="72" font-size="12" font-weight="600" fill="#0b6e99">R3</text>
+    <text x="278" y="98" font-size="20" font-weight="700">databus</text>
+    <text class="cap" x="278" y="120" font-size="12.5">Ingesta · estado · proyección</text>
+    <line x1="278" y1="134" x2="454" y2="134" stroke="#dde4ec"/>
+    <text class="m cap" x="278" y="154" font-size="11.5">produce GTFS-RT y Schedule</text>
+    <text class="m cap" x="278" y="172" font-size="11.5">12 servicios Docker</text>
+    <rect x="278" y="186" width="176" height="24" rx="4" fill="#fbead6" stroke="#c2680f" stroke-width="1.4"/>
+    <text class="m" x="366" y="202" font-size="11" font-weight="600" text-anchor="middle" fill="#a14e07">zabbix-agent2 · 3 sondas</text>
+    <rect x="278" y="216" width="176" height="24" rx="4" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.4"/>
+    <text class="m" x="366" y="232" font-size="11" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.agent · databus</text>
+
+    <!-- R2 -->
+    <rect x="556" y="48" width="208" height="208" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
+    <text class="m" x="572" y="72" font-size="12" font-weight="600" fill="#0b6e99">R2</text>
+    <text x="572" y="98" font-size="20" font-weight="700">infobus</text>
+    <text class="cap" x="572" y="120" font-size="12.5">Consumo · difusión</text>
+    <line x1="572" y1="134" x2="748" y2="134" stroke="#dde4ec"/>
+    <text class="m cap" x="572" y="154" font-size="11.5">consume GTFS por polling</text>
+    <text class="m cap" x="572" y="172" font-size="11.5">9 servicios Docker</text>
+    <rect x="572" y="186" width="176" height="24" rx="4" fill="#fbead6" stroke="#c2680f" stroke-width="1.4"/>
+    <text class="m" x="660" y="202" font-size="11" font-weight="600" text-anchor="middle" fill="#a14e07">zabbix-agent2 · 1 sonda</text>
+    <rect x="572" y="216" width="176" height="24" rx="4" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.4"/>
+    <text class="m" x="660" y="232" font-size="11" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.agent · infobus</text>
+
+    <!-- consumidores -->
+    <rect x="850" y="48" width="190" height="208" rx="8" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.6"/>
+    <text x="866" y="80" font-size="16" font-weight="700">Consumidores</text>
+    <text class="m cap" x="866" y="106" font-size="11.5">pantallas de parada</text>
+    <text class="m cap" x="866" y="126" font-size="11.5">aplicación de usuario</text>
+    <text class="m cap" x="866" y="146" font-size="11.5">REST · GraphQL</text>
+    <text class="m cap" x="866" y="166" font-size="11.5">WebSocket · SSE</text>
+    <text class="m cap" x="866" y="186" font-size="11.5">next-trips (medido)</text>
+    <text class="m" x="866" y="236" font-size="11" fill="#8a5a00">V_displays: sin fuente</text>
+
+    <!-- flechas plano de datos -->
+    <path class="edge" d="M178 93 H262" marker-end="url(#a)"/>
+    <text class="m cap" x="220" y="80" font-size="10.5" text-anchor="middle">MQTT/TLS</text>
+    <text class="m cap" x="220" y="108" font-size="10.5" text-anchor="middle">:8883</text>
+    <path class="edge" d="M178 207 H214 V125 H262" marker-end="url(#a)"/>
+    <path class="edge" d="M470 104 H556" marker-end="url(#a)"/>
+    <text class="m cap" x="513" y="92" font-size="10.5" text-anchor="middle">GTFS-RT +</text>
+    <text class="m cap" x="513" y="122" font-size="10.5" text-anchor="middle">Schedule</text>
+    <text class="m cap" x="513" y="136" font-size="10.5" text-anchor="middle">HTTP polling</text>
+    <path class="edge" d="M764 104 H850" marker-end="url(#a)"/>
+    <text class="m cap" x="807" y="94" font-size="10.5" text-anchor="middle">HTTPS</text>
+
+    <!-- canales -->
+    <rect x="24" y="340" width="196" height="160" rx="7" fill="#ffffff" stroke="#c3cdd8" stroke-width="1.2" stroke-dasharray="5 4"/>
+    <text class="m cap" x="38" y="362" font-size="11" letter-spacing="1.2">CANALES HACIA R4</text>
+    <text class="m" x="38" y="386" font-size="12" font-weight="600" fill="#a14e07">Zabbix</text>
+    <text class="m cap" x="38" y="404" font-size="11">10051/tcp · TLS PSK</text>
+    <text class="m cap" x="38" y="420" font-size="11">checks activos salientes</text>
+    <text class="m" x="38" y="448" font-size="12" font-weight="600" fill="#8a2b55">Wazuh</text>
+    <text class="m cap" x="38" y="466" font-size="11">1515/tcp enrolamiento</text>
+    <text class="m cap" x="38" y="482" font-size="11">1514/tcp eventos</text>
+
+    <!-- R4 -->
+    <rect x="236" y="332" width="946" height="376" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
+    <text class="m" x="254" y="694" font-size="12" font-weight="600" fill="#0b6e99">R4</text>
+    <text x="284" y="695" font-size="17" font-weight="700">monitoreo y seguridad</text>
+    <text class="cap" x="478" y="694" font-size="12.5">recolección · adaptación del umbral · detección</text>
+
+    <!-- grupo zabbix -->
+    <rect x="252" y="348" width="452" height="318" rx="7" fill="none" stroke="#c3cdd8" stroke-width="1.3" stroke-dasharray="6 4"/>
+    <text class="m cap" x="472" y="368" font-size="11">ZABBIX 7.4.3 · zabbix-fase-2</text>
+    <rect x="268" y="380" width="200" height="46" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+    <text class="m" x="368" y="399" font-size="12" font-weight="600" text-anchor="middle">zabbix-server</text>
+    <text class="m cap" x="368" y="416" font-size="10.5" text-anchor="middle">:10051 · evaluación</text>
+    <rect x="484" y="380" width="204" height="46" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.4"/>
+    <text class="m" x="586" y="399" font-size="12" font-weight="600" text-anchor="middle">PostgreSQL 17.6</text>
+    <text class="m cap" x="586" y="416" font-size="10.5" text-anchor="middle">histórico y tendencias</text>
+    <rect x="268" y="438" width="200" height="46" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.4"/>
+    <text class="m" x="368" y="457" font-size="12" font-weight="600" text-anchor="middle">zabbix-dashboard</text>
+    <text class="m cap" x="368" y="474" font-size="10.5" text-anchor="middle">web y API :8080/:8443</text>
+    <rect x="484" y="438" width="204" height="46" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="1.6"/>
+    <text class="m" x="586" y="457" font-size="12" font-weight="600" text-anchor="middle" fill="#a14e07">zabbix-agent2 local</text>
+    <text class="m cap" x="586" y="474" font-size="10.5" text-anchor="middle">R4 + infobus.api.ext</text>
+    <rect x="268" y="496" width="420" height="50" rx="6" fill="#d9efe3" stroke="#1d6b45" stroke-width="2"/>
+    <text class="m" x="478" y="517" font-size="12.5" font-weight="700" text-anchor="middle" fill="#1d6b45">macdt-loop · cada 60 s</text>
+    <text class="m cap" x="478" y="535" font-size="10.5" text-anchor="middle">lee ρ, V_gps, gate y N(t) → escribe {$T_LATENCY_WARN}</text>
+    <rect x="268" y="558" width="200" height="42" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.3"/>
+    <text class="m" x="368" y="575" font-size="11.5" font-weight="600" text-anchor="middle">zabbix-init</text>
+    <text class="m cap" x="368" y="591" font-size="10.5" text-anchor="middle">una vez · JSON-RPC</text>
+    <rect x="484" y="558" width="204" height="42" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.3"/>
+    <text class="m" x="586" y="575" font-size="11.5" font-weight="600" text-anchor="middle">trappers macdt.*</text>
+    <text class="m cap" x="586" y="591" font-size="10.5" text-anchor="middle">status · t_warn · calib</text>
+    <text class="m cap" x="268" y="630" font-size="10.5">plantillas: SO (3 hosts) · databus 38 · infobus 30</text>
+    <text class="m cap" x="268" y="646" font-size="10.5">infobus-ext 10 · Docker by Zabbix agent 2</text>
+    <path class="edge" d="M468 403 H484" marker-end="url(#a)"/>
+    <path class="edge-o" d="M380 496 V484" marker-end="url(#ao)"/>
+
+    <!-- grupo wazuh -->
+    <rect x="720" y="348" width="446" height="318" rx="7" fill="none" stroke="#a8406f" stroke-width="1.3" stroke-dasharray="6 4"/>
+    <text class="m" x="948" y="368" font-size="11" fill="#8a2b55">WAZUH 4.14.5 · wazuh-fase-3</text>
+    <rect x="736" y="380" width="414" height="46" rx="6" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.8"/>
+    <text class="m" x="943" y="399" font-size="12" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.manager</text>
+    <text class="m cap" x="943" y="416" font-size="10.5" text-anchor="middle">1514 · 1515 · 514/udp · API 55000 · reglas 100100–100122</text>
+    <rect x="736" y="438" width="200" height="46" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.4"/>
+    <text class="m" x="836" y="457" font-size="12" font-weight="600" text-anchor="middle">wazuh.indexer</text>
+    <text class="m cap" x="836" y="474" font-size="10.5" text-anchor="middle">OpenSearch :9200</text>
+    <rect x="950" y="438" width="200" height="46" rx="6" fill="#ffffff" stroke="#0b6e99" stroke-width="1.4"/>
+    <text class="m" x="1050" y="457" font-size="12" font-weight="600" text-anchor="middle">wazuh.dashboard</text>
+    <text class="m cap" x="1050" y="474" font-size="10.5" text-anchor="middle">HTTPS :6443</text>
+    <rect x="736" y="496" width="414" height="50" rx="6" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.4"/>
+    <text class="m" x="943" y="517" font-size="12" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.agent local · grupo monitoring</text>
+    <text class="m cap" x="943" y="535" font-size="10.5" text-anchor="middle">red del host + NET_ADMIN · auth.log · FIM de zabbix/ y wazuh/</text>
+    <rect x="736" y="558" width="200" height="42" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.3"/>
+    <text class="m" x="836" y="575" font-size="11.5" font-weight="600" text-anchor="middle">wazuh-init</text>
+    <text class="m cap" x="836" y="591" font-size="10.5" text-anchor="middle">una vez · grupos y reglas</text>
+    <rect x="950" y="558" width="200" height="42" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.3"/>
+    <text class="m" x="1050" y="575" font-size="11.5" font-weight="600" text-anchor="middle">respuesta activa</text>
+    <text class="m cap" x="1050" y="591" font-size="10.5" text-anchor="middle">firewall-drop · 180 s</text>
+    <text class="m cap" x="736" y="630" font-size="10.5">grupos: databus (R3) · infobus (R2) · monitoring (R4)</text>
+    <text class="m cap" x="736" y="646" font-size="10.5">mismo host que Zabbix · imágenes fijas 4.14.5</text>
+    <path class="edge" d="M836 426 V438" marker-end="url(#a)"/>
+
+    <!-- flechas de observación -->
+    <path class="edge-p" d="M300 256 V380" marker-end="url(#ap)"/>
+    <text class="m" x="308" y="296" font-size="10.5" fill="#a14e07">10051 · PSK</text>
+    <path class="edge-p" d="M580 256 V316 H440 V380" marker-end="url(#ap)"/>
+    <path class="edge-p" d="M688 452 H712 V256" marker-end="url(#ap)"/>
+    <text class="m" x="706" y="300" font-size="10.5" text-anchor="end" fill="#a14e07">infobus.api.ext</text>
+    <text class="m" x="706" y="313" font-size="10.5" text-anchor="end" fill="#a14e07">HTTPS · Traefik</text>
+    <path class="edge-s" d="M420 256 V278 H752"/>
+    <path class="edge-s" d="M752 256 V380" marker-end="url(#as)"/>
+    <text class="m" x="760" y="300" font-size="10.5" fill="#8a2b55">1515 · 1514</text>
+  
+<line x1="0" y1="730" x2="1200" y2="730" stroke="#dde4ec"/>
+<rect x="0" y="730" width="1200" height="50" fill="#eef1f5"/>
+<rect x="20" y="749" width="14" height="14" rx="3" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+<text x="42" y="761" font-size="13" class="cap">Fuera de alcance</text>
+<rect x="181" y="749" width="14" height="14" rx="3" fill="#ffffff" stroke="#0b6e99" stroke-width="1.5"/>
+<text x="203" y="761" font-size="13" class="cap">Servidor / servicio</text>
+<rect x="363" y="749" width="14" height="14" rx="3" fill="#fbead6" stroke="#c2680f" stroke-width="1.5"/>
+<text x="385" y="761" font-size="13" class="cap">Zabbix: sonda o agente</text>
+<rect x="567" y="749" width="14" height="14" rx="3" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.5"/>
+<text x="589" y="761" font-size="13" class="cap">Wazuh: agente</text>
+<rect x="707" y="749" width="14" height="14" rx="3" fill="#d9efe3" stroke="#1d6b45" stroke-width="1.5"/>
+<text x="729" y="761" font-size="13" class="cap">Lazo MACDT</text>
+<path class="edge" d="M826 756 H852"/>
+<text x="860" y="761" font-size="13" class="cap">datos</text>
+<path class="edge-p" d="M921 756 H947"/>
+<text x="955" y="761" font-size="13" class="cap">observación</text>
+<path class="edge-s" d="M1059 756 H1085"/>
+<text x="1093" y="761" font-size="13" class="cap">seguridad</text>
+</svg>
