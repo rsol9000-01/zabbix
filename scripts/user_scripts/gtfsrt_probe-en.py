@@ -44,14 +44,14 @@ BASE = "https://databus.ucr.ac.cr/feed/realtime"
 
 
 # ---------------------------------------------------------------------------
-# Calcular un porcentaje y evitar la división por cero
+# Calculate a percentage while avoiding division by zero
 # ---------------------------------------------------------------------------
 def _pct(n, d):
     return round(100.0 * n / d, 2) if d else None
 
 
 # ---------------------------------------------------------------------------
-# Obtener un cuantil mediante el rango más cercano
+# Get a quantile using the nearest-rank method
 # ---------------------------------------------------------------------------
 def _quantil(vals, q):
     if not vals:
@@ -61,7 +61,7 @@ def _quantil(vals, q):
 
 
 # ---------------------------------------------------------------------------
-# Convertir una edad en segundos a una descripción legible
+# Convert an age in seconds to a readable description
 # ---------------------------------------------------------------------------
 def _edad_txt(seg):
     """12 -> '12 s'; 754 -> '12 min'; 36012 -> '10 h 0 min'."""
@@ -74,12 +74,12 @@ def _edad_txt(seg):
 
 
 # ---------------------------------------------------------------------------
-# Clasificar y ordenar los vehículos según la antigüedad de su posición
+# Classify and sort vehicles by the age of their position
 # ---------------------------------------------------------------------------
 def _vehiculos(vp, ahora, stale_s, paradas=None):
-    """Edad de la posicion de cada vehiculo (ahora - timestamp): primero sin hora, luego viejos, luego frescos.
+    """Age of each vehicle's position (now - timestamp): missing timestamp, stale, then fresh.
 
-    estado: fresco (<= stale_s), viejo (> stale_s o en el futuro), sin_ts (sin hora).
+    estado: fresco (<= stale_s), viejo (> stale_s or in the future), sin_ts (no timestamp).
     """
     lista = []
     for e in vp.entity:
@@ -94,7 +94,7 @@ def _vehiculos(vp, ahora, stale_s, paradas=None):
         else:
             estado = "viejo"
         # -------------------------------------------------------------------
-        # Identificar si hay coordenadas y estimar el origen de la marca horaria
+        # Check for coordinates and estimate the timestamp source
         # -------------------------------------------------------------------
         if not v.timestamp:
             origen = None
@@ -114,15 +114,15 @@ def _vehiculos(vp, ahora, stale_s, paradas=None):
 
 
 # ---------------------------------------------------------------------------
-# Calcular métricas de los feeds GTFS-RT y devolverlas como datos estructurados
+# Calculate GTFS-RT feed metrics and return them as structured data
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# Resumir las edades y los estados de los vehículos en una línea
+# Summarize vehicle ages and statuses on one line
 # ---------------------------------------------------------------------------
 def _vehiculos_texto(lista):
-    """Una linea legible para el dashboard: 'unit-02: 10 h 3 min (viejo) · unit-01: 12 s'."""
+    """Format a readable dashboard line, e.g. 'unit-02: 10 h 3 min (stale) · unit-01: 12 s'."""
     if not lista:
         return "No vehicles in feed"
     partes = []
@@ -141,10 +141,10 @@ def _vehiculos_texto(lista):
 
 
 # ---------------------------------------------------------------------------
-# Formatear una marca temporal según la hora local del agente
+# Format a timestamp using the agent's local time
 # ---------------------------------------------------------------------------
 def _hora_txt(ts, ahora):
-    """Hora local del agente (TZ del contenedor): '9:41 p.m.'; si no es de hoy, '05/11 11:38 a.m.'."""
+    """Format agent-local time (container TZ), e.g. '9:41 p.m.' or '05/11 11:38 a.m.' for another day."""
     t, h = time.localtime(ts), time.localtime(ahora)
     hora = "%d:%02d %s" % ((t.tm_hour % 12) or 12, t.tm_min, "a.m." if t.tm_hour < 12 else "p.m.")
     if (t.tm_year, t.tm_yday) != (h.tm_year, h.tm_yday):
@@ -156,10 +156,10 @@ _ESTADO = {"fresco": ("fresh", "#2E7D32"), "viejo": ("stale", "#E65100"), "sin_t
 
 
 # ---------------------------------------------------------------------------
-# Construir la tabla HTML de vehículos para el widget de Zabbix
+# Build the vehicle HTML table for the Zabbix widget
 # ---------------------------------------------------------------------------
 def _vehiculos_html(lista, ahora, stale_s):
-    """Tabla HTML para el widget Item history de Zabbix (columna en modo HTML)."""
+    """Build an HTML table for the Zabbix Item history widget (HTML column mode)."""
     esc = lambda x: html.escape(str(x))
     td = 'style="padding:3px 10px;border-bottom:1px solid #8884;overflow-wrap:anywhere"'
     tdn = 'style="padding:3px 10px;border-bottom:1px solid #8884;white-space:nowrap"'
@@ -201,35 +201,35 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
     tus = [e.trip_update for e in tu.entity if e.HasField("trip_update")]
 
     # -----------------------------------------------------------------------
-    # Medir la antigüedad de la telemetría y contar los vehículos por estado
+    # Measure telemetry age and count vehicles by status
     # -----------------------------------------------------------------------
     edades = [ahora - v.timestamp for v in veh if v.timestamp]
     frescos = sum(1 for v in veh if v.timestamp and 0 <= ahora - v.timestamp <= stale_s)
     # -----------------------------------------------------------------------
-    # Contar como antiguos los tiempos futuros y los viajes aún abiertos
+    # Count future timestamps and trips that are still open as stale
     # -----------------------------------------------------------------------
     viejos = sum(1 for v in veh if v.timestamp and not (0 <= ahora - v.timestamp <= stale_s))
     sin_ts = sum(1 for v in veh if not v.timestamp)
     # -----------------------------------------------------------------------
-    # Detectar viajes que siguen publicados aunque no tengan paradas pendientes
+    # Detect trips that remain published despite having no upcoming stops
     # -----------------------------------------------------------------------
     sin_paradas = sum(1 for t in tus if len(t.stop_time_update) == 0)
     # -----------------------------------------------------------------------
-    # Asociar cada vehículo con las paradas pendientes de su viaje
+    # Associate each vehicle with the upcoming stops for its trip
     # -----------------------------------------------------------------------
     paradas = {t.trip.trip_id: len(t.stop_time_update) for t in tus if t.trip.trip_id}
     lista = _vehiculos(vp, ahora, stale_s, paradas)
     igual_header = sum(1 for v in veh if v.timestamp and abs(v.timestamp - vp.header.timestamp) <= 1)
 
     # -----------------------------------------------------------------------
-    # Verificar los campos obligatorios de cada registro de posición
+    # Check the required fields in each position record
     # -----------------------------------------------------------------------
     def completo_vp(v):
         return bool(v.trip.trip_id) and v.position.HasField("latitude") and v.position.HasField("longitude") \
             and v.timestamp > 0
 
     # -----------------------------------------------------------------------
-    # Verificar los campos obligatorios de cada actualización de viaje
+    # Check the required fields in each trip update
     # -----------------------------------------------------------------------
     def completo_tu(t):
         return bool(t.trip.trip_id) and len(t.stop_time_update) > 0
@@ -238,23 +238,23 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
         "ts_sonda": int(ahora),
         "stale_s": stale_s,
         # -------------------------------------------------------------------
-        # Medir la antigüedad de publicación de ambos feeds
+        # Measure how long ago both feeds were published
         # -------------------------------------------------------------------
         "feed_age_vp_s": ahora - vp.header.timestamp if vp.header.timestamp else None,
         "feed_age_tu_s": ahora - tu.header.timestamp if tu.header.timestamp else None,
         # -------------------------------------------------------------------
-        # Resumir la carga operativa publicada en los feeds
+        # Summarize the operational load published in the feeds
         # -------------------------------------------------------------------
         "v_trips": len(tus),
         "v_vehicles": len(veh),
         # -------------------------------------------------------------------
-        # Resumir la frescura de la telemetría de los vehículos
+        # Summarize vehicle telemetry freshness
         # -------------------------------------------------------------------
         "data_age_p50_s": _quantil(edades, 0.50),
         "data_age_p95_s": _quantil(edades, 0.95),
         "data_age_max_s": max(edades) if edades else None,
         # -------------------------------------------------------------------
-        # Calcular la proporción de vehículos con posición GPS reciente
+        # Calculate the proportion of vehicles with a recent GPS position
         # -------------------------------------------------------------------
         "v_gps_pct": _pct(frescos, len(veh)),
         "v_gps_frescos": frescos,
@@ -262,17 +262,17 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
         "v_gps_sin_ts": sin_ts,
         "v_trips_sin_paradas": sin_paradas,
         # -------------------------------------------------------------------
-        # Entregar el detalle de antigüedad, posición y estado por vehículo
+        # Include each vehicle's age, position, and status details
         # -------------------------------------------------------------------
         "vehiculos": lista,
         "vehiculos_texto": _vehiculos_texto(lista),
         "vehiculos_html": _vehiculos_html(lista, ahora, stale_s),
         # -------------------------------------------------------------------
-        # Estimar el porcentaje de marcas de vehículo iguales al encabezado
+        # Estimate the percentage of vehicle timestamps matching the feed header
         # -------------------------------------------------------------------
         "ts_igual_header_pct": _pct(igual_header, len(veh)),
         # -------------------------------------------------------------------
-        # Calcular la proporción de registros con los campos obligatorios
+        # Calculate the proportion of records containing the required fields
         # -------------------------------------------------------------------
         "v_completeness_vp_pct": _pct(sum(completo_vp(v) for v in veh), len(veh)),
         "v_completeness_tu_pct": _pct(sum(completo_tu(t) for t in tus), len(tus)),
@@ -280,13 +280,13 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
 
 
 # ---------------------------------------------------------------------------
-# Crear una sesión HTTP para reutilizar la conexión entre descargas
+# Create an HTTP session to reuse the connection across downloads
 # ---------------------------------------------------------------------------
 def _sesion(host_header=None):
-    """Una sola sesion HTTP para que las dos descargas reusen la conexion TCP.
+    """Use one HTTP session so both downloads reuse the TCP connection.
 
-    Sin esto la PRIMERA descarga paga DNS y el saludo TCP y la segunda no, con lo
-    que las dos latencias no son comparables (medido: 848 ms contra 12 ms).
+    Otherwise, the FIRST download pays the DNS and TCP handshake costs while the
+    second does not, making their latencies incomparable (measured: 848 ms vs 12 ms).
     """
     import requests
     s = requests.Session()
@@ -296,7 +296,7 @@ def _sesion(host_header=None):
 
 
 # ---------------------------------------------------------------------------
-# Descargar un recurso y medir su latencia
+# Download a resource and measure its latency
 # ---------------------------------------------------------------------------
 def _get(sesion, url, timeout):
     t0 = time.time()
@@ -306,7 +306,7 @@ def _get(sesion, url, timeout):
 
 
 # ---------------------------------------------------------------------------
-# Obtener los feeds, calcular sus métricas e imprimir un objeto JSON
+# Fetch the feeds, calculate their metrics, and print a JSON object
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -329,7 +329,7 @@ def main():
             calentado = 0
             if not a.no_warmup:
                 # -------------------------------------------------------------------
-                # Abrir la conexión antes de medir y descartar la solicitud inicial
+                # Open the connection before measuring and discard the initial request
                 # -------------------------------------------------------------------
                 try:
                     _get(ses, f"{a.base}/trip_updates.pb", a.timeout)
@@ -342,7 +342,7 @@ def main():
         out = {"fetch_ok": 1, **lat, **calcular(vp, tu, time.time(), a.stale)}
     except Exception as e:
         # -------------------------------------------------------------------
-        # Reportar el fallo de descarga como una métrica de disponibilidad
+        # Report download failure as an availability metric
         # -------------------------------------------------------------------
         out = {"fetch_ok": 0, "error": str(e)[:200], "ts_sonda": int(time.time())}
     print(json.dumps(out))

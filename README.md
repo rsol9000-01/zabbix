@@ -1,6 +1,6 @@
 # Zabbix · databus and infobus monitoring
 
-**English** · [Español](README.es.md)
+**English** · [Español](README%20es.md)
 
 ![Static Badge](https://img.shields.io/badge/monitoring-Zabbix_7.4-white?logo=zabbix)
 ![Static Badge](https://img.shields.io/badge/database-PostgreSQL_17-white?logo=postgresql)

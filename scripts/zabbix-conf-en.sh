@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Configurar Zabbix después de la instalación mediante el servicio zabbix-init
+# Configure Zabbix after installation through the zabbix-init service
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# Definir los colores usados en los mensajes del script
+# Define the colors used in script messages
 # ---------------------------------------------------------------------------
 ORANGE='\033[38;2;252;209;161m'
 RED='\033[0;31m'
@@ -14,35 +14,35 @@ CYAN='\033[0;36m'
 GRAY='\033[0;90m'
 NC='\033[0m'
 # ---------------------------------------------------------------------------
-# Detener la ejecución ante errores o variables sin definir
+# Stop execution on errors or unset variables
 # ---------------------------------------------------------------------------
 set -eu
 # ---------------------------------------------------------------------------
-# Inicializar la bandera para crear el usuario web con las credenciales de .env
-# TRUE indica que se inició sesión con las credenciales predeterminadas.
+# Initialize the flag for creating the web user with the .env credentials
+# TRUE indicates that login used the default credentials.
 # ---------------------------------------------------------------------------
 flag_new_user=FALSE
 
 # ---------------------------------------------------------------------------
-# Leer del archivo montado la PSK usada por el autorregistro de Zabbix
+# Read the PSK used for Zabbix autoregistration from the mounted file
 # ---------------------------------------------------------------------------
 PSK_VALUE=$(cat /${ZBX_TLSPSKFILENAME})
 
 # ---------------------------------------------------------------------------
-# Recortar espacios al inicio y al final sin depender de utilidades externas
+# Trim leading and trailing whitespace without relying on external utilities
 # ---------------------------------------------------------------------------
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 
 # ---------------------------------------------------------------------------
-# Rechazar variables de configuración que ya no se admiten
+# Reject configuration variables that are no longer supported
 # ---------------------------------------------------------------------------
 if [ -n "${AGENT_TEMPLATE_FILE:-}${AGENT_TEMPLATE_FILES:-}" ]; then
-  echo "❌ ERROR: AGENT_TEMPLATE_FILE(S) / AGENT_TEMPLATE_NAME(S) quedaron obsoletas."
-  echo "   Use LOCAL_TEMPLATE_*, ROLE_DATABUS_TEMPLATE_* y ROLE_INFOBUS_TEMPLATE_* (ver .env.example)."
+  echo "❌ ERROR: AGENT_TEMPLATE_FILE(S) / AGENT_TEMPLATE_NAME(S) are obsolete."
+  echo "   Use LOCAL_TEMPLATE_*, ROLE_DATABUS_TEMPLATE_* and ROLE_INFOBUS_TEMPLATE_* (see .env.example)."
   exit 1
 fi
 # ---------------------------------------------------------------------------
-# Esperar a que la API de Zabbix responda
+# Wait for the Zabbix API to respond
 # ---------------------------------------------------------------------------
 echo "⏳ Waiting for Zabbix API to be available..."
 MAX_RETRIES=10      
@@ -66,10 +66,10 @@ done
 echo "✅ API available"
 
 # ---------------------------------------------------------------------------
-# Autenticar y obtener el token de acceso
+# Authenticate and obtain the access token
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# Intentar autenticar con las credenciales predeterminadas
+# Try to authenticate with the default credentials
 # ---------------------------------------------------------------------------
 echo "🔒 Authenticating with default user..."
 TOKEN=$(curl -sf -X POST "$API_URL" \
@@ -78,7 +78,7 @@ TOKEN=$(curl -sf -X POST "$API_URL" \
   | grep -o '"result":"[^"]*"' | cut -d'"' -f4)
 
 # ---------------------------------------------------------------------------
-# Usar las credenciales de .env si falla la autenticación predeterminada
+# Use the .env credentials if default authentication fails
 # ---------------------------------------------------------------------------
 if [ -z "$TOKEN" ]; then
   echo "⚠️  Authentication failed with default user, trying with user '$API_WEB_USER' defined in .env..."
@@ -99,7 +99,7 @@ fi
 echo "   - 🔑 Token obtained successfully"
 
 # ---------------------------------------------------------------------------
-# Obtener el grupo de hosts configurado o crearlo si todavía no existe
+# Get the configured host group or create it if it does not exist
 # ---------------------------------------------------------------------------
 
 GROUP_ID=$(curl -s -X POST "$API_URL" \
@@ -118,16 +118,16 @@ if [ -z "$GROUP_ID" ]; then
 else
   echo "📁 Group \"$HOST_GROUP\" already exists."
 fi
-echo "   - 📁 Groupname: '$HOST_GROUP' ID: $GROUP_ID"
+echo "   - 📁 Group name: '$HOST_GROUP' ID: $GROUP_ID"
 
 # ---------------------------------------------------------------------------
-# Importar o buscar las plantillas según el host o rol de agente
+# Import or look up templates based on the host or agent role
 # ---------------------------------------------------------------------------
-# Mantener los pares de archivos y nombres en el mismo orden. Separar los
-# archivos con comas y los nombres con barras verticales.
-# Usar LOCAL_TEMPLATE_* para el host local y ROLE_*_TEMPLATE_* para cada rol.
+# Keep file/name pairs in the same order. Separate files with commas and names
+# with vertical bars.
+# Use LOCAL_TEMPLATE_* for the local host and ROLE_*_TEMPLATE_* for each role.
 # ---------------------------------------------------------------------------
-# Guardar los identificadores importados para reutilizarlos durante la ejecución
+# Save imported IDs for reuse during this run
 # ---------------------------------------------------------------------------
 declare -A IMPORTED_IDS=()
 _TPL_ID=""
@@ -137,7 +137,7 @@ import_template() {
   local _file="$1" _name="$2" _id _req _res _err
 
   # -------------------------------------------------------------------------
-  # Reutilizar el identificador de una plantilla ya importada en esta ejecución
+  # Reuse the ID of a template already imported during this run
   # -------------------------------------------------------------------------
   if [ -n "${IMPORTED_IDS[$_file]:-}" ]; then
     _TPL_ID="${IMPORTED_IDS[$_file]}"
@@ -145,11 +145,11 @@ import_template() {
   fi
 
   if [ ! -f "$_file" ]; then
-    echo -e "❌ ERROR: no existe el archivo de plantilla ${BLUE}${_file}${NC}"
+    echo -e "❌ ERROR: template file does not exist: ${BLUE}${_file}${NC}"
     exit 1
   fi
 
-  echo -e "📋 Importando/actualizando: ${ORANGE}${_name}${NC}  (${_file})"
+  echo -e "📋 Importing/updating: ${ORANGE}${_name}${NC}  (${_file})"
 
   _req=$(jq -n --arg source "$(cat "$_file")" \
       '{
@@ -179,7 +179,7 @@ import_template() {
 
   _err=$(echo "$_res" | jq -r '.error.data // .error.message // empty')
   if [ -n "$_err" ]; then
-      echo "❌ ERROR importando la plantilla '${_name}':"
+      echo "❌ ERROR importing template '${_name}':"
       echo -e "${RED}${_err}${NC}"
       exit 1
   fi
@@ -192,21 +192,21 @@ import_template() {
     | jq -r '.result[0].templateid // empty')
 
   if [ -z "$_id" ]; then
-      echo "❌ ERROR: no se obtuvo el ID de la plantilla '${_name}'."
-      echo -e "   ${YELLOW}El nombre en .env tiene que ser idéntico al campo 'name:' de ${BLUE}${_file}${NC}"
+      echo "❌ ERROR: could not retrieve the ID for template '${_name}'."
+      echo -e "   ${YELLOW}The name in .env must exactly match the 'name:' field in ${BLUE}${_file}${NC}"
       exit 1
   fi
 
-  echo "   - ✅ '${_name}' lista, ID ${_id}"
+  echo "   - ✅ '${_name}' ready, ID ${_id}"
   IMPORTED_IDS[$_file]="$_id"
   _TPL_ID="$_id"
 }
 # ---------------------------------------------------------------------------
-# Buscar en Zabbix una plantilla existente sin importar un archivo
+# Look up an existing Zabbix template without importing a file
 # ---------------------------------------------------------------------------
 lookup_template() {
   local _name="$1" _id
-  echo -e "📋 Plantilla existente en Zabbix: ${ORANGE}${_name}${NC}"
+  echo -e "📋 Existing Zabbix template: ${ORANGE}${_name}${NC}"
 
   _id=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
@@ -216,17 +216,17 @@ lookup_template() {
     | jq -r '.result[0].templateid // empty')
 
   if [ -z "$_id" ]; then
-      echo "❌ ERROR: Zabbix no tiene una plantilla llamada '${_name}'."
-      echo -e "   ${YELLOW}Copie el nombre exacto desde Data collection → Templates${NC}"
+      echo "❌ ERROR: Zabbix does not have a template named '${_name}'."
+      echo -e "   ${YELLOW}Copy the exact name from Data collection → Templates${NC}"
       exit 1
   fi
 
-  echo "   - ✅ '${_name}' lista, ID ${_id}"
+  echo "   - ✅ '${_name}' ready, ID ${_id}"
   _TPL_ID="$_id"
 }
 
 # ---------------------------------------------------------------------------
-# Resolver los pares de archivos y nombres y generar el arreglo JSON de IDs
+# Resolve file/name pairs and build the JSON array of IDs
 # ---------------------------------------------------------------------------
 resolve_templates() {
   local _files="$1" _names="$2" _label="$3" _ids="" _i
@@ -241,8 +241,8 @@ resolve_templates() {
   IFS='|' read -r -a _tpl_names <<< "$_names"
 
   if [ "${#_tpl_files[@]}" -ne "${#_tpl_names[@]}" ]; then
-    echo "❌ ERROR (${_label}): hay ${#_tpl_files[@]} archivos y ${#_tpl_names[@]} nombres."
-    echo -e "   ${YELLOW}Archivos separados por coma, nombres por barra vertical, y en el mismo orden.${NC}"
+    echo "❌ ERROR (${_label}): found ${#_tpl_files[@]} files and ${#_tpl_names[@]} names."
+    echo -e "   ${YELLOW}Separate files with commas and names with vertical bars, keeping them in the same order.${NC}"
     exit 1
   fi
 
@@ -256,17 +256,17 @@ resolve_templates() {
   done
 
   TPL_JSON=$(printf '%s\n' $_ids | jq -R '{templateid: .}' | jq -s -c '.')
-  echo "   - 📋 Plantillas para ${_label}: $TPL_JSON"
+  echo "   - 📋 Templates for ${_label}: $TPL_JSON"
 }
 
 # ---------------------------------------------------------------------------
-# Resolver las plantillas que se vincularán al host local
+# Resolve the templates to link to the local host
 # ---------------------------------------------------------------------------
-resolve_templates "${LOCAL_TEMPLATE_FILES:-}" "${LOCAL_TEMPLATE_NAMES:-}" "host local"
+resolve_templates "${LOCAL_TEMPLATE_FILES:-}" "${LOCAL_TEMPLATE_NAMES:-}" "local host"
 LOCAL_TEMPLATE_JSON="$TPL_JSON"
 
 if [ "$LOCAL_TEMPLATE_JSON" = "[]" ]; then
-  echo "⚠️  No se indicaron plantillas para el host local; se usa ICMP Ping."
+  echo "⚠️  No templates were specified for the local host; using ICMP Ping."
   _icmp=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
@@ -276,18 +276,18 @@ if [ "$LOCAL_TEMPLATE_JSON" = "[]" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Resolver las plantillas de los roles remotos para el autorregistro
+# Resolve remote-role templates for autoregistration
 # ---------------------------------------------------------------------------
-resolve_templates "${ROLE_DATABUS_TEMPLATE_FILES:-}" "${ROLE_DATABUS_TEMPLATE_NAMES:-}" "rol databus"
+resolve_templates "${ROLE_DATABUS_TEMPLATE_FILES:-}" "${ROLE_DATABUS_TEMPLATE_NAMES:-}" "databus role"
 DATABUS_TEMPLATE_JSON="$TPL_JSON"
-resolve_templates "${ROLE_INFOBUS_TEMPLATE_FILES:-}" "${ROLE_INFOBUS_TEMPLATE_NAMES:-}" "rol infobus"
+resolve_templates "${ROLE_INFOBUS_TEMPLATE_FILES:-}" "${ROLE_INFOBUS_TEMPLATE_NAMES:-}" "infobus role"
 INFOBUS_TEMPLATE_JSON="$TPL_JSON"
 
 # ---------------------------------------------------------------------------
-# Buscar el agente local y crear o actualizar su configuración
+# Find the local agent and create or update its configuration
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# Comprobar si ya existe el host local en Zabbix
+# Check whether the local host already exists in Zabbix
 # ---------------------------------------------------------------------------
 HOST_ID=$(curl -sf -X POST "$API_URL" \
   -H "Content-Type: application/json" \
@@ -296,13 +296,13 @@ HOST_ID=$(curl -sf -X POST "$API_URL" \
   | grep -o '"hostid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
 # ---------------------------------------------------------------------------
-# Actualizar la interfaz y las plantillas si el host ya existe
+# Update the interface and templates if the host already exists
 # ---------------------------------------------------------------------------
 if [ -n "$HOST_ID" ]; then
     echo "🔄 Host already exists (ID: $HOST_ID), updating interface..."
 
   # -------------------------------------------------------------------------
-  # Obtener la interfaz actual del host
+  # Get the host's current interface
   # -------------------------------------------------------------------------
   IFACE_ID=$(curl -sf -X POST "$API_URL" \
     -H "Content-Type: application/json" \
@@ -311,7 +311,7 @@ if [ -n "$HOST_ID" ]; then
     | grep -o '"interfaceid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
   # -------------------------------------------------------------------------
-  # Verificar que se haya encontrado una interfaz
+  # Verify that an interface was found
   # -------------------------------------------------------------------------
   if [ -z "$IFACE_ID" ]; then
     echo "❌ No interface found for host $HOST_ID, exiting..."
@@ -319,7 +319,7 @@ if [ -n "$HOST_ID" ]; then
   fi
 
   # -------------------------------------------------------------------------
-  # Actualizar la interfaz para usar el nombre DNS configurado
+  # Update the interface to use the configured DNS name
   # -------------------------------------------------------------------------
   curl -sf -X POST "$API_URL" \
     -H "Content-Type: application/json" \
@@ -327,7 +327,7 @@ if [ -n "$HOST_ID" ]; then
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"hostinterface.update\",\"params\":{\"interfaceid\":\"$IFACE_ID\",\"type\":1,\"useip\":0,\"dns\":\"$HOST_DNS\",\"ip\":\"\",\"port\":\"$HOST_PORT\",\"main\":1},\"id\":7}" > /dev/null
   echo "   - ✅ Interface updated to DNS: $HOST_DNS:$HOST_PORT"
   # -------------------------------------------------------------------------
-  # Aplicar las plantillas deseadas y limpiar las que se hayan retirado
+  # Apply the desired templates and clear any that have been removed
   # -------------------------------------------------------------------------
   _linked=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
@@ -340,12 +340,12 @@ if [ -n "$HOST_ID" ]; then
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.update\",\"params\":{\"hostid\":\"$HOST_ID\",\"templates\":$LOCAL_TEMPLATE_JSON,\"templates_clear\":$_clear},\"id\":9}" > /dev/null
-  echo "   - ✅ Plantillas revinculadas: $LOCAL_TEMPLATE_JSON"
-  [ "$_clear" != "[]" ] && echo "   - 🧹 Plantillas desvinculadas y limpiadas: $_clear"
+  echo "   - ✅ Templates relinked: $LOCAL_TEMPLATE_JSON"
+  [ "$_clear" != "[]" ] && echo "   - 🧹 Templates unlinked and cleared: $_clear"
 else
 
   # -------------------------------------------------------------------------
-  # Crear el host con su interfaz, grupo y plantillas si aún no existe
+  # Create the host with its interface, group, and templates if it does not exist
   # -------------------------------------------------------------------------
   echo "➕ Creating host: $LOCAL_HOST_NAME"
   curl -sf -X POST "$API_URL" \
@@ -355,7 +355,7 @@ else
   echo "✅ Host created with DNS: $HOST_DNS:$HOST_PORT"
 fi
 # ---------------------------------------------------------------------------
-# Eliminar el host predeterminado "Zabbix server"
+# Delete the default "Zabbix server" host
 # ---------------------------------------------------------------------------
 DEFAULT_HOST_ID=$(curl -sf -X POST "$API_URL" \
   -H "Content-Type: application/json" \
@@ -369,10 +369,10 @@ curl -sf -X POST "$API_URL" \
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"host.delete\",\"params\":[\"$DEFAULT_HOST_ID\"],\"id\":7}"
 
 # ---------------------------------------------------------------------------
-# Preparar acciones de autorregistro separadas por rol de agente remoto
+# Prepare separate autoregistration actions for each remote-agent role
 # ---------------------------------------------------------------------------
-# Exigir que coincidan tanto la metadata común como el rol declarado en
-# ZBX_METADATA; así, el host local no coincide con las acciones remotas.
+# Require both the common metadata and the role declared in ZBX_METADATA to
+# match, so the local host does not match remote-agent actions.
 # ---------------------------------------------------------------------------
 
 GROUP_ADD_ID=$(curl -s -X POST "$API_URL" \
@@ -391,7 +391,7 @@ echo "   - 📁 Group to add   : $GROUP_ADD_ID"
 echo "   - 📁 Group to remove: $GROUP_REMOVE_ID"
 
 # ---------------------------------------------------------------------------
-# Retirar la acción anterior que aplicaba las mismas plantillas a cada agente
+# Remove the previous action that applied the same templates to every agent
 # ---------------------------------------------------------------------------
 LEGACY_ACTION_ID=$(curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
@@ -404,17 +404,17 @@ if [ -n "$LEGACY_ACTION_ID" ]; then
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
     -d "{\"jsonrpc\":\"2.0\",\"method\":\"action.delete\",\"params\":[\"$LEGACY_ACTION_ID\"],\"id\":1}" > /dev/null
-  echo "   - 🗑️  Acción anterior 'Self-registration-agents-simovilab' eliminada"
+  echo "   - 🗑️  Previous action 'Self-registration-agents-simovilab' deleted"
 fi
 
 # ---------------------------------------------------------------------------
-# Crear o actualizar la acción de autorregistro para un rol
+# Create or update the autoregistration action for a role
 # ---------------------------------------------------------------------------
 upsert_role_action() {
   local _role="$1" _tpl_json="$2" _name="Self-registration-simovilab-$1" _action_id _body
 
   if [ "$_tpl_json" = "[]" ]; then
-    echo "⚠️  Rol '${_role}' sin plantillas en .env: no se crea su acción de autorregistro."
+    echo "⚠️  Role '${_role}' has no templates in .env; its autoregistration action will not be created."
     return 0
   fi
 
@@ -442,16 +442,16 @@ upsert_role_action() {
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $TOKEN" \
       -d "$(jq -n -c --arg n "$_name" --argjson b "$_body" '{jsonrpc:"2.0",method:"action.create",params:({name:$n,eventsource:2,status:0}+$b),id:1}')" > /dev/null
-    echo "   - ✅ Acción '${_name}' creada: $_tpl_json"
+    echo "   - ✅ Action '${_name}' created: $_tpl_json"
   else
     # -----------------------------------------------------------------------
-    # Actualizar la acción para aplicar los cambios recientes de .env
+    # Update the action to apply the latest .env changes
     # -----------------------------------------------------------------------
     curl -s -X POST "$API_URL" \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer $TOKEN" \
       -d "$(jq -n -c --arg id "$_action_id" --argjson b "$_body" '{jsonrpc:"2.0",method:"action.update",params:({actionid:$id}+$b),id:1}')" > /dev/null
-    echo "   - 🔄 Acción '${_name}' actualizada: $_tpl_json"
+    echo "   - 🔄 Action '${_name}' updated: $_tpl_json"
   fi
 }
 
@@ -460,7 +460,7 @@ upsert_role_action databus "$DATABUS_TEMPLATE_JSON"
 upsert_role_action infobus "$INFOBUS_TEMPLATE_JSON"
 
 # ---------------------------------------------------------------------------
-# Configurar la autenticación PSK del autorregistro
+# Configure PSK authentication for autoregistration
 # ---------------------------------------------------------------------------
 curl -s -X POST "$API_URL" \
   -H "Content-Type: application/json" \
@@ -469,7 +469,7 @@ curl -s -X POST "$API_URL" \
 echo "   - 🔑 Autoregistration will use TLS PSK authentication"
 
 # ---------------------------------------------------------------------------
-# Crear el usuario web y retirar la cuenta predeterminada cuando corresponda
+# Create the web user and remove the default account when appropriate
 # ---------------------------------------------------------------------------
 if [ "$flag_new_user" = "TRUE" ]; then
   echo "ℹ️  Creating new user '$API_WEB_USER' and removing default account"
@@ -481,7 +481,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
     | grep -o '"roleid":"[^"]*"' | head -1 | cut -d'"' -f4)
   
   # -------------------------------------------------------------------------
-  # Verificar que se haya encontrado el rol de superadministrador
+  # Verify that the super administrator role was found
   # -------------------------------------------------------------------------
   if [ -z "$ROLE_ID" ]; then
     echo "❌ Super Admin role not found, exiting..."
@@ -490,7 +490,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   echo "   - 👑 Role ID: $ROLE_ID"
 
   # -------------------------------------------------------------------------
-  # Obtener el identificador del grupo de administradores de Zabbix
+  # Get the Zabbix administrators group ID
   # -------------------------------------------------------------------------
   echo "🔍 Getting 'Zabbix administrators' group ID..."
   USERGROUP_ID_0=$(curl -s -X POST "$API_URL" \
@@ -500,7 +500,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
     | grep -o '"usrgrpid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
   # -------------------------------------------------------------------------
-  # Verificar que se haya encontrado el grupo de administradores
+  # Verify that the administrators group was found
   # -------------------------------------------------------------------------
   if [ -z "$USERGROUP_ID_0" ]; then
     echo "❌ Group 'Zabbix administrators' not found, exiting..."
@@ -509,7 +509,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   echo "   - 👥 'Zabbix administrators' usergroup ID: $USERGROUP_ID_0"
 
   # -------------------------------------------------------------------------
-  # Obtener el identificador del grupo interno
+  # Get the internal group ID
   # -------------------------------------------------------------------------
   echo "🔍 Getting 'Internal' group ID..."
   USERGROUP_ID_1=$(curl -s -X POST "$API_URL" \
@@ -519,7 +519,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
     | grep -o '"usrgrpid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
   # -------------------------------------------------------------------------
-  # Verificar que se haya encontrado el grupo interno
+  # Verify that the internal group was found
   # -------------------------------------------------------------------------
   if [ -z "$USERGROUP_ID_1" ]; then
     echo "❌ Group 'Internal' not found, exiting..."
@@ -528,7 +528,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   echo "   - 👥 'Internal' usergroup ID: $USERGROUP_ID_1"
 
   # -------------------------------------------------------------------------
-  # Comprobar si el usuario configurado ya existe
+  # Check whether the configured user already exists
   # -------------------------------------------------------------------------
   NEW_USER_ID=$(curl -s -X POST "$API_URL" \
     -H "Content-Type: application/json" \
@@ -537,13 +537,13 @@ if [ "$flag_new_user" = "TRUE" ]; then
     | grep -o '"userid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
   # -------------------------------------------------------------------------
-  # Omitir la creación si el usuario ya existe
+  # Skip creation if the user already exists
   # -------------------------------------------------------------------------
   if [ -n "$NEW_USER_ID" ]; then
     echo "ℹ️  User '$API_WEB_USER' already exists"
   else
     # -----------------------------------------------------------------------
-    # Crear el usuario si todavía no existe
+    # Create the user if it does not already exist
     # -----------------------------------------------------------------------
     echo "➕ Creating user: $API_WEB_USER..."
     NEW_USER_ID=$(curl -s -X POST "$API_URL" \
@@ -553,7 +553,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
       | grep -o '"userids":\["[^"]*"' | cut -d'"' -f4)
 
     # -----------------------------------------------------------------------
-    # Verificar que la creación haya devuelto el identificador del usuario
+    # Verify that user creation returned the user ID
     # -----------------------------------------------------------------------
     if [ -z "$NEW_USER_ID" ]; then
       echo "❌ Something went wrong creating user $API_WEB_USER, default account will NOT be deleted..."
@@ -568,7 +568,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   fi
 
   # -------------------------------------------------------------------------
-  # Autenticar con el usuario nuevo antes de retirar la cuenta predeterminada
+  # Authenticate as the new user before removing the default account
   # -------------------------------------------------------------------------
   echo "   - 🔑 Authenticating with new user..."
   NEW_TOKEN=$(curl -s -X POST "$API_URL" \
@@ -577,7 +577,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
     | grep -o '"result":"[^"]*"' | cut -d'"' -f4)
 
   # -------------------------------------------------------------------------
-  # Verificar que la autenticación del usuario nuevo haya funcionado
+  # Verify that authentication with the new user succeeded
   # -------------------------------------------------------------------------
   if [ -z "$NEW_TOKEN" ]; then
     echo "⚠️  Could not authenticate with new user, exiting..."
@@ -588,7 +588,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   echo "ℹ️  Proceeding to delete default account"
 
   # -------------------------------------------------------------------------
-  # Buscar la cuenta predeterminada de administración
+  # Look up the default administrator account
   # -------------------------------------------------------------------------
   echo "🔍 Looking up Admin user..."
   ADMIN_ID=$(curl -s -X POST "$API_URL" \
@@ -598,7 +598,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
     | grep -o '"userid":"[^"]*"' | head -1 | cut -d'"' -f4)
 
   # -------------------------------------------------------------------------
-  # Omitir la eliminación si la cuenta predeterminada ya no existe
+  # Skip deletion if the default account no longer exists
   # -------------------------------------------------------------------------
   if [ -z "$ADMIN_ID" ]; then
     echo "⚠️  Admin user not found, may have already been deleted, exiting..."
@@ -607,7 +607,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   echo "   - 🔍 Admin ID: $ADMIN_ID"
 
   # -------------------------------------------------------------------------
-  # Transferir los mapas de la cuenta predeterminada al usuario nuevo
+  # Transfer maps from the default account to the new user
   # -------------------------------------------------------------------------
   echo "🗺️  Transferring maps from 'Admin' to new user '$API_WEB_USER'..."
   MAPS=$(curl -s -X POST "$API_URL" \
@@ -625,7 +625,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   done
 
   # -------------------------------------------------------------------------
-  # Transferir los paneles de la cuenta predeterminada al usuario nuevo
+  # Transfer dashboards from the default account to the new user
   # -------------------------------------------------------------------------
   echo "📊  Transferring dashboards from Admin to new user '$API_WEB_USER'..."
   DASHBOARDS=$(curl -s -X POST "$API_URL" \
@@ -643,7 +643,7 @@ if [ "$flag_new_user" = "TRUE" ]; then
   done
 
   # -------------------------------------------------------------------------
-  # Eliminar la cuenta predeterminada después de transferir sus recursos
+  # Delete the default account after transferring its resources
   # -------------------------------------------------------------------------
   echo "🗑️  Deleting Admin user..."
   curl -s -X POST "$API_URL" \

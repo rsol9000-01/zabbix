@@ -122,7 +122,7 @@ HISTORY_FILE = os.path.join(STATE_DIR, "history.jsonl")
 CALIB_FILE = os.path.join(STATE_DIR, "calib.json")
 
 # ---------------------------------------------------------------------------
-# Parámetros de la calibración de T_base(t) y beta
+# T_base(t) and beta calibration parameters
 # ---------------------------------------------------------------------------
 CALIB_MODE = os.environ.get("MACDT_CALIB_MODE", "manual").strip().lower()
 CALIB_HOUR = os.environ.get("MACDT_CALIB_HOUR", "03:30").strip()
@@ -132,13 +132,13 @@ CALIB_MIN_POINTS = int(os.environ.get("MACDT_CALIB_MIN_POINTS", "300"))
 CALIB_MAX_DRIFT = float(os.environ.get("MACDT_CALIB_MAX_DRIFT", "0.25"))
 
 # ---------------------------------------------------------------------------
-# Definir los ítems que se consultan en el host de databus
+# Define the items queried on the databus host
 # ---------------------------------------------------------------------------
 ITEMS_DATABUS = ["p.calculated", "gtfs.v_gps_pct", "macdt.gate",
                  "gtfs.v_trips", "macdt.v_trips_max", "gtfs.fetch_ok"]
 
 # ---------------------------------------------------------------------------
-# Definir las macros de plantilla que contienen los parámetros de cálculo
+# Define the template macros containing calculation parameters
 # ---------------------------------------------------------------------------
 MACROS_NEEDED = ["{$MACDT.T_BASE}", "{$MACDT.BETA}", "{$MACDT.F_CRIT}",
                  "{$MACDT.T_FLOOR}", "{$MACDT.T_RNF}",
@@ -146,7 +146,7 @@ MACROS_NEEDED = ["{$MACDT.T_BASE}", "{$MACDT.BETA}", "{$MACDT.F_CRIT}",
                  "{$MACDT.M}", "{$MACDT.B}", "{$MACDT.DELTA}"]
 
 # ---------------------------------------------------------------------------
-# Ítem de infobus con N(t): llegadas con la misma ventana que la latencia
+# Infobus item with N(t): arrivals over the same window as latency
 # ---------------------------------------------------------------------------
 ITEM_N = "infobus.api.llegadas_p95_1h"
 
@@ -154,18 +154,18 @@ MACRO_OUT = "{$T_LATENCY_WARN}"
 
 
 # ---------------------------------------------------------------------------
-# Imprimir un mensaje con la hora local y vaciar el búfer de salida
+# Print a message with the local time and flush the output buffer
 # ---------------------------------------------------------------------------
 def log(msg):
     print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
 
 # ---------------------------------------------------------------------------
-# Agrupar las operaciones necesarias para comunicarse con la API de Zabbix
+# Group the operations needed to communicate with the Zabbix API
 # ---------------------------------------------------------------------------
 class Zabbix:
     # -----------------------------------------------------------------------
-    # Inicializar la sesión HTTP y las credenciales de acceso a Zabbix
+    # Initialize the HTTP session and Zabbix access credentials
     # -----------------------------------------------------------------------
     def __init__(self, url, user, password):
         self.url, self.user, self.password = url, user, password
@@ -174,7 +174,7 @@ class Zabbix:
         self.s.headers.update({"Content-Type": "application/json-rpc"})
 
     # -----------------------------------------------------------------------
-    # Obtener un token de acceso y guardarlo en la sesión
+    # Get an access token and store it in the session
     # -----------------------------------------------------------------------
     def login(self):
         r = self._raw("user.login", {"username": self.user, "password": self.password}, auth=False)
@@ -182,7 +182,7 @@ class Zabbix:
         self.s.headers.update({"Authorization": f"Bearer {self.token}"})
 
     # -----------------------------------------------------------------------
-    # Enviar una solicitud JSON-RPC y devolver su resultado
+    # Send a JSON-RPC request and return its result
     # -----------------------------------------------------------------------
     def _raw(self, method, params, auth=True):
         if auth and not self.token:
@@ -196,10 +196,10 @@ class Zabbix:
         return data["result"]
 
     # -----------------------------------------------------------------------
-    # Ejecutar una llamada a la API y reautenticar si el token expiró
+    # Make an API call and reauthenticate if the token has expired
     # -----------------------------------------------------------------------
     def call(self, method, params):
-        """Reintenta una vez tras reautenticar: el token puede haber expirado."""
+        """Retry once after reauthentication because the token may have expired."""
         try:
             return self._raw(method, params)
         except RuntimeError as e:
@@ -211,10 +211,10 @@ class Zabbix:
 
 
 # ---------------------------------------------------------------------------
-# Leer el último valor y la hora de actualización de cada ítem solicitado
+# Read the latest value and update time for each requested item
 # ---------------------------------------------------------------------------
 def leer_items(z, host, keys):
-    """Ultimo valor y su reloj por clave. item.get entrega lastvalue directo."""
+    """Return each key's latest value and clock; item.get provides lastvalue directly."""
     res = z.call("item.get", {
         "host": host,
         "filter": {"key_": keys},
@@ -234,7 +234,7 @@ def leer_items(z, host, keys):
 
 
 # ---------------------------------------------------------------------------
-# Leer de las plantillas las macros requeridas para calcular el umbral
+# Read the macros required to calculate the threshold from the templates
 # ---------------------------------------------------------------------------
 def leer_macros(z, plantillas, necesarias, host=None):
     """Read constants from template macros. Infobus values override databus values.
@@ -262,7 +262,7 @@ def leer_macros(z, plantillas, necesarias, host=None):
 
 
 # ---------------------------------------------------------------------------
-# Leer las macros DE HOST numéricas de un host
+# Read numeric HOST macros from a host
 # ---------------------------------------------------------------------------
 def leer_macros_host(z, host):
     h = z.call("host.get", {"filter": {"host": [host]}, "output": ["hostid"]})
@@ -278,7 +278,7 @@ def leer_macros_host(z, host):
 
 
 # ---------------------------------------------------------------------------
-# Cargar del disco el estado persistente del endurecimiento por GPS
+# Load the persistent GPS tightening state from disk
 # ---------------------------------------------------------------------------
 def cargar_estado():
     try:
@@ -289,7 +289,7 @@ def cargar_estado():
 
 
 # ---------------------------------------------------------------------------
-# Guardar de forma atómica el estado persistente del ciclo
+# Atomically save the cycle's persistent state
 # ---------------------------------------------------------------------------
 def guardar_estado(st):
     os.makedirs(STATE_DIR, exist_ok=True)
@@ -300,10 +300,10 @@ def guardar_estado(st):
 
 
 # ---------------------------------------------------------------------------
-# Aplicar el factor GPS con persistencia e histéresis
+# Apply the GPS factor with persistence and hysteresis
 # ---------------------------------------------------------------------------
 def factor_gps(v_gps, gps_crit, gps_warn, f_crit, st, persistencia=3):
-    """Devuelve (F, estado_nuevo). Sin dato de GPS no endurece."""
+    """Return (F, new_state). Do not tighten when GPS data is unavailable."""
     if v_gps is None:
         return 1.0, st
 
@@ -322,7 +322,7 @@ def factor_gps(v_gps, gps_crit, gps_warn, f_crit, st, persistencia=3):
 
 
 # ---------------------------------------------------------------------------
-# Calcular el umbral de advertencia y limitarlo al rango permitido
+# Calculate the warning threshold and clamp it to the allowed range
 # ---------------------------------------------------------------------------
 def calcular_umbral(t_base, beta, rho, factor, t_floor, t_rnf):
     crudo = t_base * (1.0 + beta * rho) * factor
@@ -330,10 +330,10 @@ def calcular_umbral(t_base, beta, rho, factor, t_floor, t_rnf):
 
 
 # ---------------------------------------------------------------------------
-# Crear o actualizar una macro de host con el umbral calculado
+# Create or update a host macro with the calculated threshold
 # ---------------------------------------------------------------------------
 def escribir_macro(z, host, macro, valor):
-    """Crea o actualiza la macro DE HOST. Devuelve 'create' | 'update' | 'noop'."""
+    """Create or update the HOST macro. Return 'create' | 'update' | 'noop'."""
     h = z.call("host.get", {"filter": {"host": [host]}, "output": ["hostid"]})
     if not h:
         raise RuntimeError(f"host '{host}' does not exist")
@@ -353,13 +353,13 @@ def escribir_macro(z, host, macro, valor):
 
 
 # ---------------------------------------------------------------------------
-# Publicar un valor en un ítem trapper mediante la API de Zabbix
+# Publish a value to a trapper item through the Zabbix API
 # ---------------------------------------------------------------------------
 def enviar_trapper(z, host, clave, valor):
-    """Envia el valor al item trapper por el API (history.push, Zabbix 7.0+).
+    """Send the value to the trapper item through the API (history.push, Zabbix 7.0+).
 
-    No usa el puerto 10051: los hosts autorregistrados aceptan solo PSK, y una
-    conexion sin cifrar al trapper la rechaza el servidor sin dar error aqui.
+    Do not use port 10051: auto-registered hosts accept only PSK, and the server
+    rejects an unencrypted trapper connection without returning an error here.
     """
     try:
         r = z.call("history.push", [{"host": host, "key": clave, "value": str(valor)}])
@@ -374,7 +374,7 @@ def enviar_trapper(z, host, clave, valor):
 
 
 # ---------------------------------------------------------------------------
-# Añadir un registro JSON al historial persistente del proceso
+# Append a JSON record to the process's persistent history
 # ---------------------------------------------------------------------------
 def registrar(reg):
     os.makedirs(STATE_DIR, exist_ok=True)
@@ -383,14 +383,14 @@ def registrar(reg):
 
 
 # ---------------------------------------------------------------------------
-# Calcular T_base(t) a partir de la recta calibrada
+# Calculate T_base(t) from the calibrated line
 # ---------------------------------------------------------------------------
 def t_base_t(b, m, delta, n):
     return b + m * n + delta
 
 
 # ---------------------------------------------------------------------------
-# Resolver un sistema lineal pequeño por eliminación de Gauss
+# Solve a small linear system using Gaussian elimination
 # ---------------------------------------------------------------------------
 def _resolver(a, y):
     n = len(y)
@@ -409,7 +409,7 @@ def _resolver(a, y):
 
 
 # ---------------------------------------------------------------------------
-# Ajustar mínimos cuadrados con intercepto: y = c0 + c1*x1 + c2*x2 ...
+# Fit least squares with an intercept: y = c0 + c1*x1 + c2*x2 ...
 # ---------------------------------------------------------------------------
 def ajustar(filas_x, y):
     """filas_x: list of regressor rows (without the column of 1s). Returns (coef, r2, residuals)."""
@@ -427,7 +427,7 @@ def ajustar(filas_x, y):
 
 
 # ---------------------------------------------------------------------------
-# Obtener el historial de un ítem en una ventana de tiempo
+# Get an item's history over a time window
 # ---------------------------------------------------------------------------
 def historial(z, host, clave, desde, hasta):
     it = z.call("item.get", {"host": host, "filter": {"key_": clave},
@@ -442,7 +442,7 @@ def historial(z, host, clave, desde, hasta):
 
 
 # ---------------------------------------------------------------------------
-# Leer y guardar el estado de la calibración diaria
+# Load and save the daily calibration state
 # ---------------------------------------------------------------------------
 def cargar_calib():
     try:
@@ -461,20 +461,20 @@ def guardar_calib(st):
 
 
 # ---------------------------------------------------------------------------
-# Calibrar b, m, delta y beta con los datos de la sonda
+# Calibrate b, m, delta, and beta using probe data
 # ---------------------------------------------------------------------------
 def calibrar(z, dry_run=False, force=False):
     """Regression latency = b + m*N + c*V. Returns the calibration record.
 
     estado: 1 applied | 0 rejected (not enough data or poor fit) |
-            2 held (changes more than MAX_DRIFT; apply with --force)
+            2 held (changes exceed MAX_DRIFT; apply with --force)
     """
     hasta = int(time.time())
     desde = hasta - CALIB_WINDOW_D * 86400
     reg = {"ts": hasta, "tipo": "calibracion", "ventana_d": CALIB_WINDOW_D}
 
     # -----------------------------------------------------------------------
-    # Unir latencia y llegadas (mismo maestro: mismo reloj) y V_trips de databus
+    # Join latency and arrivals (same master item: same clock) with databus V_trips
     # -----------------------------------------------------------------------
     lat = dict(historial(z, HOST_INFOBUS, "infobus.api.lat_p50", desde, hasta))
     lleg = dict(historial(z, HOST_INFOBUS, "infobus.api.llegadas", desde, hasta))
@@ -489,14 +489,14 @@ def calibrar(z, dry_run=False, force=False):
     reg["puntos"] = len(filas)
 
     # -----------------------------------------------------------------------
-    # Rechazar si no hay datos suficientes
+    # Reject if there is not enough data
     # -----------------------------------------------------------------------
     if len(filas) < CALIB_MIN_POINTS:
         reg.update({"estado": 0, "motivo": f"{len(filas)} points, minimum {CALIB_MIN_POINTS}"})
         return _cerrar_calib(z, reg, dry_run)
 
     # -----------------------------------------------------------------------
-    # Con buses en la ventana se mide c; si no, se ajusta solo b y m
+    # Measure c when buses are present in the window; otherwise, fit only b and m
     # -----------------------------------------------------------------------
     con_v = [f for f in filas if f[1] is not None]
     hay_buses = len(con_v) >= CALIB_MIN_POINTS and len({f[1] for f in con_v}) > 1
@@ -516,7 +516,7 @@ def calibrar(z, dry_run=False, force=False):
                 "delta": round(delta, 2), "r2": round(r2, 4), "puntos_usados": len(usadas)})
 
     # -----------------------------------------------------------------------
-    # beta = c * V_max / promedio de T_base mientras hay buses
+    # beta = c * V_max / mean T_base while buses are running
     # -----------------------------------------------------------------------
     beta = None
     if c is not None and c > 0:
@@ -530,14 +530,14 @@ def calibrar(z, dry_run=False, force=False):
         reg["beta_nota"] = "not enough buses in the window: beta kept"
 
     # -----------------------------------------------------------------------
-    # Guardas de calidad
+    # Quality checks
     # -----------------------------------------------------------------------
     if r2 < CALIB_MIN_R2 or m <= 0:
         reg.update({"estado": 0, "motivo": f"R2={r2:.3f} (minimum {CALIB_MIN_R2}) or m={m:.3f} <= 0"})
         return _cerrar_calib(z, reg, dry_run)
 
     # -----------------------------------------------------------------------
-    # Guarda de deriva: comparar la recta nueva con la vigente en N bajo y alto
+    # Drift check: compare the new line with the current one at low and high N
     # -----------------------------------------------------------------------
     previas = leer_macros_host(z, HOST_INFOBUS)
     ns = sorted(f[0] for f in usadas)
@@ -560,7 +560,7 @@ def calibrar(z, dry_run=False, force=False):
         return _cerrar_calib(z, reg, dry_run)
 
     # -----------------------------------------------------------------------
-    # Aplicar: macros DE HOST en infobus
+    # Apply: HOST macros on infobus
     # -----------------------------------------------------------------------
     reg["estado"] = 1
     if not dry_run:
@@ -573,7 +573,7 @@ def calibrar(z, dry_run=False, force=False):
 
 
 # ---------------------------------------------------------------------------
-# Registrar el resultado de la calibración y avisar a Zabbix
+# Record the calibration result and notify Zabbix
 # ---------------------------------------------------------------------------
 def _cerrar_calib(z, reg, dry_run):
     textos = {0: "REJECTED", 1: "APPLIED", 2: "HELD"}
@@ -591,7 +591,7 @@ def _cerrar_calib(z, reg, dry_run):
 
 
 # ---------------------------------------------------------------------------
-# Decidir si toca la calibración diaria
+# Determine whether it is time for daily calibration
 # ---------------------------------------------------------------------------
 def toca_calibrar():
     if CALIB_MODE != "daily":
@@ -603,7 +603,7 @@ def toca_calibrar():
 
 
 # ---------------------------------------------------------------------------
-# Leer los datos, calcular el umbral y aplicar las actualizaciones del ciclo
+# Read the data, calculate the threshold, and apply cycle updates
 # ---------------------------------------------------------------------------
 def ciclo(z, dry_run=False):
     ahora = int(time.time())
@@ -616,7 +616,7 @@ def ciclo(z, dry_run=False):
     edad = ahora - rho_i["clock"] if rho_i["clock"] else None
 
     # -----------------------------------------------------------------------
-    # Conservar el umbral actual si el valor de carga está ausente o vencido
+    # Keep the current threshold if the load value is missing or stale
     # -----------------------------------------------------------------------
     if rho_i["v"] is None or edad is None or edad > MAX_AGE:
         reg.update({"status": "degraded",
@@ -634,9 +634,9 @@ def ciclo(z, dry_run=False):
 
     st = cargar_estado()
     # -----------------------------------------------------------------------
-    # Reiniciar la histéresis cuando no haya servicio o la medición GPS venza
-    # Sin buses en servicio, el valor GPS retenido no representa la experiencia
-    # de pasajeros; por eso, no aplicar el factor de endurecimiento.
+    # Reset hysteresis when there is no service or the GPS measurement is stale.
+    # With no buses in service, the retained GPS value does not represent the
+    # passenger experience, so do not apply the tightening factor.
     # -----------------------------------------------------------------------
     if gate != 1 or ahora - v_gps_i["clock"] > MAX_AGE:
         v_gps = None
@@ -645,12 +645,12 @@ def ciclo(z, dry_run=False):
                                   m["{$MACDT.V_GPS.WARN}"], m["{$MACDT.F_CRIT}"], st)
 
     # -----------------------------------------------------------------------
-    # T_base(t) = b + m*N(t) + delta. Sin N fresco se usa la semilla T_BASE
+    # T_base(t) = b + m*N(t) + delta. Use the T_BASE seed when N is stale.
     # -----------------------------------------------------------------------
     try:
         n_i = leer_items(z, HOST_INFOBUS, [ITEM_N])[ITEM_N]
     except RuntimeError:
-        n_i = {"v": None, "clock": 0}   # plantilla sin el ítem todavía: se usa T_BASE
+        n_i = {"v": None, "clock": 0}   # Item not in the template yet: use T_BASE
     n_edad = ahora - n_i["clock"] if n_i["clock"] else None
     if n_i["v"] is None or n_edad is None or n_edad > MAX_AGE:
         n_t, t_base = None, m["{$MACDT.T_BASE}"]
@@ -695,7 +695,7 @@ def ciclo(z, dry_run=False):
 
 
 # ---------------------------------------------------------------------------
-# Validar la configuración y ejecutar ciclos únicos o continuos
+# Validate the configuration and run one-time or continuous cycles
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
@@ -722,7 +722,7 @@ def main():
 
     while True:
         # -------------------------------------------------------------------
-        # Calibración diaria: una vez por día, a partir de MACDT_CALIB_HOUR
+        # Daily calibration: once a day, starting at MACDT_CALIB_HOUR
         # -------------------------------------------------------------------
         if not a.dry_run and toca_calibrar():
             try:
@@ -734,7 +734,7 @@ def main():
             ciclo(z, dry_run=a.dry_run)
         except Exception as e:
             # -------------------------------------------------------------------
-            # Registrar el fallo, mantener el umbral vigente y continuar el bucle
+            # Record the failure, keep the current threshold, and continue the loop
             # -------------------------------------------------------------------
             log(f"ERROR in cycle: {e}")
             try:
