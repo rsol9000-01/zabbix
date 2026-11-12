@@ -469,6 +469,131 @@ curl -s -X POST "$API_URL" \
 echo "   - 🔑 Autoregistration will use TLS PSK authentication"
 
 # ---------------------------------------------------------------------------
+# Create or update the global dashboard (default name: simovilab)
+# ---------------------------------------------------------------------------
+# Global dashboards are not part of any template, so this block rebuilds the
+# dashboard from names (hosts, item keys, host group). The internal IDs differ
+# between installations, so they are looked up on every run.
+# This block is the source of truth: changes made to this dashboard in the web
+# UI are overwritten the next time zabbix-init runs. Edit this block instead.
+# Remote hosts exist only after their agent autoregisters. Until then their
+# panels are skipped, and the next run of zabbix-init adds them.
+# ---------------------------------------------------------------------------
+DASHBOARD_NAME="${DASHBOARD_NAME:-simovilab}"
+
+api_call() {
+  curl -s -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "$1"
+}
+
+host_id_by_name() {
+  api_call "$(jq -n -c --arg h "$1" \
+    '{jsonrpc:"2.0",method:"host.get",params:{filter:{host:[$h]},output:["hostid"]},id:1}')" \
+    | jq -r '.result[0].hostid // empty'
+}
+
+item_id_by_key() {
+  if [ -z "$1" ]; then return 0; fi
+  api_call "$(jq -n -c --arg h "$1" --arg k "$2" \
+    '{jsonrpc:"2.0",method:"item.get",params:{hostids:[$h],filter:{key_:[$k]},output:["itemid"]},id:1}')" \
+    | jq -r '.result[0].itemid // empty'
+}
+
+echo -e "📊 Preparing global dashboard: ${ORANGE}${DASHBOARD_NAME}${NC}"
+
+DASH_LOCAL_ID=$(host_id_by_name "$LOCAL_HOST_NAME")
+DASH_DB_ID=$(host_id_by_name "${MACDT_HOST_DATABUS:-Databus-host}")
+DASH_IB_ID=$(host_id_by_name "${MACDT_HOST_INFOBUS:-Infobus-host}")
+DASH_DB_PING=$(item_id_by_key "$DASH_DB_ID" 'icmpping[,3]')
+DASH_IB_PING=$(item_id_by_key "$DASH_IB_ID" 'icmpping[,3]')
+
+[ -z "$DASH_LOCAL_ID" ] && echo "   - ⚠️  Host '$LOCAL_HOST_NAME' not found; its panel is skipped"
+[ -z "$DASH_DB_ID" ]    && echo "   - ⚠️  Host '${MACDT_HOST_DATABUS:-Databus-host}' not registered yet; its panels are skipped"
+[ -z "$DASH_IB_ID" ]    && echo "   - ⚠️  Host '${MACDT_HOST_INFOBUS:-Infobus-host}' not registered yet; its panels are skipped"
+
+# ---------------------------------------------------------------------------
+# Build the widgets. Grid: 72 columns wide.
+#   y 0-3  : srv-gestión card | System Information | clock
+#   y 4-7  : srv-infobús card | ping databus | ping infobus
+#                             | Alertas (problems of HOST_GROUP, y 6-11)
+#   y 8-11 : srv-databús card |
+# Host card sections: 0 host groups, 1 description, 2 monitoring, 3 availability,
+# 4 monitored by, 5 templates, 6 inventory, 7 tags. The list sets their order.
+# Ping panels: red when the value is 0 (no reply), green when it is 1.
+# ---------------------------------------------------------------------------
+DASH_WIDGETS=$(jq -n -c \
+  --arg local "$DASH_LOCAL_ID" --arg db "$DASH_DB_ID" --arg ib "$DASH_IB_ID" \
+  --arg dbping "$DASH_DB_PING" --arg ibping "$DASH_IB_PING" --arg gid "$GROUP_ID" '
+  def sections($order): [$order | to_entries[] | {type:0, name:"sections.\(.key)", value:(.value|tostring)}];
+  def hostcard($name; $hid; $y; $order; $suppressed):
+    if $hid == "" then empty else
+      {type:"hostcard", name:$name, x:0, y:$y, width:36, height:4, view_mode:0,
+       fields:([{type:3, name:"hostid.0", value:$hid}]
+               + (if $suppressed then [{type:0, name:"show_suppressed", value:"1"}] else [] end)
+               + sections($order))}
+    end;
+  def ping($name; $iid; $x; $w; $bold):
+    if $iid == "" then empty else
+      {type:"item", name:$name, x:$x, y:4, width:$w, height:2, view_mode:0,
+       fields:([{type:4, name:"itemid.0", value:$iid}]
+               + (if $bold then [{type:0, name:"desc_bold", value:"1"}] else [] end)
+               + [{type:0, name:"decimal_places", value:"0"},
+                  {type:1, name:"thresholds.0.color", value:"E65660"},
+                  {type:1, name:"thresholds.0.threshold", value:"0"},
+                  {type:1, name:"thresholds.1.color", value:"81C784"},
+                  {type:1, name:"thresholds.1.threshold", value:"1"}])}
+    end;
+  [ hostcard("srv-gestión"; $local; 0; [2,3,4,0,1,5,6,7]; false),
+    hostcard("srv-infobús"; $ib;    4; [2,3,4,0,5,1,6,7]; true),
+    hostcard("srv-databús"; $db;    8; [2,3,4,0,5,1,6,7]; true),
+    {type:"clock", name:"Reloj", x:58, y:0, width:14, height:4, view_mode:1,
+     fields:[{type:0, name:"clock_type",   value:"1"},
+             {type:0, name:"show.0",       value:"1"},
+             {type:0, name:"show.1",       value:"2"},
+             {type:0, name:"show.2",       value:"3"},
+             {type:1, name:"bg_color",     value:"002620"},
+             {type:1, name:"date_color",   value:"FFFFFF"},
+             {type:0, name:"time_bold",    value:"1"},
+             {type:1, name:"time_color",   value:"FFFFFF"},
+             {type:0, name:"time_format",  value:"1"},
+             {type:1, name:"tzone_color",  value:"FFFFFF"},
+             {type:0, name:"tzone_format", value:"1"}]},
+    {type:"problems", name:"Alertas", x:36, y:6, width:36, height:6, view_mode:0,
+     fields:[{type:2, name:"groupids.0", value:$gid},
+             {type:0, name:"show_tags",  value:"3"},
+             {type:1, name:"reference",  value:"EHSNB"}]},
+    {type:"systeminfo", name:"System Information", x:36, y:0, width:22, height:4, view_mode:0, fields:[]},
+    ping("srv-databus"; $dbping; 36; 11; false),
+    ping("srv-infobus"; $ibping; 48; 10; true)
+  ]')
+
+# ---------------------------------------------------------------------------
+# Create the dashboard, or replace its content if it already exists
+# ---------------------------------------------------------------------------
+DASH_ID=$(api_call "$(jq -n -c --arg n "$DASHBOARD_NAME" \
+  '{jsonrpc:"2.0",method:"dashboard.get",params:{filter:{name:[$n]},output:["dashboardid"]},id:1}')" \
+  | jq -r '.result[0].dashboardid // empty')
+
+if [ -z "$DASH_ID" ]; then
+  _res=$(api_call "$(jq -n -c --arg n "$DASHBOARD_NAME" --argjson w "$DASH_WIDGETS" \
+    '{jsonrpc:"2.0",method:"dashboard.create",params:{name:$n,display_period:600,auto_start:1,private:1,pages:[{widgets:$w}]},id:1}')")
+  _action="created"
+else
+  _res=$(api_call "$(jq -n -c --arg id "$DASH_ID" --argjson w "$DASH_WIDGETS" \
+    '{jsonrpc:"2.0",method:"dashboard.update",params:{dashboardid:$id,display_period:600,auto_start:1,pages:[{widgets:$w}]},id:1}')")
+  _action="updated"
+fi
+
+_err=$(echo "$_res" | jq -r '.error.data // .error.message // empty')
+if [ -n "$_err" ]; then
+  echo -e "   - ⚠️  Dashboard '${DASHBOARD_NAME}' could not be ${_action}: ${RED}${_err}${NC}"
+else
+  echo "   - ✅ Dashboard '${DASHBOARD_NAME}' ${_action} with $(echo "$DASH_WIDGETS" | jq length) panels"
+fi
+
+# ---------------------------------------------------------------------------
 # Create the web user and remove the default account when appropriate
 # ---------------------------------------------------------------------------
 if [ "$flag_new_user" = "TRUE" ]; then

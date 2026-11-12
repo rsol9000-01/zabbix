@@ -22,6 +22,7 @@ zabbix_export:
           type: DEPENDENT
           key: databus.static.age_s
           value_type: FLOAT
+          units: s
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -43,7 +44,7 @@ zabbix_export:
           params: 'last(//databus.static.age_s) - last(//macdt.static_zip_age_s)'
           triggers:
             - uuid: 5cbbc7f23c704a9d9eba788d67a7de4e
-              expression: 'min(/simovilab-databus/databus.static.desfase_s,15m)>{$MACDT.ZIP.DESFASE.WARN}'
+              expression: 'min(/simovilab-databus/databus.static.desfase_s,{$MACDT.ZIP.DESFASE.TIEMPO})>{$MACDT.ZIP.DESFASE.WARN}'
               name: 'El GTFS que publica databus está desactualizado'
               dependencies:
                 - name: 'SIMOVI no sirve el GTFS estático'
@@ -608,9 +609,12 @@ zabbix_export:
         - macro: '{$MACDT.V_GPS.WARN}'
           value: '85'
           description: '[ESP] 2.5, respaldado en Tóth et al.'
+        - macro: '{$MACDT.ZIP.DESFASE.TIEMPO}'
+          value: 25h
+          description: 'Tiempo máximo que databus puede servir una versión del GTFS estático más vieja que la de SIMOVI: 1 h para detectar el cambio (revisión horaria a los :30) + 24 h hasta la siguiente exportación diaria'
         - macro: '{$MACDT.ZIP.DESFASE.WARN}'
-          value: '21600'
-          description: '6 h de desfase entre origen y publicación'
+          value: '600'
+          description: 'Margen de ruido del desfase (s). Con la misma versión el desfase no es 0 exacto sino la diferencia entre los momentos de consulta a SIMOVI (cada 1 min) y a databus (cada 5 min)'
       dashboards:
         - uuid: 5ac291617b3e41ff8ae2312552c02852
           name: 'Operación databus'
@@ -966,7 +970,7 @@ zabbix_export:
                   name: 'Edad máxima del GPS'
                   x: '0'
                   y: '14'
-                  width: '12'
+                  width: '10'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -988,9 +992,9 @@ zabbix_export:
                       value: AGEMX
                 - type: item
                   name: 'Edad p95 del GPS'
-                  x: '12'
+                  x: '10'
                   y: '14'
-                  width: '12'
+                  width: '10'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -1012,9 +1016,9 @@ zabbix_export:
                       value: AGE95
                 - type: item
                   name: 'Edad del feed (V_age)'
-                  x: '24'
+                  x: '20'
                   y: '14'
-                  width: '12'
+                  width: '10'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -1035,10 +1039,34 @@ zabbix_export:
                       name: reference
                       value: RNBSD
                 - type: item
-                  name: 'Completitud predicciones %'
-                  x: '36'
+                  name: 'Desfase del GTFS estático (databus vs SIMOVI)'
+                  x: '30'
                   y: '14'
-                  width: '12'
+                  width: '10'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: databus.static.desfase_s
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: reference
+                      value: STZAG
+                - type: item
+                  name: 'Completitud predicciones %'
+                  x: '40'
+                  y: '14'
+                  width: '11'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -1060,9 +1088,9 @@ zabbix_export:
                       value: BREJN
                 - type: item
                   name: 'Completitud posiciones %'
-                  x: '48'
+                  x: '51'
                   y: '14'
-                  width: '12'
+                  width: '11'
                   height: '3'
                   fields:
                     - type: ITEM
@@ -1084,9 +1112,9 @@ zabbix_export:
                       value: ERDSJ
                 - type: item
                   name: 'Días de vigencia del GTFS'
-                  x: '60'
+                  x: '62'
                   y: '14'
-                  width: '12'
+                  width: '10'
                   height: '3'
                   fields:
                     - type: ITEM
