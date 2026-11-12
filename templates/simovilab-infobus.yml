@@ -129,6 +129,50 @@ zabbix_export:
               description: |
                 Puede ser el servicio, o un stop_id mal configurado en la sonda:
                 NextTripView responde 404 si la parada no existe en la base.
+        - uuid: 4c96a5cd6ad84db4a7e7c930ca8e624a
+          name: 'Llegadas programadas en 5 h, N(t)'
+          type: DEPENDENT
+          key: infobus.api.llegadas
+          value_type: UNSIGNED
+          history: 90d
+          description: 'Horas de paso programadas en la ventana de 5 h que devolvió next-trips en el ciclo (in_progress = false). Es N(t) de T_base(t) = b + m·N(t) + δ y el regresor de m en la calibración.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.llegadas
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^[0-9]+$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 6e0aa045cd3345febb7082ab8d4f2d9c
+          name: 'Buses en camino a la parada medida'
+          type: DEPENDENT
+          key: infobus.api.buses_parada
+          value_type: UNSIGNED
+          history: 90d
+          description: 'Viajes en curso que todavía tienen la parada medida por delante (in_progress = true en next-trips). Diagnóstico del costo por bus; la calibración usa gtfs.v_trips de databus, que es la variable de rho.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.buses_parada
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^[0-9]+$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 7f7c6af0a315498492f7b1bfe177d491
+          name: 'N(t) para MACDT: p95 de llegadas, ventana de 1 h'
+          type: CALCULATED
+          key: infobus.api.llegadas_p95_1h
+          delay: 1m
+          value_type: FLOAT
+          params: 'percentile(//infobus.api.llegadas,1h,95)'
+          description: 'Misma ventana y mismo percentil que infobus.api.lat_p95_1h, que es contra lo que se compara T_WARN. El bucle MACDT lo usa como N(t).'
         - uuid: cd8211b1403b48748e997ceadfedba8f
           name: 'L_api p50 del ciclo'
           type: DEPENDENT
@@ -457,6 +501,50 @@ zabbix_export:
           units: ms
           value_type: FLOAT
           description: 'El valor que el bucle puso en la macro de host. Para graficarlo contra rho.'
+        - uuid: 267607728bc54d8097df36e1e6bd9d84
+          name: 'T_base(t) calculado por MACDT'
+          type: TRAP
+          key: macdt.t_base
+          units: ms
+          value_type: FLOAT
+          description: 'T_base(t) = b + m·N(t) + δ del ciclo, antes de aplicar (1 + β·ρ) y F_crit. Sin N(t) fresco es {$MACDT.T_BASE}.'
+        - uuid: 7b4916825b45488694536791febe3d39
+          name: 'Resultado de la calibración de MACDT'
+          type: TRAP
+          key: macdt.calib
+          value_type: UNSIGNED
+          description: |
+            1 = recta aplicada. 0 = rechazada (pocos puntos, R² bajo o m <= 0): se conserva la vigente.
+            2 = retenida: la recta nueva cambia más que MACDT_CALIB_MAX_DRIFT. No se aplica sola.
+          valuemap:
+            name: 'Calibración MACDT'
+          triggers:
+            - uuid: b52790ae5c3d497e80404f78c763247f
+              expression: 'last(/simovilab-infobus/macdt.calib)=2'
+              name: 'MACDT: la latencia de infobus cambió más de lo permitido'
+              priority: WARNING
+              description: |
+                La recta latencia contra llegadas cambió más que MACDT_CALIB_MAX_DRIFT respecto de la
+                vigente. Puede ser una versión nueva de infobus, un cambio de servidor o una degradación.
+                No se aplica sola para no aprender una falla como normal. Revisar macdt.calib.info y,
+                si es el nuevo normal: docker exec macdt-loop python3 /macdt_loop.py --calibrate --force
+        - uuid: 29fa662a2aee4fcb83411f851ca92e75
+          name: 'Detalle de la calibración de MACDT'
+          type: TRAP
+          key: macdt.calib.info
+          value_type: TEXT
+          description: 'JSON con b, m, c, δ, β, R², puntos y deriva de la última calibración.'
+        - uuid: 49556341f1bb4380ad1ba637008f3f83
+          name: 'Ecuación de T_warn con valores'
+          type: TRAP
+          key: macdt.t_warn.eq
+          history: 7d
+          value_type: TEXT
+          description: 'T_warn = clamp((b + m·N + δ)·(1 + β·ρ)·F_crit, T_floor, T_RNF) con los valores del ciclo. La envía el bucle MACDT junto con macdt.t_warn; es solo para mostrar en el dashboard. En ciclo degradado no se envía. El preprocesamiento la envuelve en HTML a 16 px (4 más que la letra normal del widget).'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - 'return ''<span style="font-size:16px">'' + value + ''</span>'';'
       macros:
         - macro: '{$T_LATENCY_WARN.SOSTENIDO}'
           value: 30m
@@ -478,7 +566,16 @@ zabbix_export:
           description: 'Fijo en el RNF. No lo mueve MACDT.'
         - macro: '{$MACDT.T_BASE}'
           value: '130'
-          description: 'PROVISIONAL. Sale de la linea base de 7 dias.'
+          description: 'Semilla. Se usa como T_base solo si no hay N(t) fresco (infobus.api.llegadas_p95_1h).'
+        - macro: '{$MACDT.B}'
+          value: '130'
+          description: 'b de T_base(t) = b + m·N(t) + δ: costo fijo. Semilla igual a T_BASE; la calibración lo escribe como macro de host.'
+        - macro: '{$MACDT.M}'
+          value: '0'
+          description: 'm: ms por cada llegada programada en 5 h. Con 0 (sin calibrar) T_base es constante, como antes.'
+        - macro: '{$MACDT.DELTA}'
+          value: '0'
+          description: 'δ: margen, p95 de los residuos de la regresión. Lo escribe la calibración.'
         - macro: '{$MACDT.T_FLOOR}'
           value: '91'
           description: 'Piso del umbral (decisión 2026-11-05: bajar de 130 a 91). Confirmar con la latencia nocturna.'
@@ -487,7 +584,7 @@ zabbix_export:
           description: 'Techo contractual. No se mueve.'
         - macro: '{$MACDT.BETA}'
           value: '0.35'
-          description: 'PROVISIONAL. Se deriva de la regresion query_p50 contra rho.'
+          description: 'Peso de los buses activos. La calibración lo escribe como macro de host: β = c·V_max ÷ promedio de T_base con buses, con c = ms por bus.'
         - macro: '{$MACDT.F_CRIT}'
           value: '0.7'
           description: 'Endurecimiento del umbral con cobertura GPS bajo 70 %.'
@@ -624,7 +721,7 @@ zabbix_export:
                 - type: itemhistory
                   name: 'API INFOBUS'
                   hide_header: 'YES'
-                  x: '0'
+                  x: '24'
                   y: '3'
                   width: '48'
                   height: '9'
@@ -648,7 +745,7 @@ zabbix_export:
                       value: '0'
                 - type: item
                   name: 'Too Many Requests (429)'
-                  x: '48'
+                  x: '0'
                   y: '3'
                   width: '24'
                   height: '3'
@@ -660,16 +757,40 @@ zabbix_export:
                         key: 'infobus.api.throttled'
                     - type: INTEGER
                       name: value_size
-                      value: '25'
+                      value: '35'
                     - type: INTEGER
                       name: decimal_size
-                      value: '25'
+                      value: '35'
                     - type: INTEGER
                       name: units_size
-                      value: '25'
+                      value: '35'
                     - type: STRING
                       name: reference
                       value: GBPMW
+                - type: itemhistory
+                  name: 'Ecuación de T_warn (último ciclo)'
+                  x: '0'
+                  y: '6'
+                  width: '24'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: columns.0.name
+                      value: 'T_warn'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-infobus
+                        key: macdt.t_warn.eq
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
                 - type: graph
                   name: 'Latencia de la API vs umbral de MACDT'
                   x: '0'
@@ -715,6 +836,15 @@ zabbix_export:
               newvalue: Degradado
             - value: '1'
               newvalue: Operando
+        - uuid: d29358034ea64247b4cbd1a7f9cdd494
+          name: 'Calibración MACDT'
+          mappings:
+            - value: '0'
+              newvalue: Rechazada
+            - value: '1'
+              newvalue: Aplicada
+            - value: '2'
+              newvalue: 'Retenida: cambio grande'
         - uuid: 812477902d9b4110a382c0cfffd2d374
           name: 'Estado API'
           mappings:

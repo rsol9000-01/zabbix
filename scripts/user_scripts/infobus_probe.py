@@ -1,630 +1,751 @@
 #!/usr/bin/env python3
 """
-Sonda de latencia de la API de InfoBus para MACDT (capa I).
+MACDT loop (F5): adjust the IT latency threshold according to transport load.
 
-Se ejecuta desde dos puntos con el mismo script:
-  - interno (agente de R2, clave infobus.api):      http://orchestrator:8000 -> Daphne + consulta
-  - externo (agente de R4, clave infobus.api.ext):  https://<dominio>         -> red + TLS + Traefik + Daphne + consulta
-La diferencia externo - interno la calcula Zabbix (plantilla simovilab-infobus-ext). Imprime UN objeto JSON: usenlo como item maestro y cuelguen items
-dependientes con JSONPath, igual que gtfsrt_probe.py.
+This is the executor in the MAPE-K loop. Each cycle:
 
-Por que --repeat 10 y no 30 ni 100 (hallazgo de infobus/backend/infobus/settings.py):
-  NextTripView declara throttle_scope = "realtime", y DEFAULT_THROTTLE_RATES
-  pone "realtime" en 30/min. La cuota es POR IP (AnonRateThrottle), asi que la
-  sonda no le quita capacidad a los pasajeros, pero si se pasa de 30/min se
-  auto-estrangula y a partir de ahi mide 429, no latencia. Con 10 por ciclo de
-  60 s queda en 10/min: un tercio de la cuota, con margen para reintentos.
+  Monitor   reads rho, V_gps, and the operating-window gate from databus items
+  Analyze   decides whether to apply the adjustment for degraded GPS coverage
+  Plan      calculates T_warn = clamp(T_base(t) * (1 + beta*rho) * F, T_floor, T_RNF)
+            with T_base(t) = b + m*N(t) + delta
+  Execute   writes {$T_LATENCY_WARN} as a HOST macro on the infobus host
+  Knowledge records the cycle in history.jsonl for OE5 reproduction
 
-Por que se reporta p50 de la rafaga y no p95 (consecuencia de lo anterior):
-  con n = 10 el p95 de la rafaga ES el maximo, asi que no aporta nada. El p95
-  verdadero se calcula en Zabbix sobre la serie almacenada:
-      percentile(/HOST/infobus.api.lat_p50,1h,95)
-  Eso son ~600 muestras por hora y si tiene sentido estadistico. La rafaga
-  entrega la tendencia central del ciclo, que es el regresor para calibrar beta.
+Why T_base is adjustable (early lab result, 2026-11-10):
+  next-trips latency grows linearly with the scheduled stop times in the 5 h
+  window of the queried stop (R2 = 0.9986). T_base is therefore no longer a
+  constant but the schedule line:
+      T_base(t) = b + m*N(t) + delta
+  N(t) = infobus.api.llegadas_p95_1h: arrivals over the same window and with the
+  same percentile as the latency the threshold is compared with.
+  m = weight of each arrival, b = fixed cost, delta = margin (p95 of the
+  residuals). beta still carries the weight of active buses (rho).
+  Until a calibration runs, m = 0, delta = 0 and b = {$MACDT.T_BASE}: the loop
+  behaves exactly as before.
 
-Por que se mide /health/ aparte, y dos veces:
-  health_check es una vista Django plana, fuera de DRF, asi que no tiene
-  throttling. La primera peticion de la sesion (health_cold_ms) paga abrir la
-  conexion (DNS + TCP + TLS si es https). La segunda (health_ms) ya reusa la
-  conexion abierta, igual que las peticiones de la rafaga, asi que es el piso
-  comparable con lat_p50_ms. Por eso:
-      setup_ms     = health_cold_ms - health_ms  -> costo de abrir la conexion
-      query_p50_ms = lat_p50_ms - health_ms      -> costo de la consulta, que es
-                                                   lo que beta pretende modelar
+Calibration (--calibrate, or daily with MACDT_CALIB_MODE=daily):
+  regression latency = b + m*N + c*V on the probe's own data
+  (infobus.api.lat_p50, infobus.api.llegadas) and databus gtfs.v_trips over
+  MACDT_CALIB_WINDOW_D days. c is the cost of each active bus and is converted
+  to beta = c * V_max / mean(T_base) while buses are running.
+  The new line is applied only if:
+    - there are at least MACDT_CALIB_MIN_POINTS points and R2 >= MACDT_CALIB_MIN_R2
+    - m > 0
+    - the line does not change more than MACDT_CALIB_MAX_DRIFT from the current
+      one (compared at the low and high N of the window). If it changes more, it
+      is not applied automatically: macdt.calib = 2 and a person decides with
+      --calibrate --force. This keeps the loop from learning a degradation as
+      the new normal.
+  With no buses in the window, c cannot be measured and beta is kept.
+  Calibrated values are written as HOST macros on infobus.
 
-Por que tcp_connect_ms:
-  es el tiempo de abrir una conexion TCP al host y puerto de --base, con el DNS
-  ya resuelto: un viaje de ida y vuelta de red, como un ping, pero por el mismo
-  puerto de la API (el firewall no lo bloquea si la API responde). Se toma la
-  mediana de 3 intentos. Desde dentro (red Docker) debe ser casi cero.
+Why the macro is written at the HOST level instead of the template:
+  zabbix-init reimports templates with updateExisting=true, and macros are part
+  of the YAML. Writing the template macro would reset the threshold to its seed
+  and erase the loop state on every redeployment. The host macro overrides the
+  inherited value, and init does not modify host macros.
 
-Por que se valida que la respuesta sea un 200 con cuerpo:
-  NextTripView responde 400 si falta stop_id y 404 si la parada no existe. Las
-  dos rutas son rapidas. Un stop_id mal configurado mediria el camino de error
-  y reportaria una latencia excelente y falsa. Si el status no es 200, ok = 0.
+Why this script reads p.calculated instead of calculating rho:
+  this calculated item already applies {$MACDT.RHO_CAP}. Recalculating it here
+  would duplicate the definition and risk inconsistent results.
 
-Excepcion: 204 = dia sin servicio (no es una falla):
-  get_next_trips devuelve None cuando el calendario no tiene servicio para la
-  fecha (en bUCR: sabado y domingo) y NextTripView responde 204. Es una
-  respuesta correcta de infobus, asi que si la rafaga completa responde 200 o
-  204, ok = 1. Si todas fueron 204, sin_servicio = 1 y las latencias quedan en
-  null: el tiempo de una respuesta vacia no es comparable con el de un dia
-  habil y contaminaria el p95.
-  El tiempo de las 204 se reporta aparte en lat_sin_servicio_p50_ms: en ese
-  camino get_next_trips solo hace 4 consultas fijas (feed, parada, agencia,
-  calendario) y se detiene, asi que mide el costo fijo de la peticion (T_0 de
-  la tuberia de umbrales) sin el costo de las horas de paso.
+Why the GPS factor applies only while the operating-window gate is open:
+  outside the operating window or when V_gps is stale (older than MACDT_MAX_AGE
+  seconds), F = 1.0 and hysteresis is reset. With no buses, the probe returns
+  v_gps_pct = null and Zabbix discards it, leaving the item's last value for the
+  day. Using that value would tighten the threshold overnight when no bus is in
+  service.
 
-Por que una sola sesion HTTP:
-  la primera peticion paga DNS, saludo TCP y TLS. Sin reuso de conexion la
-  primera muestra contamina la rafaga (medido en databus: 848 ms contra 12 ms).
-  La peticion de calentamiento se descarta.
+Why the critical threshold is not changed:
+  {$T_LATENCY_CRIT} is the service-level requirement. A commitment that relaxes
+  under load is not a commitment. The loop changes only the warning threshold.
 
-Por que --stop-id auto (parada del peor caso):
-  en infobus 9482328, feed/services/queries.py::get_next_trips devuelve TODAS las
-  horas de paso de la parada en las proximas 5 h (arrival_time entre ahora y
-  ahora + 5 h, sin limite y sin filtrar por servicio) y hace 2 consultas SQL por
-  cada una. La latencia de next-trips crece con cuantas horas de paso tiene la
-  parada consultada en esa ventana. Con --stop-id auto la sonda mide la parada
-  con el pico mas alto de horas de paso en 5 h segun el GTFS, es decir, el peor
-  caso, que es el que corresponde comparar contra el RNF.
+Why there is a freshness check:
+  writing a threshold from stale data is worse than not writing one. If the
+  latest rho sample is older than MACDT_MAX_AGE seconds, the cycle is marked
+  degraded, the macro remains unchanged, and the status is sent through trapper.
 
-  La eleccion depende solo del horario, que no cambia de un dia a otro. Se
-  calcula una vez por version del GTFS y se guarda en cache (--cache). Cada
-  --gtfs-check-s segundos (3600 por omision) se pregunta al servidor si el zip
-  cambio (If-Modified-Since / If-None-Match): con 304 no se descarga nada; con
-  200 se recalcula. Si la revision falla se sigue usando la parada guardada
-  (gtfs_check_ok = 0). Si nunca se pudo calcular, se usa --stop-id-fallback y
-  stop_auto = 0. El conteo replica la consulta de infobus: solo arrival_time,
-  todos los servicios, ventana [t, t + 5 h] sin cruzar medianoche.
+Why GPS tightening uses persistence and hysteresis:
+  without persistence, one bad sample would tighten the threshold and the next
+  cycle would release it, causing oscillation. Tightening starts after 3 samples
+  below V_GPS.CRIT and ends only after exceeding V_GPS.WARN. Without GPS data,
+  F = 1.0: missing data does not tighten the threshold.
 
-Uso:
-  python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01
-  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost \
-                           --stop-id auto --transit-system 1
+Usage:
+  macdt_loop-en.py                    # continuous loop
+  macdt_loop-en.py --once             # run one cycle and exit
+  macdt_loop-en.py --once --dry-run   # calculate and display without writing
+  macdt_loop-en.py --calibrate --dry-run   # fit the line and display it, no writes
+  macdt_loop-en.py --calibrate             # calibrate and apply if it passes the guards
+  macdt_loop-en.py --calibrate --force     # apply even if it changes more than MAX_DRIFT
 
-  Por dentro, sin Traefik (contenedor orchestrator de infobus, HTTP en el 8000):
-  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost --stop-id bUCR_0_01
-  --host-header tiene que ser un valor de ALLOWED_HOSTS de infobus; si no, Django responde 400.
-  En ese modo health_ms ya no incluye TLS ni Traefik: mide solo Daphne.
-  python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01 \
-                           --repeat 10 --timeout 5
+Environment variables (all have reasonable defaults except access credentials):
+  ZBX_API_URL, ZBX_API_USER, ZBX_API_PASS
+  MACDT_HOST_DATABUS, MACDT_HOST_INFOBUS
+  MACDT_TPL_DATABUS, MACDT_TPL_INFOBUS
+  MACDT_INTERVAL, MACDT_MAX_AGE, MACDT_STATE_DIR
+  MACDT_CALIB_MODE (daily | manual), MACDT_CALIB_HOUR (HH:MM),
+  MACDT_CALIB_WINDOW_D, MACDT_CALIB_MIN_R2, MACDT_CALIB_MIN_POINTS,
+  MACDT_CALIB_MAX_DRIFT
+  ZBX_SERVER, ZBX_SERVER_PORT         (for the macdt.status trapper item)
 
-Dependencias: requests (la eleccion de parada usa solo la biblioteca estandar)
+Dependency: requests
 """
 import argparse
-import html
-import csv
-import io
 import json
 import os
-import statistics
-import sys
-import tempfile
-import time
-import zipfile
-
 import socket
-from urllib.parse import urlsplit
+import struct
+import sys
+import time
 
-BASE = "https://infobus.ucr.ac.cr"
-API_PATH = "/api/next-trips/"
-HEALTH_PATH = "/health/"
+import requests
 
-GTFS_URL = "https://feeds.simovi.org/bucr/schedule/gtfs.zip"
-# ---------------------------------------------------------------------------
-# Definir la duración fija de la ventana de análisis
-# ---------------------------------------------------------------------------
-VENTANA_S = 5 * 3600
-CACHE = os.path.join(tempfile.gettempdir(), "infobus_probe_parada.json")
+API_URL = os.environ.get("ZBX_API_URL", "http://zabbix-dashboard:8080/api_jsonrpc.php")
+API_USER = os.environ.get("ZBX_API_USER", "")
+API_PASS = os.environ.get("ZBX_API_PASS", "")
 
+HOST_DATABUS = os.environ.get("MACDT_HOST_DATABUS", "Databus-host")
+HOST_INFOBUS = os.environ.get("MACDT_HOST_INFOBUS", "Infobus-host")
+TPL_DATABUS = os.environ.get("MACDT_TPL_DATABUS", "simovilab-databus")
+TPL_INFOBUS = os.environ.get("MACDT_TPL_INFOBUS", "simovilab-infobus")
 
-# ---------------------------------------------------------------------------
-# Convertir una hora GTFS a segundos desde el inicio del servicio
-# ---------------------------------------------------------------------------
-def _hms(t):
-    """HH:MM:SS de GTFS a segundos (admite 24:00 o mas). None si viene vacio."""
-    t = (t or "").strip()
-    if not t:
-        return None
-    h, m, s = t.split(":")
-    return int(h) * 3600 + int(m) * 60 + int(s)
+INTERVAL = int(os.environ.get("MACDT_INTERVAL", "60"))
+MAX_AGE = int(os.environ.get("MACDT_MAX_AGE", "180"))
+STATE_DIR = os.environ.get("MACDT_STATE_DIR", "/var/lib/macdt")
 
+ZBX_SERVER = os.environ.get("ZBX_SERVER", "zabbix-server-pgsql")
+ZBX_SERVER_PORT = int(os.environ.get("ZBX_SERVER_PORT", "10051"))
 
-# ---------------------------------------------------------------------------
-# Calcular el pico de horas de paso por parada dentro de la ventana móvil
-# ---------------------------------------------------------------------------
-def _pico_por_parada(datos_zip):
-    """{stop_id: (pico de horas de paso en VENTANA_S, total del dia)} desde stop_times.txt."""
-    z = zipfile.ZipFile(io.BytesIO(datos_zip))
-    por_parada = {}
-    with z.open("stop_times.txt") as fh:
-        for f in csv.DictReader(io.TextIOWrapper(fh, "utf-8-sig")):
-            seg = _hms(f.get("arrival_time"))
-            if seg is not None:
-                por_parada.setdefault(f["stop_id"], []).append(seg)
-    res = {}
-    for parada, ts in por_parada.items():
-        ts.sort()
-        pico, j = 0, 0
-        # -------------------------------------------------------------------
-        # Recorrer las horas de llegada y contar las que caben en cada ventana
-        # -------------------------------------------------------------------
-        for i in range(len(ts)):
-            while j < len(ts) and ts[j] <= ts[i] + VENTANA_S:
-                j += 1
-            pico = max(pico, j - i)
-        res[parada] = (pico, len(ts))
-    return res
-
+STATE_FILE = os.path.join(STATE_DIR, "state.json")
+HISTORY_FILE = os.path.join(STATE_DIR, "history.jsonl")
+CALIB_FILE = os.path.join(STATE_DIR, "calib.json")
 
 # ---------------------------------------------------------------------------
-# Leer del archivo de caché la parada calculada anteriormente
+# Parámetros de la calibración de T_base(t) y beta
 # ---------------------------------------------------------------------------
-def _leer_cache(ruta):
-    try:
-        with open(ruta) as fh:
-            return json.load(fh)
-    except Exception:
-        return None
+CALIB_MODE = os.environ.get("MACDT_CALIB_MODE", "manual").strip().lower()
+CALIB_HOUR = os.environ.get("MACDT_CALIB_HOUR", "03:30").strip()
+CALIB_WINDOW_D = int(os.environ.get("MACDT_CALIB_WINDOW_D", "7"))
+CALIB_MIN_R2 = float(os.environ.get("MACDT_CALIB_MIN_R2", "0.8"))
+CALIB_MIN_POINTS = int(os.environ.get("MACDT_CALIB_MIN_POINTS", "300"))
+CALIB_MAX_DRIFT = float(os.environ.get("MACDT_CALIB_MAX_DRIFT", "0.25"))
+
+# ---------------------------------------------------------------------------
+# Definir los ítems que se consultan en el host de databus
+# ---------------------------------------------------------------------------
+ITEMS_DATABUS = ["p.calculated", "gtfs.v_gps_pct", "macdt.gate",
+                 "gtfs.v_trips", "macdt.v_trips_max", "gtfs.fetch_ok"]
+
+# ---------------------------------------------------------------------------
+# Definir las macros de plantilla que contienen los parámetros de cálculo
+# ---------------------------------------------------------------------------
+MACROS_NEEDED = ["{$MACDT.T_BASE}", "{$MACDT.BETA}", "{$MACDT.F_CRIT}",
+                 "{$MACDT.T_FLOOR}", "{$MACDT.T_RNF}",
+                 "{$MACDT.V_GPS.CRIT}", "{$MACDT.V_GPS.WARN}",
+                 "{$MACDT.M}", "{$MACDT.B}", "{$MACDT.DELTA}"]
+
+# ---------------------------------------------------------------------------
+# Ítem de infobus con N(t): llegadas con la misma ventana que la latencia
+# ---------------------------------------------------------------------------
+ITEM_N = "infobus.api.llegadas_p95_1h"
+
+MACRO_OUT = "{$T_LATENCY_WARN}"
 
 
 # ---------------------------------------------------------------------------
-# Guardar los datos de caché mediante un reemplazo atómico
+# Imprimir un mensaje con la hora local y vaciar el búfer de salida
 # ---------------------------------------------------------------------------
-def _guardar_cache(ruta, datos):
-    tmp = ruta + ".tmp"
-    with open(tmp, "w") as fh:
-        json.dump(datos, fh)
-    os.replace(tmp, ruta)
+def log(msg):
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
 
 # ---------------------------------------------------------------------------
-# Elegir la parada con mayor carga y actualizar la caché según la versión GTFS
+# Agrupar las operaciones necesarias para comunicarse con la API de Zabbix
 # ---------------------------------------------------------------------------
-def elegir_parada(gtfs_url, check_s, ruta_cache, timeout=10):
-    """Parada con el pico mas alto de horas de paso en 5 h, con cache por version del GTFS."""
-    import urllib.error
-    import urllib.request
-    cache = _leer_cache(ruta_cache)
-    ahora = int(time.time())
-    if cache and cache.get("url") == gtfs_url and ahora - cache.get("checked_at", 0) < check_s:
-        return cache, 1
-    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) macdt-infobus-probe/1",
-               "Accept": "application/zip,application/octet-stream,*/*"}
-    if cache and cache.get("url") == gtfs_url:
-        if cache.get("last_modified"):
-            headers["If-Modified-Since"] = cache["last_modified"]
-        if cache.get("etag"):
-            headers["If-None-Match"] = cache["etag"]
-    try:
-        with urllib.request.urlopen(urllib.request.Request(gtfs_url, headers=headers),
-                                    timeout=timeout) as r:
-            datos, lm, etag = r.read(), r.headers.get("Last-Modified"), r.headers.get("ETag")
-    except urllib.error.HTTPError as e:
-        if e.code == 304 and cache:
-            # -------------------------------------------------------------------
-            # Renovar la fecha de comprobación si el servidor confirma que no cambió
-            # -------------------------------------------------------------------
-            cache["checked_at"] = ahora
-            _guardar_cache(ruta_cache, cache)
-            return cache, 1
-        return cache, 0
-    except Exception:
-        return cache, 0
-    picos = _pico_por_parada(datos)
-    if not picos:
-        return cache, 0
+class Zabbix:
     # -----------------------------------------------------------------------
-    # Desempatar por total diario y luego por identificador de parada
+    # Inicializar la sesión HTTP y las credenciales de acceso a Zabbix
     # -----------------------------------------------------------------------
-    parada = sorted(picos, key=lambda p: (-picos[p][0], -picos[p][1], p))[0]
-    nuevo = {"url": gtfs_url, "stop_id": parada, "pico_5h": picos[parada][0],
-             "total_dia": picos[parada][1], "last_modified": lm, "etag": etag,
-             "checked_at": ahora}
-    _guardar_cache(ruta_cache, nuevo)
-    return nuevo, 1
-
-
-# ---------------------------------------------------------------------------
-# Obtener un cuantil mediante el rango más cercano
-# ---------------------------------------------------------------------------
-def _quantil(vals, q):
-    """Rango mas cercano, igual que gtfsrt_probe.py para que sean comparables."""
-    if not vals:
-        return None
-    v = sorted(vals)
-    return v[min(len(v) - 1, int(round(q * (len(v) - 1))))]
-
-
-# ---------------------------------------------------------------------------
-# Crear una sesión HTTP y configurar encabezados y verificación TLS
-# ---------------------------------------------------------------------------
-def _sesion(insecure=False, host_header=None):
-    import requests
-    s = requests.Session()
-    s.headers.update({"User-Agent": "macdt-infobus-probe/1"})
-    if host_header:
-        # -------------------------------------------------------------------
-        # Enviar los encabezados que acepta Daphne en una conexión directa
-        # -------------------------------------------------------------------
-        s.headers.update({"Host": host_header, "X-Forwarded-Proto": "https"})
-    if insecure:
-        s.verify = False
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    return s
-
-
-# ---------------------------------------------------------------------------
-# Medir la mediana de conexión TCP al host y puerto, sin incluir DNS
-# ---------------------------------------------------------------------------
-def _tcp_connect_ms(base, timeout, intentos=3):
-    """Mediana del tiempo de conexion TCP a host:puerto de base, sin DNS. None si falla."""
-    try:
-        u = urlsplit(base)
-        puerto = u.port or (443 if u.scheme == "https" else 80)
-        fam, tipo, proto, _, dir_ = socket.getaddrinfo(u.hostname, puerto, type=socket.SOCK_STREAM)[0]
-        tiempos = []
-        for _ in range(intentos):
-            s = socket.socket(fam, tipo, proto)
-            s.settimeout(timeout)
-            t0 = time.perf_counter()
-            try:
-                s.connect(dir_)
-                tiempos.append((time.perf_counter() - t0) * 1000)
-            finally:
-                s.close()
-        return round(statistics.median(tiempos), 2)
-    except Exception:
-        return None
-
-
-# ---------------------------------------------------------------------------
-# Medir una solicitud HTTP y devolver su estado, duración y bytes recibidos
-# ---------------------------------------------------------------------------
-def _medir(sesion, url, timeout, params=None):
-    """Devuelve (status, ms, bytes). No lanza: el fallo es en si una metrica."""
-    t0 = time.perf_counter()
-    try:
-        r = sesion.get(url, params=params, timeout=timeout)
-        ms = round((time.perf_counter() - t0) * 1000, 2)
-        return r.status_code, ms, len(r.content)
-    except Exception:
-        ms = round((time.perf_counter() - t0) * 1000, 2)
-        return 0, ms, 0
-
-
-# ---------------------------------------------------------------------------
-# Medir la API, el servicio de salud y la conexión para una parada
-# ---------------------------------------------------------------------------
-def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=None,
-            transit_system=None):
-    ses = _sesion(insecure, host_header)
-    api_url = base.rstrip("/") + API_PATH
-    health_url = base.rstrip("/") + HEALTH_PATH
-    params = {"stop_id": stop_id}
-    if transit_system:
-        # -------------------------------------------------------------------
-        # Incluir el sistema de transporte para evitar una consulta inválida
-        # -------------------------------------------------------------------
-        params["transit_system"] = transit_system
+    def __init__(self, url, user, password):
+        self.url, self.user, self.password = url, user, password
+        self.token = None
+        self.s = requests.Session()
+        self.s.headers.update({"Content-Type": "application/json-rpc"})
 
     # -----------------------------------------------------------------------
-    # Medir la conexión TCP antes de enviar solicitudes HTTP
+    # Obtener un token de acceso y guardarlo en la sesión
     # -----------------------------------------------------------------------
-    tcp_ms = _tcp_connect_ms(base, timeout)
+    def login(self):
+        r = self._raw("user.login", {"username": self.user, "password": self.password}, auth=False)
+        self.token = r
+        self.s.headers.update({"Authorization": f"Bearer {self.token}"})
 
     # -----------------------------------------------------------------------
-    # Medir el servicio de salud con una conexión nueva y luego reutilizada
+    # Enviar una solicitud JSON-RPC y devolver su resultado
     # -----------------------------------------------------------------------
-    hc_status, hc_ms, _ = _medir(ses, health_url, timeout)
-    h_status, h_ms, _ = _medir(ses, health_url, timeout)
-    h_ok = hc_status == 200 and h_status == 200
+    def _raw(self, method, params, auth=True):
+        if auth and not self.token:
+            self.login()
+        payload = {"jsonrpc": "2.0", "method": method, "params": params, "id": 1}
+        resp = self.s.post(self.url, json=payload, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if "error" in data:
+            raise RuntimeError(f"{method}: {data['error'].get('data') or data['error'].get('message')}")
+        return data["result"]
 
     # -----------------------------------------------------------------------
-    # Calentar la conexión con una solicitud que no se incluye en las métricas
+    # Ejecutar una llamada a la API y reautenticar si el token expiró
     # -----------------------------------------------------------------------
-    calentado = 0
-    if warmup:
-        w_status, _, _ = _medir(ses, api_url, timeout, params)
-        calentado = 1 if w_status else 0
+    def call(self, method, params):
+        """Reintenta una vez tras reautenticar: el token puede haber expirado."""
+        try:
+            return self._raw(method, params)
+        except RuntimeError as e:
+            if "Not authorised" in str(e) or "re-login" in str(e).lower():
+                self.token = None
+                self.login()
+                return self._raw(method, params)
+            raise
 
-    lat, estados, bytes_tot = [], [], 0
-    # -----------------------------------------------------------------------
-    # Guardar por separado las duraciones de las respuestas sin servicio
-    # -----------------------------------------------------------------------
-    lat204 = []
-    throttled = errores = sin_serv = 0
 
-    for _ in range(repeat):
-        status, ms, nbytes = _medir(ses, api_url, timeout, params)
-        estados.append(status)
-        if status == 200:
-            lat.append(ms)
-            bytes_tot += nbytes
-        elif status == 204:
-            # -------------------------------------------------------------------
-            # Contabilizar por separado una respuesta correcta sin servicio
-            # -------------------------------------------------------------------
-            sin_serv += 1
-            lat204.append(ms)
-        elif status == 429:
-            throttled += 1
-        else:
-            errores += 1
-
-    # -----------------------------------------------------------------------
-    # Usar como estado representativo el código más frecuente de la ráfaga
-    # -----------------------------------------------------------------------
-    status_mode = max(set(estados), key=estados.count) if estados else 0
-    ok = 1 if (len(lat) + sin_serv == repeat and status_mode in (200, 204)) else 0
-
-    out = {
-        "ts_sonda": int(time.time()),
-        "ok": ok,
-        "status": status_mode,
-        "n": repeat,
-        "n_ok": len(lat),
-        "sin_servicio": 1 if sin_serv == repeat else 0,
-        # -------------------------------------------------------------------
-        # Enumerar los códigos HTTP distintos recibidos durante la ráfaga
-        # -------------------------------------------------------------------
-        "status_codes": sorted(set(estados)),
-        # -------------------------------------------------------------------
-        # Informar por separado las latencias de días sin servicio
-        # -------------------------------------------------------------------
-        "lat_sin_servicio_p50_ms": _quantil(lat204, 0.50) if lat204 else None,
-        # -------------------------------------------------------------------
-        # Separar el costo de la respuesta vacía del costo de transporte HTTP
-        # -------------------------------------------------------------------
-        "query_sin_servicio_p50_ms": (round(_quantil(lat204, 0.50) - h_ms, 2) if lat204 and h_ok else None),
-        "throttled": throttled,
-        "errors": errores,
-        "warmup": calentado,
-        "stop_id": stop_id,
-        # -------------------------------------------------------------------
-        # Exponer las métricas de conexión de red
-        # -------------------------------------------------------------------
-        "tcp_connect_ms": tcp_ms,
-        # -------------------------------------------------------------------
-        # Exponer las métricas base del transporte HTTP
-        # -------------------------------------------------------------------
-        "health_ok": 1 if h_ok else 0,
-        "health_status": h_status,
-        "health_cold_ms": hc_ms if hc_status == 200 else None,
-        "health_ms": h_ms if h_status == 200 else None,
-        "setup_ms": round(hc_ms - h_ms, 2) if h_ok else None,
-    }
-
-    if lat:
-        out.update({
-            "lat_min_ms": min(lat),
-            "lat_p50_ms": _quantil(lat, 0.50),
-            "lat_p90_ms": _quantil(lat, 0.90),
-            "lat_max_ms": max(lat),
-            "lat_mean_ms": round(statistics.fmean(lat), 2),
-            "lat_stdev_ms": round(statistics.stdev(lat), 2) if len(lat) > 1 else 0.0,
-            # -------------------------------------------------------------------
-            # Aislar el tiempo de consulta del tiempo base del transporte
-            # -------------------------------------------------------------------
-            "query_p50_ms": round(_quantil(lat, 0.50) - h_ms, 2) if h_ok else None,
-            "bytes_mean": round(bytes_tot / len(lat)),
-        })
-    else:
-        out.update({
-            "lat_min_ms": None, "lat_p50_ms": None, "lat_p90_ms": None,
-            "lat_max_ms": None, "lat_mean_ms": None, "lat_stdev_ms": None,
-            "query_p50_ms": None, "bytes_mean": 0,
-        })
-
+# ---------------------------------------------------------------------------
+# Leer el último valor y la hora de actualización de cada ítem solicitado
+# ---------------------------------------------------------------------------
+def leer_items(z, host, keys):
+    """Ultimo valor y su reloj por clave. item.get entrega lastvalue directo."""
+    res = z.call("item.get", {
+        "host": host,
+        "filter": {"key_": keys},
+        "output": ["key_", "lastvalue", "lastclock", "name"],
+    })
+    out = {}
+    for it in res:
+        try:
+            val = float(it["lastvalue"]) if it["lastvalue"] not in ("", None) else None
+        except (TypeError, ValueError):
+            val = None
+        out[it["key_"]] = {"v": val, "clock": int(it.get("lastclock") or 0)}
+    faltan = [k for k in keys if k not in out]
+    if faltan:
+        raise RuntimeError(f"missing items on '{host}': {faltan}")
     return out
 
 
 # ---------------------------------------------------------------------------
-# Calcular y guardar el percentil 95 de los valores de la última hora
+# Leer de las plantillas las macros requeridas para calcular el umbral
 # ---------------------------------------------------------------------------
-def _p95_1h(base, p50, ahora, ventana_s=3600, serie_tipo="200"):
-    """p95 de los p50 de la ultima hora, guardados por la propia sonda.
+def leer_macros(z, plantillas, necesarias, host=None):
+    """Read constants from template macros. Infobus values override databus values.
 
-    Replica el item calculado de Zabbix percentile(/HOST/infobus.api.lat_p50,1h,95)
-    para poder mostrarlo en la tabla HTML (el HTML lo arma la sonda y no puede leer
-    items de Zabbix). Un archivo por --base, para no mezclar la sonda interna con la
-    publica. Puede diferir un poco del item de Zabbix: la ventana no es identica.
-    """
-    import hashlib
-    ruta = os.path.join(tempfile.gettempdir(),
-                        "infobus_probe_p50_%s_%s.json" % (serie_tipo, hashlib.md5(base.encode()).hexdigest()[:8]))
+    If a host is given, its HOST macros override the template ones: that is where
+    the calibration writes, so a template reimport does not erase it."""
+    vals = {}
+    for nombre in plantillas:
+        tpl = z.call("template.get", {"filter": {"host": [nombre]}, "output": ["templateid"]})
+        if not tpl:
+            raise RuntimeError(f"template '{nombre}' does not exist")
+        macros = z.call("usermacro.get", {"hostids": tpl[0]["templateid"],
+                                          "output": ["macro", "value"]})
+        for m in macros:
+            if m["macro"] in necesarias:
+                vals[m["macro"]] = float(m["value"])
+    if host:
+        for macro, valor in leer_macros_host(z, host).items():
+            if macro in necesarias:
+                vals[macro] = valor
+    faltan = [m for m in necesarias if m not in vals]
+    if faltan:
+        raise RuntimeError(f"missing macros in {plantillas}: {faltan}")
+    return vals
+
+
+# ---------------------------------------------------------------------------
+# Leer las macros DE HOST numéricas de un host
+# ---------------------------------------------------------------------------
+def leer_macros_host(z, host):
+    h = z.call("host.get", {"filter": {"host": [host]}, "output": ["hostid"]})
+    if not h:
+        raise RuntimeError(f"host '{host}' does not exist")
+    out = {}
+    for m in z.call("usermacro.get", {"hostids": h[0]["hostid"], "output": ["macro", "value"]}):
+        try:
+            out[m["macro"]] = float(m["value"])
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Cargar del disco el estado persistente del endurecimiento por GPS
+# ---------------------------------------------------------------------------
+def cargar_estado():
     try:
-        with open(ruta) as f:
-            serie = [x for x in json.load(f) if ahora - x[0] <= ventana_s]
+        with open(STATE_FILE) as f:
+            return json.load(f)
     except Exception:
-        serie = []
-    if p50 is not None:
-        serie.append([int(ahora), p50])
-    try:
-        tmp = ruta + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(serie, f)
-        os.replace(tmp, ruta)
-    except Exception:
-        pass
-    vals = [x[1] for x in serie]
-    return _quantil(vals, 0.95), len(vals)
+        return {"hardened": False, "below": 0}
 
 
 # ---------------------------------------------------------------------------
-# Construir las tablas HTML de estado y latencia para el widget de Zabbix
+# Guardar de forma atómica el estado persistente del ciclo
 # ---------------------------------------------------------------------------
-def _tabla_html(o, base):
-    """Tabla 'API INFOBUS' para el widget Item history (columna en modo HTML).
+def guardar_estado(st):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = STATE_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f)
+    os.replace(tmp, STATE_FILE)
 
-    Zabbix la muestra dentro de un iframe que hereda la fuente y el color del tema,
-    asi que no se fija color de texto: solo los puntos y el estado llevan color propio.
-    """
-    verde, rojo, naranja = "#2E7D32", "#C62828", "#E65100"
-    # -----------------------------------------------------------------------
-    # Representar el estado de disponibilidad con un punto de color
-    # -----------------------------------------------------------------------
-    def punto(vivo):
-        return ('<span style="display:inline-block;width:12px;height:12px;border-radius:50%%;'
-                'background:%s;vertical-align:middle"></span>' % (verde if vivo else rojo))
-    # -----------------------------------------------------------------------
-    # Formatear una latencia en milisegundos o indicar que no está disponible
-    # -----------------------------------------------------------------------
-    def ms(v):
-        return "-" if v is None else "%g" % round(v, 1)
-    # -----------------------------------------------------------------------
-    # Formatear un código HTTP o indicar que no hubo conexión
-    # -----------------------------------------------------------------------
-    def codigo(c):
-        return "sin conexi\u00f3n" if not c else str(c)
-    # -----------------------------------------------------------------------
-    # Aplicar color al texto del estado cuando se indique
-    # -----------------------------------------------------------------------
-    def estado(txt, color=None):
-        return txt if not color else '<span style="color:%s;font-weight:bold">%s</span>' % (color, txt)
 
-    h_vivo = bool(o.get("health_ok"))
-    api_vivo = bool(o.get("ok"))
-    if not api_vivo:
-        api_estado = estado("Falla", rojo)
-    elif o.get("sin_servicio"):
-        api_estado = estado("Sin servicio", naranja)
+# ---------------------------------------------------------------------------
+# Aplicar el factor GPS con persistencia e histéresis
+# ---------------------------------------------------------------------------
+def factor_gps(v_gps, gps_crit, gps_warn, f_crit, st, persistencia=3):
+    """Devuelve (F, estado_nuevo). Sin dato de GPS no endurece."""
+    if v_gps is None:
+        return 1.0, st
+
+    if st["hardened"]:
+        if v_gps > gps_warn:
+            st = {"hardened": False, "below": 0}
     else:
-        api_estado = "Activo"
-    codigos = o.get("status_codes") or ([o["status"]] if "status" in o else [])
-    filas = [
-        ("/health/", punto(h_vivo), "Activo" if h_vivo else estado("Sin respuesta", rojo),
-         codigo(o.get("health_status")), "%s ms" % ms(o.get("health_ms")) if o.get("health_ms") is not None else "-"),
-        ("API (next-trips)", punto(api_vivo), api_estado,
-         "/".join(codigo(c) for c in codigos) or "-",
-         "%s/%s ms" % (ms(o.get("lat_p50_ms")), ms(o.get("lat_sin_servicio_p50_ms")))),
-    ]
-    th = 'style="text-align:left;padding:4px 12px;border-bottom:2px solid #8888;white-space:nowrap"'
-    td = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap"'
-    cols = ("Servicio", "Alive", "Estado", "C\u00f3digo", "Latencia (200/204)")
-    pie = "%s \u00b7 parada %s \u00b7 %s" % (
-        html.escape(base), html.escape(str(o.get("stop_id") or "-")),
-        time.strftime("%H:%M:%S", time.localtime(o.get("ts_sonda") or time.time())))
-    if o.get("error"):
-        pie += " \u00b7 error: " + html.escape(str(o["error"]))
-    # -----------------------------------------------------------------------
-    # Crear una tabla HTML con encabezados, filas y estilos opcionales
-    # -----------------------------------------------------------------------
-    def tabla(titulo, cols, filas, tdc=None):
-        tdc = tdc or {}
-        # -------------------------------------------------------------------
-        # Resaltar el título y renderizar el contenido tabular
-        # -------------------------------------------------------------------
-        return ('<div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">%s</div><br>'
-                '<table style="border-collapse:collapse"><tr>%s</tr>%s</table>'
-                % (titulo, "".join("<th %s>%s</th>" % (th, c) for c in cols),
-                   "".join("<tr>%s</tr>" % "".join("<td %s>%s</td>" % (tdc.get(k, td), c) for k, c in enumerate(f))
-                           for f in filas)))
+        if v_gps < gps_crit:
+            st["below"] += 1
+            if st["below"] >= persistencia:
+                st = {"hardened": True, "below": st["below"]}
+        else:
+            st["below"] = 0
 
-    # -----------------------------------------------------------------------
-    # Explicar cada métrica de latencia con una descripción legible
-    # -----------------------------------------------------------------------
-    sin_serv = o.get("sin_servicio") == 1
-    nota = (" Hoy sin servicio: el valor es de la respuesta vac\u00eda (204), sin horas de paso."
-            if sin_serv else "")
-    # -----------------------------------------------------------------------
-    # Seleccionar la latencia disponible e identificar las respuestas HTTP 204
-    # -----------------------------------------------------------------------
-    def val(v, v204=None):
-        """Valor de las respuestas 200; si no hay, el de las 204 marcado como tal."""
-        if v is not None:
-            return "%s ms" % ms(v)
-        return "-" if v204 is None else "(204: %s ms)" % ms(v204)
-    lat = [
-        ("Latencia piso", val(o.get("health_ms")),
-         "Lo m\u00ednimo que tarda infobus en contestar por HTTP con la conexi\u00f3n ya abierta "
-         "(/health/: sin API, sin cuota y sin base de datos). Si sube, el problema est\u00e1 en la red "
-         "o en el servidor web, no en la consulta."),
-        ("Costo de la consulta", val(o.get("query_p50_ms"), o.get("query_sin_servicio_p50_ms")),
-         "Lo que tarda next-trips por encima del piso: capa de API, consultas a la base de datos y "
-         "armado de la respuesta. Crece con las horas de paso de las pr\u00f3ximas 5 h en la parada." + nota),
-        ("Percentil 50", val(o.get("lat_p50_ms"), o.get("lat_sin_servicio_p50_ms")),
-         "Tiempo t\u00edpico de next-trips en este ciclo: la mitad de las 10 consultas tard\u00f3 menos "
-         "que esto y la otra mitad m\u00e1s." + nota),
-        ("Percentil 95 (\u00faltima hora)", val(o.get("lat_p95_1h_sonda_ms"), o.get("lat_sin_servicio_p95_1h_sonda_ms")),
-         "De los tiempos t\u00edpicos de cada minuto de la \u00faltima hora, el 95 %% qued\u00f3 por debajo "
-         "de este valor: solo 3 de cada 60 minutos fueron m\u00e1s lentos. Es el valor que se compara "
-         "con el umbral T_WARN y con el RNF de 200 ms (%s minutos con dato).%s"
-         % (o.get("n_p95_1h_sonda") or o.get("n_sin_servicio_p95_1h_sonda") or 0, nota)),
-    ]
-    td_desc = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"'
-    td_val = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"'
-    return ('<div style="font-size:calc(1em + 6px)"><br><br>'
-            + tabla("API INFOBUS", cols, filas)
-            + '<div style="opacity:.7;font-size:.75em;margin-top:4px">%s</div><br>' % pie
-            + tabla("LATENCIAS", ("Medida", "Valor", "Qu\u00e9 significa"), lat, {1: td_val, 2: td_desc})
-            + "</div>")
+    return (f_crit if st["hardened"] else 1.0), st
 
 
 # ---------------------------------------------------------------------------
-# Leer argumentos, ejecutar la sonda y emitir las métricas en formato JSON
+# Calcular el umbral de advertencia y limitarlo al rango permitido
+# ---------------------------------------------------------------------------
+def calcular_umbral(t_base, beta, rho, factor, t_floor, t_rnf):
+    crudo = t_base * (1.0 + beta * rho) * factor
+    return round(max(t_floor, min(crudo, t_rnf)), 1), round(crudo, 1)
+
+
+# ---------------------------------------------------------------------------
+# Crear o actualizar una macro de host con el umbral calculado
+# ---------------------------------------------------------------------------
+def escribir_macro(z, host, macro, valor):
+    """Crea o actualiza la macro DE HOST. Devuelve 'create' | 'update' | 'noop'."""
+    h = z.call("host.get", {"filter": {"host": [host]}, "output": ["hostid"]})
+    if not h:
+        raise RuntimeError(f"host '{host}' does not exist")
+    hostid = h[0]["hostid"]
+
+    existentes = z.call("usermacro.get", {"hostids": hostid,
+                                          "filter": {"macro": macro},
+                                          "output": ["hostmacroid", "value"]})
+    nuevo = str(valor)
+    if not existentes:
+        z.call("usermacro.create", {"hostid": hostid, "macro": macro, "value": nuevo})
+        return "create"
+    if existentes[0]["value"] == nuevo:
+        return "noop"
+    z.call("usermacro.update", {"hostmacroid": existentes[0]["hostmacroid"], "value": nuevo})
+    return "update"
+
+
+# ---------------------------------------------------------------------------
+# Publicar un valor en un ítem trapper mediante la API de Zabbix
+# ---------------------------------------------------------------------------
+def enviar_trapper(z, host, clave, valor):
+    """Envia el valor al item trapper por el API (history.push, Zabbix 7.0+).
+
+    No usa el puerto 10051: los hosts autorregistrados aceptan solo PSK, y una
+    conexion sin cifrar al trapper la rechaza el servidor sin dar error aqui.
+    """
+    try:
+        r = z.call("history.push", [{"host": host, "key": clave, "value": str(valor)}])
+        errores = [d["error"] for d in r.get("data", []) if d.get("error")]
+        if errores:
+            log(f"  warning: Zabbix rejected {clave}: {errores[0]}")
+            return False
+        return True
+    except Exception as e:
+        log(f"  warning: could not send {clave}: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Añadir un registro JSON al historial persistente del proceso
+# ---------------------------------------------------------------------------
+def registrar(reg):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(HISTORY_FILE, "a") as f:
+        f.write(json.dumps(reg) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Calcular T_base(t) a partir de la recta calibrada
+# ---------------------------------------------------------------------------
+def t_base_t(b, m, delta, n):
+    return b + m * n + delta
+
+
+# ---------------------------------------------------------------------------
+# Resolver un sistema lineal pequeño por eliminación de Gauss
+# ---------------------------------------------------------------------------
+def _resolver(a, y):
+    n = len(y)
+    a = [fila[:] + [y[i]] for i, fila in enumerate(a)]
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(a[r][col]))
+        if abs(a[piv][col]) < 1e-12:
+            raise ValueError("singular system")
+        a[col], a[piv] = a[piv], a[col]
+        for r in range(n):
+            if r != col:
+                f = a[r][col] / a[col][col]
+                for k in range(col, n + 1):
+                    a[r][k] -= f * a[col][k]
+    return [a[i][n] / a[i][i] for i in range(n)]
+
+
+# ---------------------------------------------------------------------------
+# Ajustar mínimos cuadrados con intercepto: y = c0 + c1*x1 + c2*x2 ...
+# ---------------------------------------------------------------------------
+def ajustar(filas_x, y):
+    """filas_x: list of regressor rows (without the column of 1s). Returns (coef, r2, residuals)."""
+    x = [[1.0] + list(f) for f in filas_x]
+    k = len(x[0])
+    xtx = [[sum(r[i] * r[j] for r in x) for j in range(k)] for i in range(k)]
+    xty = [sum(r[i] * yy for r, yy in zip(x, y)) for i in range(k)]
+    coef = _resolver(xtx, xty)
+    pred = [sum(c * v for c, v in zip(coef, r)) for r in x]
+    res = [yy - pp for yy, pp in zip(y, pred)]
+    media = sum(y) / len(y)
+    ss_tot = sum((yy - media) ** 2 for yy in y)
+    r2 = 1 - sum(e * e for e in res) / ss_tot if ss_tot else 0.0
+    return coef, r2, res
+
+
+# ---------------------------------------------------------------------------
+# Obtener el historial de un ítem en una ventana de tiempo
+# ---------------------------------------------------------------------------
+def historial(z, host, clave, desde, hasta):
+    it = z.call("item.get", {"host": host, "filter": {"key_": clave},
+                             "output": ["itemid", "value_type"]})
+    if not it:
+        raise RuntimeError(f"item '{clave}' does not exist on '{host}'")
+    res = z.call("history.get", {"itemids": it[0]["itemid"], "history": int(it[0]["value_type"]),
+                                 "time_from": desde, "time_till": hasta,
+                                 "sortfield": "clock", "sortorder": "ASC",
+                                 "output": ["clock", "value"]})
+    return [(int(r["clock"]), float(r["value"])) for r in res]
+
+
+# ---------------------------------------------------------------------------
+# Leer y guardar el estado de la calibración diaria
+# ---------------------------------------------------------------------------
+def cargar_calib():
+    try:
+        with open(CALIB_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def guardar_calib(st):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    tmp = CALIB_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f)
+    os.replace(tmp, CALIB_FILE)
+
+
+# ---------------------------------------------------------------------------
+# Calibrar b, m, delta y beta con los datos de la sonda
+# ---------------------------------------------------------------------------
+def calibrar(z, dry_run=False, force=False):
+    """Regression latency = b + m*N + c*V. Returns the calibration record.
+
+    estado: 1 applied | 0 rejected (not enough data or poor fit) |
+            2 held (changes more than MAX_DRIFT; apply with --force)
+    """
+    hasta = int(time.time())
+    desde = hasta - CALIB_WINDOW_D * 86400
+    reg = {"ts": hasta, "tipo": "calibracion", "ventana_d": CALIB_WINDOW_D}
+
+    # -----------------------------------------------------------------------
+    # Unir latencia y llegadas (mismo maestro: mismo reloj) y V_trips de databus
+    # -----------------------------------------------------------------------
+    lat = dict(historial(z, HOST_INFOBUS, "infobus.api.lat_p50", desde, hasta))
+    lleg = dict(historial(z, HOST_INFOBUS, "infobus.api.llegadas", desde, hasta))
+    vtr = historial(z, HOST_DATABUS, "gtfs.v_trips", desde, hasta)
+
+    filas, j = [], 0
+    for clock in sorted(set(lat) & set(lleg)):
+        while j + 1 < len(vtr) and vtr[j + 1][0] <= clock:
+            j += 1
+        v = vtr[j][1] if vtr and vtr[j][0] <= clock and clock - vtr[j][0] <= MAX_AGE else None
+        filas.append((lleg[clock], v, lat[clock]))
+    reg["puntos"] = len(filas)
+
+    # -----------------------------------------------------------------------
+    # Rechazar si no hay datos suficientes
+    # -----------------------------------------------------------------------
+    if len(filas) < CALIB_MIN_POINTS:
+        reg.update({"estado": 0, "motivo": f"{len(filas)} points, minimum {CALIB_MIN_POINTS}"})
+        return _cerrar_calib(z, reg, dry_run)
+
+    # -----------------------------------------------------------------------
+    # Con buses en la ventana se mide c; si no, se ajusta solo b y m
+    # -----------------------------------------------------------------------
+    con_v = [f for f in filas if f[1] is not None]
+    hay_buses = len(con_v) >= CALIB_MIN_POINTS and len({f[1] for f in con_v}) > 1
+    try:
+        if hay_buses:
+            (b, m, c), r2, res = ajustar([[f[0], f[1]] for f in con_v], [f[2] for f in con_v])
+            usadas = con_v
+        else:
+            (b, m), r2, res = ajustar([[f[0]] for f in filas], [f[2] for f in filas])
+            c, usadas = None, filas
+    except ValueError as e:
+        reg.update({"estado": 0, "motivo": f"regression failed: {e}"})
+        return _cerrar_calib(z, reg, dry_run)
+
+    delta = max(0.0, sorted(res)[min(len(res) - 1, int(round(0.95 * (len(res) - 1))))])
+    reg.update({"b": round(b, 2), "m": round(m, 4), "c": round(c, 2) if c is not None else None,
+                "delta": round(delta, 2), "r2": round(r2, 4), "puntos_usados": len(usadas)})
+
+    # -----------------------------------------------------------------------
+    # beta = c * V_max / promedio de T_base mientras hay buses
+    # -----------------------------------------------------------------------
+    beta = None
+    if c is not None and c > 0:
+        v_max = leer_items(z, HOST_DATABUS, ["macdt.v_trips_max"])["macdt.v_trips_max"]["v"]
+        con_bus = [t_base_t(b, m, delta, f[0]) for f in usadas if f[1] and f[1] > 0]
+        if v_max and con_bus:
+            beta = c * v_max / (sum(con_bus) / len(con_bus))
+            reg.update({"v_max": v_max, "t_base_media_con_buses": round(sum(con_bus) / len(con_bus), 1)})
+    reg["beta"] = round(beta, 4) if beta is not None else None
+    if beta is None:
+        reg["beta_nota"] = "not enough buses in the window: beta kept"
+
+    # -----------------------------------------------------------------------
+    # Guardas de calidad
+    # -----------------------------------------------------------------------
+    if r2 < CALIB_MIN_R2 or m <= 0:
+        reg.update({"estado": 0, "motivo": f"R2={r2:.3f} (minimum {CALIB_MIN_R2}) or m={m:.3f} <= 0"})
+        return _cerrar_calib(z, reg, dry_run)
+
+    # -----------------------------------------------------------------------
+    # Guarda de deriva: comparar la recta nueva con la vigente en N bajo y alto
+    # -----------------------------------------------------------------------
+    previas = leer_macros_host(z, HOST_INFOBUS)
+    ns = sorted(f[0] for f in usadas)
+    n_bajo, n_alto = ns[int(0.05 * (len(ns) - 1))], ns[int(0.95 * (len(ns) - 1))]
+    deriva = []
+    if all(k in previas for k in ("{$MACDT.M}", "{$MACDT.B}", "{$MACDT.DELTA}")) and previas["{$MACDT.M}"] > 0:
+        for n in (n_bajo, n_alto):
+            viejo = t_base_t(previas["{$MACDT.B}"], previas["{$MACDT.M}"], previas["{$MACDT.DELTA}"], n)
+            nuevo = t_base_t(b, m, delta, n)
+            if viejo > 0:
+                deriva.append(abs(nuevo - viejo) / viejo)
+        if beta is not None and previas.get("{$MACDT.BETA}", 0) > 0:
+            deriva.append(abs(beta - previas["{$MACDT.BETA}"]) / previas["{$MACDT.BETA}"])
+    reg["deriva_max"] = round(max(deriva), 3) if deriva else None
+    reg["n_bajo_alto"] = [n_bajo, n_alto]
+
+    if deriva and max(deriva) > CALIB_MAX_DRIFT and not force:
+        reg.update({"estado": 2, "motivo": f"changes {max(deriva):.0%} (maximum {CALIB_MAX_DRIFT:.0%}); "
+                                            "review and apply with --calibrate --force"})
+        return _cerrar_calib(z, reg, dry_run)
+
+    # -----------------------------------------------------------------------
+    # Aplicar: macros DE HOST en infobus
+    # -----------------------------------------------------------------------
+    reg["estado"] = 1
+    if not dry_run:
+        escribir_macro(z, HOST_INFOBUS, "{$MACDT.M}", round(m, 4))
+        escribir_macro(z, HOST_INFOBUS, "{$MACDT.B}", round(b, 2))
+        escribir_macro(z, HOST_INFOBUS, "{$MACDT.DELTA}", round(delta, 2))
+        if beta is not None:
+            escribir_macro(z, HOST_INFOBUS, "{$MACDT.BETA}", round(beta, 4))
+    return _cerrar_calib(z, reg, dry_run)
+
+
+# ---------------------------------------------------------------------------
+# Registrar el resultado de la calibración y avisar a Zabbix
+# ---------------------------------------------------------------------------
+def _cerrar_calib(z, reg, dry_run):
+    textos = {0: "REJECTED", 1: "APPLIED", 2: "HELD"}
+    pref = "[dry-run] " if dry_run else ""
+    log(f"{pref}Calibration {textos[reg['estado']]}: "
+        + ", ".join(f"{k}={reg[k]}" for k in ("puntos", "b", "m", "c", "delta", "beta", "r2", "deriva_max", "motivo")
+                    if reg.get(k) is not None))
+    if dry_run:
+        reg["accion"] = "dry-run"
+        return reg
+    registrar(reg)
+    enviar_trapper(z, HOST_INFOBUS, "macdt.calib", reg["estado"])
+    enviar_trapper(z, HOST_INFOBUS, "macdt.calib.info", json.dumps(reg))
+    return reg
+
+
+# ---------------------------------------------------------------------------
+# Decidir si toca la calibración diaria
+# ---------------------------------------------------------------------------
+def toca_calibrar():
+    if CALIB_MODE != "daily":
+        return False
+    hoy = time.strftime("%Y-%m-%d")
+    if cargar_calib().get("ultimo_dia") == hoy:
+        return False
+    return time.strftime("%H:%M") >= CALIB_HOUR
+
+
+# ---------------------------------------------------------------------------
+# Leer los datos, calcular el umbral y aplicar las actualizaciones del ciclo
+# ---------------------------------------------------------------------------
+def ciclo(z, dry_run=False):
+    ahora = int(time.time())
+    reg = {"ts": ahora, "status": "ok"}
+
+    items = leer_items(z, HOST_DATABUS, ITEMS_DATABUS)
+    m = leer_macros(z, [TPL_DATABUS, TPL_INFOBUS], MACROS_NEEDED, host=HOST_INFOBUS)
+
+    rho_i = items["p.calculated"]
+    edad = ahora - rho_i["clock"] if rho_i["clock"] else None
+
+    # -----------------------------------------------------------------------
+    # Conservar el umbral actual si el valor de carga está ausente o vencido
+    # -----------------------------------------------------------------------
+    if rho_i["v"] is None or edad is None or edad > MAX_AGE:
+        reg.update({"status": "degraded",
+                    "motivo": f"rho is missing or {edad} seconds old (limit {MAX_AGE})"})
+        log(f"DEGRADED: {reg['motivo']}. Keeping the current threshold.")
+        registrar(reg)
+        if not dry_run:
+            enviar_trapper(z, HOST_INFOBUS, "macdt.status", 0)
+        return reg
+
+    rho = rho_i["v"]
+    v_gps_i = items["gtfs.v_gps_pct"]
+    v_gps = v_gps_i["v"]
+    gate = items["macdt.gate"]["v"]
+
+    st = cargar_estado()
+    # -----------------------------------------------------------------------
+    # Reiniciar la histéresis cuando no haya servicio o la medición GPS venza
+    # Sin buses en servicio, el valor GPS retenido no representa la experiencia
+    # de pasajeros; por eso, no aplicar el factor de endurecimiento.
+    # -----------------------------------------------------------------------
+    if gate != 1 or ahora - v_gps_i["clock"] > MAX_AGE:
+        v_gps = None
+        st = {"hardened": False, "below": 0}
+    factor, st_nuevo = factor_gps(v_gps, m["{$MACDT.V_GPS.CRIT}"],
+                                  m["{$MACDT.V_GPS.WARN}"], m["{$MACDT.F_CRIT}"], st)
+
+    # -----------------------------------------------------------------------
+    # T_base(t) = b + m*N(t) + delta. Sin N fresco se usa la semilla T_BASE
+    # -----------------------------------------------------------------------
+    try:
+        n_i = leer_items(z, HOST_INFOBUS, [ITEM_N])[ITEM_N]
+    except RuntimeError:
+        n_i = {"v": None, "clock": 0}   # plantilla sin el ítem todavía: se usa T_BASE
+    n_edad = ahora - n_i["clock"] if n_i["clock"] else None
+    if n_i["v"] is None or n_edad is None or n_edad > MAX_AGE:
+        n_t, t_base = None, m["{$MACDT.T_BASE}"]
+        log(f"  warning: {ITEM_N} missing or {n_edad} s old; using T_BASE = {t_base}")
+    else:
+        n_t = n_i["v"]
+        t_base = t_base_t(m["{$MACDT.B}"], m["{$MACDT.M}"], m["{$MACDT.DELTA}"], n_t)
+
+    t_warn, crudo = calcular_umbral(t_base, m["{$MACDT.BETA}"], rho,
+                                    factor, m["{$MACDT.T_FLOOR}"], m["{$MACDT.T_RNF}"])
+
+    reg.update({
+        "rho": rho, "rho_age_s": edad, "v_gps_pct": v_gps, "gate": gate,
+        "v_trips": items["gtfs.v_trips"]["v"],
+        "v_trips_max": items["macdt.v_trips_max"]["v"],
+        "fetch_ok": items["gtfs.fetch_ok"]["v"],
+        "n_t": n_t, "n_age_s": n_edad,
+        "m": m["{$MACDT.M}"], "b": m["{$MACDT.B}"], "delta": m["{$MACDT.DELTA}"],
+        "t_base": round(t_base, 1), "beta": m["{$MACDT.BETA}"],
+        "factor_gps": factor, "hardened": st_nuevo["hardened"],
+        "t_warn_crudo": crudo, "t_warn": t_warn,
+        "clamped": crudo != t_warn,
+    })
+
+    if dry_run:
+        log(f"[dry-run] N={n_t} T_base={t_base:.1f} rho={rho:.2f} v_gps={v_gps} F={factor} -> T_warn={t_warn} ms "
+            f"(raw {crudo}, {'clamped' if crudo != t_warn else 'not clamped'})")
+        reg["accion"] = "dry-run"
+        return reg
+
+    accion = escribir_macro(z, HOST_INFOBUS, MACRO_OUT, t_warn)
+    guardar_estado(st_nuevo)
+    reg["accion"] = accion
+
+    enviar_trapper(z, HOST_INFOBUS, "macdt.status", 1)
+    enviar_trapper(z, HOST_INFOBUS, "macdt.t_warn", t_warn)
+    enviar_trapper(z, HOST_INFOBUS, "macdt.t_base", round(t_base, 1))
+    registrar(reg)
+
+    log(f"N={n_t} T_base={t_base:.1f} rho={rho:.2f} v_gps={v_gps} F={factor} -> T_warn={t_warn} ms ({accion})")
+    return reg
+
+
+# ---------------------------------------------------------------------------
+# Validar la configuración y ejecutar ciclos únicos o continuos
 # ---------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--base", default=BASE, help="origen de infobus, con esquema")
-    ap.add_argument("--stop-id", dest="stop_id", required=True,
-                    help="stop_id real del GTFS, o 'auto' para medir la parada del peor caso")
-    ap.add_argument("--gtfs-url", dest="gtfs_url", default=GTFS_URL,
-                    help="GTFS estatico para elegir la parada con --stop-id auto")
-    ap.add_argument("--gtfs-check-s", dest="gtfs_check_s", type=int, default=3600,
-                    help="cada cuantos segundos se revisa si el GTFS cambio")
-    ap.add_argument("--stop-id-fallback", dest="stop_id_fallback", default="bUCR_0_01",
-                    help="parada a usar si nunca se pudo calcular la del peor caso")
-    ap.add_argument("--cache", default=CACHE, help="archivo de cache de la parada elegida")
-    ap.add_argument("--repeat", type=int, default=10,
-                    help="peticiones por ciclo; tope efectivo 30/min por la cuota realtime")
-    ap.add_argument("--timeout", type=float, default=5.0)
-    ap.add_argument("--insecure", action="store_true",
-                    help="no verificar TLS (solo si el certificado aun no es valido)")
-    ap.add_argument("--no-warmup", dest="no_warmup", action="store_true")
-    ap.add_argument("--host-header", dest="host_header",
-                    help="Host a enviar al conectar directo al orchestrator (valor de ALLOWED_HOSTS)")
-    ap.add_argument("--transit-system", dest="transit_system",
-                    help="id numerico del TransitSystem en infobus (sin el, next-trips da 500)")
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--once", action="store_true", help="run one cycle")
+    ap.add_argument("--dry-run", dest="dry_run", action="store_true",
+                    help="calculate and display without writing the macro or history")
+    ap.add_argument("--calibrate", action="store_true",
+                    help="calibrate b, m, delta and beta from the probe data and exit")
+    ap.add_argument("--force", action="store_true",
+                    help="with --calibrate: apply even if the line changes more than MACDT_CALIB_MAX_DRIFT")
     a = ap.parse_args()
 
-    if a.repeat > 25:
-        print(json.dumps({"ok": 0, "error": "repeat > 25 agota la cuota realtime de 30/min",
-                          "ts_sonda": int(time.time())}))
-        sys.exit(0)
+    if not API_USER or not API_PASS:
+        sys.exit("ZBX_API_USER and ZBX_API_PASS are required")
+    if CALIB_MODE not in ("daily", "manual"):
+        sys.exit("MACDT_CALIB_MODE must be 'daily' or 'manual'")
 
-    extra = {}
-    if a.stop_id == "auto":
+    z = Zabbix(API_URL, API_USER, API_PASS)
+
+    if a.calibrate:
+        calibrar(z, dry_run=a.dry_run, force=a.force)
+        return
+
+    while True:
+        # -------------------------------------------------------------------
+        # Calibración diaria: una vez por día, a partir de MACDT_CALIB_HOUR
+        # -------------------------------------------------------------------
+        if not a.dry_run and toca_calibrar():
+            try:
+                calibrar(z)
+            except Exception as e:
+                log(f"ERROR in calibration: {e}")
+            guardar_calib({"ultimo_dia": time.strftime("%Y-%m-%d")})
         try:
-            sel, check_ok = elegir_parada(a.gtfs_url, a.gtfs_check_s, a.cache)
-        except Exception:
-            sel, check_ok = None, 0
-        if sel and sel.get("stop_id"):
-            a.stop_id = sel["stop_id"]
-            extra = {"stop_auto": 1, "stop_pico_5h": sel.get("pico_5h"),
-                     "gtfs_last_modified": sel.get("last_modified"), "gtfs_check_ok": check_ok}
-        else:
-            a.stop_id = a.stop_id_fallback
-            extra = {"stop_auto": 0, "stop_pico_5h": None,
-                     "gtfs_last_modified": None, "gtfs_check_ok": check_ok}
-
-    try:
-        out = sondear(a.base, a.stop_id, a.repeat, a.timeout,
-                      a.insecure, warmup=not a.no_warmup, host_header=a.host_header,
-                      transit_system=a.transit_system)
-    except Exception as e:
-        out = {"ok": 0, "error": str(e)[:200], "ts_sonda": int(time.time())}
-
-    out.update(extra)
-    out["lat_p95_1h_sonda_ms"], out["n_p95_1h_sonda"] = _p95_1h(a.base, out.get("lat_p50_ms"), time.time())
-    out["lat_sin_servicio_p95_1h_sonda_ms"], out["n_sin_servicio_p95_1h_sonda"] = _p95_1h(
-        a.base, out.get("lat_sin_servicio_p50_ms"), time.time(), serie_tipo="204")
-    out["tabla_html"] = _tabla_html(out, a.base)
-    print(json.dumps(out))
-    sys.exit(0)
+            ciclo(z, dry_run=a.dry_run)
+        except Exception as e:
+            # -------------------------------------------------------------------
+            # Registrar el fallo, mantener el umbral vigente y continuar el bucle
+            # -------------------------------------------------------------------
+            log(f"ERROR in cycle: {e}")
+            try:
+                registrar({"ts": int(time.time()), "status": "error", "motivo": str(e)[:300]})
+                if not a.dry_run:
+                    enviar_trapper(z, HOST_INFOBUS, "macdt.status", 0)
+            except Exception:
+                pass
+        if a.once:
+            return
+        time.sleep(INTERVAL)
 
 
 if __name__ == "__main__":

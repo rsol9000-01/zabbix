@@ -227,6 +227,7 @@ zabbix_export:
           name: gtfs-Maestro
           type: ZABBIX_ACTIVE
           key: 'gtfs.probe[{$MACDT.STALE_S}]'
+          timeout: 30s
           value_type: TEXT
           triggers:
             - uuid: 08dbb1cc37cc40bbadc195148ca17da2
@@ -552,6 +553,7 @@ zabbix_export:
           name: macd-Maestro
           type: ZABBIX_ACTIVE
           key: macdt.window
+          timeout: 30s
           value_type: TEXT
         - uuid: 6a1219fb00664d89b30772d171da984a
           name: 'Raíz del árbol de la ventana'
