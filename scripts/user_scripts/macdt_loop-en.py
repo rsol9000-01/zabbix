@@ -18,15 +18,27 @@ Why T_base is adjustable (early lab result, 2026-11-10):
       T_base(t) = b + m*N(t) + delta
   N(t) = infobus.api.llegadas_p95_1h: arrivals over the same window and with the
   same percentile as the latency the threshold is compared with.
-  m = weight of each arrival, b = fixed cost, delta = margin (p95 of the
-  residuals). beta still carries the weight of active buses (rho).
+  m = weight of each arrival, b = fixed cost, delta = margin (percentile
+  MACDT_CALIB_DELTA_PCT of the residuals, 95 by default). beta still carries
+  the weight of active buses (rho).
   Until a calibration runs, m = 0, delta = 0 and b = {$MACDT.T_BASE}: the loop
   behaves exactly as before.
 
 Calibration (--calibrate, or daily with MACDT_CALIB_MODE=daily):
   regression latency = b + m*N + c*V on the probe's own data
-  (infobus.api.lat_p50, infobus.api.llegadas) and databus gtfs.v_trips over
-  MACDT_CALIB_WINDOW_D days. c is the cost of each active bus and is converted
+  (infobus.api.lat_p95_1h, infobus.api.llegadas_p95_1h) and databus
+  gtfs.v_trips over MACDT_CALIB_WINDOW_D days.
+  Why p95 of 1 h and not the p50 of each cycle: the alert compares
+  {$T_LATENCY_WARN} against infobus.api.lat_p95_1h, and the loop feeds N with
+  infobus.api.llegadas_p95_1h. A line fitted on the p50 sits below the normal
+  p95 when there are many arrivals, and the threshold ends up on top of normal
+  behavior. Fitted on the p95, the line passes through the normal p95 of each
+  load (b is the p95 with no arrivals) and delta is the margin above it.
+  Both p95 items are calculated every minute and do not share the same second,
+  so they are joined by minute.
+  Consecutive p95_1h values share 59 minutes of data: R2 comes out very high.
+  It is valid for drawing the line, not as a measure of precision.
+  c is the cost of each active bus and is converted
   to beta = c * V_max / mean(T_base) while buses are running.
   The new line is applied only if:
     - there are at least MACDT_CALIB_MIN_POINTS points and R2 >= MACDT_CALIB_MIN_R2
@@ -86,7 +98,7 @@ Environment variables (all have reasonable defaults except access credentials):
   MACDT_INTERVAL, MACDT_MAX_AGE, MACDT_STATE_DIR
   MACDT_CALIB_MODE (daily | manual), MACDT_CALIB_HOUR (HH:MM),
   MACDT_CALIB_WINDOW_D, MACDT_CALIB_MIN_R2, MACDT_CALIB_MIN_POINTS,
-  MACDT_CALIB_MAX_DRIFT
+  MACDT_CALIB_MAX_DRIFT, MACDT_CALIB_DELTA_PCT (50-100, default 95)
   ZBX_SERVER, ZBX_SERVER_PORT         (for the macdt.status trapper item)
 
 Dependency: requests
@@ -130,6 +142,13 @@ CALIB_WINDOW_D = int(os.environ.get("MACDT_CALIB_WINDOW_D", "7"))
 CALIB_MIN_R2 = float(os.environ.get("MACDT_CALIB_MIN_R2", "0.8"))
 CALIB_MIN_POINTS = int(os.environ.get("MACDT_CALIB_MIN_POINTS", "300"))
 CALIB_MAX_DRIFT = float(os.environ.get("MACDT_CALIB_MAX_DRIFT", "0.25"))
+# Percentile of the residuals used as delta (margin above the normal p95).
+# 95: ~5 % of normal minutes above T_base; 99: ~1 %.
+CALIB_DELTA_PCT = float(os.environ.get("MACDT_CALIB_DELTA_PCT", "95"))
+
+# Items used by the calibration: same window and percentile as the alert
+ITEM_CALIB_LAT = "infobus.api.lat_p95_1h"
+ITEM_CALIB_N = "infobus.api.llegadas_p95_1h"
 
 # ---------------------------------------------------------------------------
 # Define the items queried on the databus host
@@ -474,18 +493,21 @@ def calibrar(z, dry_run=False, force=False):
     reg = {"ts": hasta, "tipo": "calibracion", "ventana_d": CALIB_WINDOW_D}
 
     # -----------------------------------------------------------------------
-    # Join latency and arrivals (same master item: same clock) with databus V_trips
+    # Join latency and arrivals by minute (two calculated items, each with
+    # its own second) and add the databus V_trips value in force at that time
     # -----------------------------------------------------------------------
-    lat = dict(historial(z, HOST_INFOBUS, "infobus.api.lat_p50", desde, hasta))
-    lleg = dict(historial(z, HOST_INFOBUS, "infobus.api.llegadas", desde, hasta))
+    lat = {c // 60: (c, v) for c, v in historial(z, HOST_INFOBUS, ITEM_CALIB_LAT, desde, hasta)}
+    lleg = {c // 60: v for c, v in historial(z, HOST_INFOBUS, ITEM_CALIB_N, desde, hasta)}
     vtr = historial(z, HOST_DATABUS, "gtfs.v_trips", desde, hasta)
+    reg.update({"item_latencia": ITEM_CALIB_LAT, "item_n": ITEM_CALIB_N, "delta_pct": CALIB_DELTA_PCT})
 
     filas, j = [], 0
-    for clock in sorted(set(lat) & set(lleg)):
+    for minuto in sorted(set(lat) & set(lleg)):
+        clock, latencia = lat[minuto]
         while j + 1 < len(vtr) and vtr[j + 1][0] <= clock:
             j += 1
         v = vtr[j][1] if vtr and vtr[j][0] <= clock and clock - vtr[j][0] <= MAX_AGE else None
-        filas.append((lleg[clock], v, lat[clock]))
+        filas.append((lleg[minuto], v, latencia))
     reg["puntos"] = len(filas)
 
     # -----------------------------------------------------------------------
@@ -511,7 +533,8 @@ def calibrar(z, dry_run=False, force=False):
         reg.update({"estado": 0, "motivo": f"regression failed: {e}"})
         return _cerrar_calib(z, reg, dry_run)
 
-    delta = max(0.0, sorted(res)[min(len(res) - 1, int(round(0.95 * (len(res) - 1))))])
+    q = min(max(CALIB_DELTA_PCT, 50.0), 100.0) / 100.0
+    delta = max(0.0, sorted(res)[min(len(res) - 1, int(round(q * (len(res) - 1))))])
     reg.update({"b": round(b, 2), "m": round(m, 4), "c": round(c, 2) if c is not None else None,
                 "delta": round(delta, 2), "r2": round(r2, 4), "puntos_usados": len(usadas)})
 
@@ -579,7 +602,7 @@ def _cerrar_calib(z, reg, dry_run):
     textos = {0: "REJECTED", 1: "APPLIED", 2: "HELD"}
     pref = "[dry-run] " if dry_run else ""
     log(f"{pref}Calibration {textos[reg['estado']]}: "
-        + ", ".join(f"{k}={reg[k]}" for k in ("puntos", "b", "m", "c", "delta", "beta", "r2", "deriva_max", "motivo")
+        + ", ".join(f"{k}={reg[k]}" for k in ("puntos", "b", "m", "c", "delta", "delta_pct", "beta", "r2", "deriva_max", "motivo")
                     if reg.get(k) is not None))
     if dry_run:
         reg["accion"] = "dry-run"

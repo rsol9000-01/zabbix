@@ -179,7 +179,7 @@ zabbix_export:
           key: infobus.api.lat_p50
           units: ms
           value_type: FLOAT
-          description: 'Tendencia central del ciclo. Es el regresor para calibrar beta.'
+          description: 'Tendencia central del ciclo. Es la base de infobus.api.lat_p95_1h, que es el dato con el que la calibración de MACDT ajusta su recta.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -580,7 +580,7 @@ zabbix_export:
           value: '91'
           description: 'Piso del umbral (decisión 2026-11-05: bajar de 130 a 91). Confirmar con la latencia nocturna.'
         - macro: '{$MACDT.T_RNF}'
-          value: '200'
+          value: '350'
           description: 'Techo contractual. No se mueve.'
         - macro: '{$MACDT.BETA}'
           value: '0.35'
