@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Prepare the development environment and deploy Zabbix services
+# Preparar el entorno de desarrollo y desplegar los servicios de Zabbix
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Define the colors used in script messages
+# Definir los colores usados en los mensajes del script
 # ---------------------------------------------------------------------------
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -16,7 +16,7 @@ NC='\033[0m'
 echo " *********   Zabbix infrastructure stack installation script ********* "
 
 # ---------------------------------------------------------------------------
-# Display the syntax, options, and execution requirements
+# Mostrar la sintaxis, las opciones y los requisitos de ejecución
 # ---------------------------------------------------------------------------
 usage() {
     echo ""
@@ -39,7 +39,7 @@ usage() {
     echo ""
 }
 # ---------------------------------------------------------------------------
-# Print a section title in the specified color
+# Imprimir un título de sección con el color indicado
 # ---------------------------------------------------------------------------
 print_section() {
     local color="$1"
@@ -51,18 +51,18 @@ print_section() {
 }
 
 # ---------------------------------------------------------------------------
-# Validate that the seed meets the length and character requirements
+# Validar que la semilla cumpla los requisitos de longitud y caracteres
 # ---------------------------------------------------------------------------
 validate_password() {
   local password="$1"
   # -------------------------------------------------------------------------
-  # Choose the name to include in error messages
+  # Elegir el nombre que se incluirá en los mensajes de error
   # -------------------------------------------------------------------------
   local var_name="${2:-seed}"
   local len=${#password}
 
   # -------------------------------------------------------------------------
-  # Check that the length is between 8 and 64 characters
+  # Comprobar que la longitud esté entre 8 y 64 caracteres
   # -------------------------------------------------------------------------
   if (( len < 8 || len > 64 )); then
     echo "❌  Error: ${var_name} must be between 8 and 64 characters long (current: ${len})."
@@ -70,7 +70,7 @@ validate_password() {
   fi
 
   # -------------------------------------------------------------------------
-  # Require at least one uppercase letter
+  # Exigir al menos una letra mayúscula
   # -------------------------------------------------------------------------
   if [[ ! "$password" =~ [A-Z] ]]; then
     echo "❌  Error: ${var_name} must contain at least one uppercase letter."
@@ -78,7 +78,7 @@ validate_password() {
   fi
 
   # -------------------------------------------------------------------------
-  # Require at least one lowercase letter
+  # Exigir al menos una letra minúscula
   # -------------------------------------------------------------------------
   if [[ ! "$password" =~ [a-z] ]]; then
     echo "❌  Error: ${var_name} must contain at least one lowercase letter."
@@ -86,7 +86,7 @@ validate_password() {
   fi
 
   # -------------------------------------------------------------------------
-  # Require at least one digit
+  # Exigir al menos un número
   # -------------------------------------------------------------------------
   if [[ ! "$password" =~ [0-9] ]]; then
     echo "❌  Error: ${var_name} must contain at least one digit."
@@ -94,7 +94,7 @@ validate_password() {
   fi
 
   # -------------------------------------------------------------------------
-  # Require at least one allowed symbol
+  # Exigir al menos uno de los símbolos permitidos
   # -------------------------------------------------------------------------
   if [[ ! "$password" =~ [.*+?\-] ]]; then
     echo "❌  Error: ${var_name} must contain at least one of the following symbols: . * + ? -"
@@ -102,7 +102,7 @@ validate_password() {
   fi
 
   # -------------------------------------------------------------------------
-  # Reject characters that are not allowed
+  # Rechazar los caracteres que no están permitidos
   # -------------------------------------------------------------------------
   if [[ "$password" == *['$|&\']* ]]; then
     echo "❌  Error: Character (\$, |, &, \\) it is not allowed on ${var_name}."
@@ -116,36 +116,36 @@ clear
 
 print_section "$GREEN" "Zabbix infrastructure stack installation script"
 # ---------------------------------------------------------------------------
-# Stop execution on errors, unset variables, or pipeline failures
+# Detener la ejecución ante errores, variables sin definir o fallos de tubería
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Change to the repository root from any working directory
+# Cambiar al directorio raíz del repositorio desde cualquier ubicación
 # ---------------------------------------------------------------------------
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$REPO_ROOT"
 
 # ---------------------------------------------------------------------------
-# Initialize the installation-type selection
+# Inicializar la selección del tipo de instalación
 # ---------------------------------------------------------------------------
 FLAG_SERVER=false
 
 # ---------------------------------------------------------------------------
-# Read the optional PSK seed from the second argument
+# Leer del segundo argumento la semilla PSK opcional
 # ---------------------------------------------------------------------------
 PSK_SEED="${2:-}"
 
 # ---------------------------------------------------------------------------
-# Validate the number of arguments received
+# Validar la cantidad de argumentos recibidos
 # ---------------------------------------------------------------------------
 if [[ $# -ne 1 && $# -ne 2 ]]; then
   usage
   exit 1
 fi
 # ---------------------------------------------------------------------------
-# Determine whether to deploy the agent or the server infrastructure
+# Determinar si se desplegará el agente o la infraestructura del servidor
 # ---------------------------------------------------------------------------
 
 if [ "$1" = "agent" ]; then
@@ -158,7 +158,7 @@ else
   exit 1
 fi
 # ---------------------------------------------------------------------------
-# Validate the custom PSK seed when provided
+# Validar la semilla PSK personalizada cuando se proporcione
 # ---------------------------------------------------------------------------
 
 if [ -n "$PSK_SEED" ]; then
@@ -171,7 +171,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Select the Compose file based on the installation type
+# Seleccionar el archivo de Compose según el tipo de instalación
 # ---------------------------------------------------------------------------
 COMPOSE_FILE="docker-compose.yml"
 if [ "$FLAG_SERVER" = "false" ]; then
@@ -179,7 +179,7 @@ if [ "$FLAG_SERVER" = "false" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Get the Docker group ID for deployment
+# Obtener el identificador del grupo de Docker para el despliegue
 # ---------------------------------------------------------------------------
 DOCKER_GID=$(getent group docker | cut -d: -f3)
 if [ -z "$DOCKER_GID" ]; then
@@ -190,11 +190,11 @@ export DOCKER_GID
 echo "🐳  Docker GID: $DOCKER_GID"
 
 # ---------------------------------------------------------------------------
-# Check for and install required dependencies
+# Comprobar e instalar las dependencias necesarias
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Verify that Docker is installed and available
+# Verificar que Docker esté instalado y disponible
 # ---------------------------------------------------------------------------
 if ! command -v docker >/dev/null 2>&1; then
     echo "❌  Error: docker is not installed or not in PATH."
@@ -203,7 +203,7 @@ fi
 echo "✅  Docker ready: $(docker --version | cut -d' ' -f1-3)"
 
 # ---------------------------------------------------------------------------
-# Install curl if missing and verify that it is available
+# Instalar curl si falta y verificar que esté disponible
 # ---------------------------------------------------------------------------
 if ! command -v curl &> /dev/null; then
   echo "🔧  Installing curl..."
@@ -213,7 +213,7 @@ command -v curl &> /dev/null || { echo "❌  Error: curl is not installed or not
 echo "✅  curl ready: $(curl -V | head -n1 | cut -d' ' -f1-2)"
 
 # ---------------------------------------------------------------------------
-# Install OpenSSL if missing and verify that it is available
+# Instalar OpenSSL si falta y verificar que esté disponible
 # ---------------------------------------------------------------------------
 #if [ "$FLAG_SERVER" = "true" ]; then
     
@@ -228,11 +228,11 @@ echo "✅  curl ready: $(curl -V | head -n1 | cut -d' ' -f1-2)"
 #fi
 
 # ---------------------------------------------------------------------------
-# Check the files required for deployment
+# Comprobar los archivos requeridos para el despliegue
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Verify that the environment file exists
+# Verificar la existencia del archivo de variables de entorno
 # ---------------------------------------------------------------------------
 if [ ! -f ".env" ]; then
     echo "🚨  Warning: .env file not found."
@@ -246,7 +246,7 @@ fi
 echo "✅  The environment variables will be loaded from the .env file."
 
 # ---------------------------------------------------------------------------
-# Verify that the selected Docker Compose file exists
+# Verificar la existencia del archivo de Docker Compose seleccionado
 # ---------------------------------------------------------------------------
 if [ ! -f "$COMPOSE_FILE" ]; then
     echo "❌  Error: $COMPOSE_FILE not found."
@@ -255,7 +255,7 @@ fi
 echo "✅  Docker Compose file found: $COMPOSE_FILE"
 
 # ---------------------------------------------------------------------------
-# Verify the server post-installation script configuration
+# Verificar la configuración del script posterior a la instalación del servidor
 # ---------------------------------------------------------------------------
 if [ "$FLAG_SERVER" = "true" ]; then
  
@@ -274,7 +274,7 @@ if [ "$FLAG_SERVER" = "true" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Create the helper scripts directory and set its permissions
+# Crear el directorio de scripts auxiliares y asignar sus permisos
 # ---------------------------------------------------------------------------
 
 USER_SCRIPTS_DIR="$REPO_ROOT/scripts/user_scripts"
@@ -298,7 +298,7 @@ if compgen -G "$USER_SCRIPTS_DIR"/*.sh > /dev/null; then
   chmod 775 "$USER_SCRIPTS_DIR"/*.sh
 
   # -------------------------------------------------------------------------
-  # Also set permissions on Python scripts, if any exist
+  # Aplicar también los permisos a los scripts Python, si existen
   # -------------------------------------------------------------------------
   chown root:root "$USER_SCRIPTS_DIR"/*.py 2>/dev/null
   chmod 775 "$USER_SCRIPTS_DIR"/*.py 2>/dev/null
@@ -308,7 +308,7 @@ else
   echo "⚠️  No .sh scripts found in $USER_SCRIPTS_DIR yet"
 fi
 # ---------------------------------------------------------------------------
-# Create the agent sudoers file and set its permissions
+# Crear y asegurar los permisos del archivo sudoers del agente
 # ---------------------------------------------------------------------------
 
 AGENT_SUDOERS_FILE=$(grep '^AGENT_SUDOERS_FILE[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')
@@ -335,13 +335,13 @@ chmod 440 "$AGENT_SUDOERS_FILE_ROUTE"
 echo "✅  Permissions applied to $AGENT_SUDOERS_FILE_ROUTE (root:root 440)"
 
 # ---------------------------------------------------------------------------
-# Create the agent Dockerfile if it does not already exist
+# Crear el Dockerfile del agente si todavía no existe
 # ---------------------------------------------------------------------------
 
 DOCKERFILE="$REPO_ROOT/agent2/Dockerfile"
 
 # ---------------------------------------------------------------------------
-# Keep the heredoc block that generates the Dockerfile content contiguous
+# Mantener contiguo el bloque heredoc que genera el contenido del Dockerfile
 # ---------------------------------------------------------------------------
 
 if [ ! -f "$DOCKERFILE" ]; then
@@ -365,7 +365,7 @@ echo "✅  Permissions applied to $DOCKERFILE (root:root 644)"
 
 
 # ---------------------------------------------------------------------------
-# Create the agent configuration file if it is missing
+# Crear el archivo de configuración del agente si falta
 # ---------------------------------------------------------------------------
 
 ZBX_AGENT_CONFIG_FILE=$(grep '^ZBX_AGENT_CONFIG_FILE[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')
@@ -388,18 +388,18 @@ fi
 echo "✅  Zabbix agent config file found: $ZBX_AGENT_CONFIG_FILE_ROUTE"
 
 # ---------------------------------------------------------------------------
-# Create the local plugins file from its example in agent mode only
+# Crear desde el ejemplo el archivo local de plugins, solo para el modo agente
 # ---------------------------------------------------------------------------
-# The actual file is excluded from the repository; each server keeps its own copy.
-# Creating the file prevents Docker from mounting a directory and skipping the configuration.
+# El archivo real se excluye del repositorio y cada servidor mantiene su copia.
+# Crear el archivo evita que Docker monte una carpeta y omita la configuración.
 # ---------------------------------------------------------------------------
 
 if [ "$FLAG_SERVER" = "false" ]; then
   AGENT_PLUGINS_FILE_ROUTE=$REPO_ROOT/agent2/simovilab-plugins.conf
 
   if [ -d "$AGENT_PLUGINS_FILE_ROUTE" ]; then
-      echo "❌  Error: $AGENT_PLUGINS_FILE_ROUTE is a directory (created by Docker during a previous deployment)."
-      echo "    Remove it with: rmdir $AGENT_PLUGINS_FILE_ROUTE, then run the script again."
+      echo "❌  Error: $AGENT_PLUGINS_FILE_ROUTE es una carpeta (la creó Docker en un despliegue anterior)."
+      echo "    Bórrela con: rmdir $AGENT_PLUGINS_FILE_ROUTE  y vuelva a ejecutar."
       exit 1
   fi
 
@@ -409,14 +409,14 @@ if [ "$FLAG_SERVER" = "false" ]; then
         echo "❌  Error: could not create $AGENT_PLUGINS_FILE_ROUTE"
         exit 1
       fi
-      echo -e "   - ${YELLOW}This file contains sample passwords. Edit it if this server uses different ones.${NC}"
+      echo -e "   - ${YELLOW}Contiene contraseñas de muestra. Edítelo si este servidor usa otras.${NC}"
   fi
   echo "✅  Plugins file found: $AGENT_PLUGINS_FILE_ROUTE"
   chmod 644 "$AGENT_PLUGINS_FILE_ROUTE"
 fi
 
 # ---------------------------------------------------------------------------
-# Read AGENT_PARAMS_*=ITEMKEY:SCRIPTNAME entries defined in .env
+# Leer las entradas AGENT_PARAMS_*=ITEMKEY:SCRIPTNAME definidas en .env
 # ---------------------------------------------------------------------------
 
 echo "🔎  Checking for UserParameter entries in .env to add to $ZBX_AGENT_CONFIG_FILE..."
@@ -430,7 +430,7 @@ else
   echo "$MATCHES" | while IFS= read -r line; do
   
     # -----------------------------------------------------------------------
-    # Extract the configuration value from the line
+    # Separar el valor de configuración de la línea leída
     # -----------------------------------------------------------------------
     VALUE=$(echo "$line" | sed 's/^[^=]*=[[:space:]]*//')
 
@@ -445,7 +445,7 @@ else
     NEW_LINE="UserParameter=${ITEMKEY},sudo /var/lib/zabbix/user_scripts/${SCRIPTNAME}"
     
     # -----------------------------------------------------------------------
-    # Avoid duplicate entries and exclude commented-out lines
+    # Evitar duplicar la entrada y excluir las líneas comentadas
     # -----------------------------------------------------------------------
     EXISTS=$(grep -v '^[[:space:]]*#' "$ZBX_AGENT_CONFIG_FILE_ROUTE" | grep -Fx "$NEW_LINE" || true)
     
@@ -462,7 +462,7 @@ chmod 644 "$ZBX_AGENT_CONFIG_FILE_ROUTE"
 echo "✅  Permissions applied to $ZBX_AGENT_CONFIG_FILE_ROUTE (root:root 644)"
 
 # ---------------------------------------------------------------------------
-# Generate the PSK from a seed or a random value
+# Generar la clave PSK desde una semilla o mediante un valor aleatorio
 # ---------------------------------------------------------------------------
 
 mkdir -p psk
@@ -481,7 +481,7 @@ if [ "$FLAG_SEED" = "true" ]; then
   echo "   - 🚨  The same seed must be used for both the Zabbix server and remote agent deployment to generate matching PSK values."
 else
   if [ "$FLAG_SERVER" = "true" ]; then
-    echo "⚠️   No custom seed provided; generating a random PSK..."
+    echo "⚠️   No custom seed provided, genering a random PSK..."
     openssl rand -hex 32 > psk/zabbix_agentd.psk
     echo "   - ✅ Random PSK generated."
     echo -e "   - 🚨 Remember to use the same PSK value defined in the ${YELLOW}ZBX_TLSPSKFILENAME${NC} environment variable during both the Zabbix server and remote agent deployment."
@@ -494,7 +494,7 @@ fi
 chmod 644 psk/zabbix_agentd.psk
 
 # ---------------------------------------------------------------------------
-# Start the Docker Compose deployment and wait for the init result
+# Iniciar el despliegue con Docker Compose y esperar el resultado del init
 # ---------------------------------------------------------------------------
 echo -e "🚀  ${GREEN}Starting Docker Compose deployment...${NC}"
 docker compose -f "$COMPOSE_FILE" --env-file "$REPO_ROOT/.env" up -d
@@ -503,9 +503,9 @@ if [ "$FLAG_SERVER" = "true" ]; then
   docker logs -f "$INIT_ID"
   INIT_RC=$(docker wait "$INIT_ID")
   if [ "$INIT_RC" = "0" ]; then
-    echo -e "✅  ${GREEN}zabbix-init completed successfully${NC}"
+    echo -e "✅  ${GREEN}zabbix-init terminó correctamente${NC}"
   else
-    echo -e "❌  zabbix-init failed (exit code $INIT_RC). Check the log above."
+    echo -e "❌  zabbix-init terminó con error (código $INIT_RC). Revise el log de arriba."
     exit "$INIT_RC"
   fi
 fi

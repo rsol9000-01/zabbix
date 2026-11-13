@@ -1,34 +1,36 @@
 #!/usr/bin/env python3
 """
-Sonda GTFS-RT para MACDT (resuelve H6).
+GTFS-RT probe for MACDT (resolves H6).
 
-Lee los feeds .pb que databus publica y calcula las variables de la Capa D de
-MACDT sin depender de endpoints que no existen en el codigo.
-Imprime UN objeto JSON: usenlo como item maestro (UserParameter ejecutado por el
-Agent2 dentro de la red) y cuelguen items dependientes con JSONPath.
+Read the .pb feeds published by databus and calculate MACDT Layer D variables
+without relying on endpoints that do not exist in the code.
+Print one JSON object: use it as the master item (a UserParameter run by Agent2
+inside the network) and attach dependent items with JSONPath.
 
-Por que dos edades y no una (hallazgo del codigo de databus, schedule_engine/builders.py):
-  - header.timestamp es la hora en que Celery Beat construyo el archivo (cada 15 s).
-    Mide si el PUBLICADOR esta vivo, no si los vehiculos reportan.
-  - entity.vehicle.timestamp viene del ultimo dato de posicion; si el vehiculo no lo trae,
-    databus lo reemplaza por la hora de construccion. Un feed sin telemetria real puede
-    parecer fresco. Por eso se reporta ts_igual_header_pct como alarma heuristica.
+Why report two ages instead of one (based on databus schedule_engine/builders.py):
+  - header.timestamp is when Celery Beat built the file (every 15 seconds). It
+    measures whether the publisher is running, not whether vehicles are reporting.
+  - entity.vehicle.timestamp comes from the latest position update. If the
+    vehicle omits it, databus substitutes the build time. A feed with no real
+    telemetry can therefore appear fresh. ts_igual_header_pct is reported as a
+    heuristic warning.
 
-Por que --stale 60 y no 90: databus considera vigente la telemetria de un vehiculo
-hasta TELEMETRY_GRACE_S = 60 s (runs/domain/detection/thresholds.py). Con 90 s el
-monitoreo reportaria mejor salud que la que el propio databus cree tener.
+Why use --stale 60 instead of 90: databus considers vehicle telemetry valid for
+up to TELEMETRY_GRACE_S = 60 seconds (runs/domain/detection/thresholds.py). With
+90 seconds, monitoring would report better health than databus itself does.
 
-Por que --host-header: en el compose de produccion, Django valida ALLOWED_HOSTS.
-Al llamar al contenedor por su nombre de red el Host no esta en la lista y Django
-responde 400 DisallowedHost. Con --host-header se conecta al contenedor pero se
-envia el Host que el despliegue ya acepta, sin pedir cambios en databus.
+Why use --host-header: in the production Compose setup, Django validates
+ALLOWED_HOSTS. When connecting to the container by its network name, that Host
+is not on the list and Django responds with 400 DisallowedHost. --host-header
+connects to the container while sending a Host value the deployment already
+accepts, without requiring changes to databus.
 
-Uso:
-  python3 gtfsrt_probe.py --base http://orchestrator:8000/feed/realtime \
-                          --host-header databus.ucr.ac.cr --stale 60
-  python3 gtfsrt_probe.py --vp-file vp.pb --tu-file tu.pb      # prueba offline
+Usage:
+  python3 gtfsrt_probe-en.py --base http://orchestrator:8000/feed/realtime \
+                             --host-header databus.ucr.ac.cr --stale 60
+  python3 gtfsrt_probe-en.py --vp-file vp.pb --tu-file tu.pb
 
-Dependencias: requests, gtfs-realtime-bindings
+Dependencies: requests, gtfs-realtime-bindings
 """
 import argparse
 import html
@@ -42,14 +44,14 @@ BASE = "https://databus.ucr.ac.cr/feed/realtime"
 
 
 # ---------------------------------------------------------------------------
-# Calcular un porcentaje y evitar la división por cero
+# Calculate a percentage while avoiding division by zero
 # ---------------------------------------------------------------------------
 def _pct(n, d):
     return round(100.0 * n / d, 2) if d else None
 
 
 # ---------------------------------------------------------------------------
-# Obtener un cuantil mediante el rango más cercano
+# Get a quantile using the nearest-rank method
 # ---------------------------------------------------------------------------
 def _quantil(vals, q):
     if not vals:
@@ -59,7 +61,7 @@ def _quantil(vals, q):
 
 
 # ---------------------------------------------------------------------------
-# Convertir una edad en segundos a una descripción legible
+# Convert an age in seconds to a readable description
 # ---------------------------------------------------------------------------
 def _edad_txt(seg):
     """12 -> '12 s'; 754 -> '12 min'; 36012 -> '10 h 0 min'."""
@@ -72,12 +74,12 @@ def _edad_txt(seg):
 
 
 # ---------------------------------------------------------------------------
-# Clasificar y ordenar los vehículos según la antigüedad de su posición
+# Classify and sort vehicles by the age of their position
 # ---------------------------------------------------------------------------
 def _vehiculos(vp, ahora, stale_s, paradas=None):
-    """Edad de la posicion de cada vehiculo (ahora - timestamp): primero sin hora, luego viejos, luego frescos.
+    """Age of each vehicle's position (now - timestamp): missing timestamp, stale, then fresh.
 
-    estado: fresco (<= stale_s), viejo (> stale_s o en el futuro), sin_ts (sin hora).
+    estado: fresco (<= stale_s), viejo (> stale_s or in the future), sin_ts (no timestamp).
     """
     lista = []
     for e in vp.entity:
@@ -92,7 +94,7 @@ def _vehiculos(vp, ahora, stale_s, paradas=None):
         else:
             estado = "viejo"
         # -------------------------------------------------------------------
-        # Identificar si hay coordenadas y estimar el origen de la marca horaria
+        # Check for coordinates and estimate the timestamp source
         # -------------------------------------------------------------------
         if not v.timestamp:
             origen = None
@@ -112,37 +114,37 @@ def _vehiculos(vp, ahora, stale_s, paradas=None):
 
 
 # ---------------------------------------------------------------------------
-# Calcular métricas de los feeds GTFS-RT y devolverlas como datos estructurados
+# Calculate GTFS-RT feed metrics and return them as structured data
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# Resumir las edades y los estados de los vehículos en una línea
+# Summarize vehicle ages and statuses on one line
 # ---------------------------------------------------------------------------
 def _vehiculos_texto(lista):
-    """Una linea legible para el dashboard: 'unit-02: 10 h 3 min (viejo) · unit-01: 12 s'."""
+    """Format a readable dashboard line, e.g. 'unit-02: 10 h 3 min (stale) · unit-01: 12 s'."""
     if not lista:
-        return "Sin veh\u00edculos en el feed"
+        return "No vehicles in feed"
     partes = []
     for x in lista:
         if x["edad_s"] is None:
-            partes.append("%s: sin hora" % x["id"])
+            partes.append("%s: no timestamp" % x["id"])
         elif x["edad_s"] < 0:
-            partes.append("%s: hora en el futuro" % x["id"])
+            partes.append("%s: timestamp in the future" % x["id"])
         else:
-            partes.append("%s: %s%s" % (x["id"], _edad_txt(x["edad_s"]), "" if x["estado"] == "fresco" else " (viejo)"))
+            partes.append("%s: %s%s" % (x["id"], _edad_txt(x["edad_s"]), "" if x["estado"] == "fresco" else " (stale)"))
         if not x["posicion"]:
-            partes[-1] += " [sin posici\u00f3n]"
+            partes[-1] += " [no position]"
         if x["hora_origen"] == "posible_databus":
-            partes[-1] += " [hora de databus?]"
+            partes[-1] += " [databus timestamp?]"
     return " \u00b7 ".join(partes)
 
 
 # ---------------------------------------------------------------------------
-# Formatear una marca temporal según la hora local del agente
+# Format a timestamp using the agent's local time
 # ---------------------------------------------------------------------------
 def _hora_txt(ts, ahora):
-    """Hora local del agente (TZ del contenedor): '9:41 p.m.'; si no es de hoy, '05/11 11:38 a.m.'."""
+    """Format agent-local time (container TZ), e.g. '9:41 p.m.' or '05/11 11:38 a.m.' for another day."""
     t, h = time.localtime(ts), time.localtime(ahora)
     hora = "%d:%02d %s" % ((t.tm_hour % 12) or 12, t.tm_min, "a.m." if t.tm_hour < 12 else "p.m.")
     if (t.tm_year, t.tm_yday) != (h.tm_year, h.tm_yday):
@@ -150,42 +152,42 @@ def _hora_txt(ts, ahora):
     return hora
 
 
-_ESTADO = {"fresco": ("fresco", "#2E7D32"), "viejo": ("viejo", "#E65100"), "sin_ts": ("sin hora", "#C62828")}
+_ESTADO = {"fresco": ("fresh", "#2E7D32"), "viejo": ("stale", "#E65100"), "sin_ts": ("no timestamp", "#C62828")}
 
 
 # ---------------------------------------------------------------------------
-# Construir la tabla HTML de vehículos para el widget de Zabbix
+# Build the vehicle HTML table for the Zabbix widget
 # ---------------------------------------------------------------------------
 def _vehiculos_html(lista, ahora, stale_s):
-    """Tabla HTML para el widget Item history de Zabbix (columna en modo HTML)."""
+    """Build an HTML table for the Zabbix Item history widget (HTML column mode)."""
     esc = lambda x: html.escape(str(x))
     td = 'style="padding:3px 10px;border-bottom:1px solid #8884;overflow-wrap:anywhere"'
     tdn = 'style="padding:3px 10px;border-bottom:1px solid #8884;white-space:nowrap"'
-    cab = ('<div style="margin-bottom:4px">Umbral de GPS fresco: <b>%d s</b> (macro {$MACDT.STALE_S})'
-           ' \u00b7 consultado a las %s</div>' % (stale_s, _hora_txt(ahora, ahora)))
+    cab = ('<div style="margin-bottom:4px">Fresh GPS threshold: <b>%d s</b> (macro {$MACDT.STALE_S})'
+           ' \u00b7 checked at %s</div>' % (stale_s, _hora_txt(ahora, ahora)))
     if not lista:
-        return cab + "<div>Sin veh\u00edculos en el feed</div>"
+        return cab + "<div>No vehicles in feed</div>"
     filas = []
     for x in lista:
         if x["edad_s"] is None:
             edad = "\u2014"
         elif x["edad_s"] < 0:
-            edad = "hora en el futuro"
+            edad = "timestamp in the future"
         else:
             edad = _edad_txt(x["edad_s"])
         nombre, color = _ESTADO[x["estado"]]
         p = x["paradas_por_delante"]
         filas.append("<tr>" + "".join("<td %s>%s</td>" % (td if k == 1 else tdn, c) for k, c in enumerate((
             "<b>%s</b>" % esc(x["id"]), esc(x["viaje"] or "\u2014"),
-            "s\u00ed" if x["posicion"] else '<span style="color:#C62828;font-weight:bold">no</span>',
+            "yes" if x["posicion"] else '<span style="color:#C62828;font-weight:bold">no</span>',
             _hora_txt(x["ts"], ahora) if x["ts"] else "\u2014",
-            {"bus": "del bus", None: "\u2014"}.get(x["hora_origen"], '<span style="color:#E65100;font-weight:bold">posible hora de databus</span>'),
+            {"bus": "vehicle", None: "\u2014"}.get(x["hora_origen"], '<span style="color:#E65100;font-weight:bold">possible databus timestamp</span>'),
             edad,
             '<span style="background:%s;color:#fff;padding:1px 8px;border-radius:8px">%s</span>' % (color, nombre),
             "\u2014" if p is None else p))) + "</tr>")
     th = 'style="text-align:left;padding:3px 10px;border-bottom:2px solid #8888;white-space:nowrap"'
-    cols = ("Veh\u00edculo", "Viaje", "Posici\u00f3n", "\u00daltima hora reportada", "Origen de la hora", "Edad", "Estado",
-            "Paradas por delante")
+    cols = ("Vehicle", "Trip", "Position", "Last reported time", "Timestamp source", "Age", "Status",
+            "Upcoming stops")
     return (cab + '<table style="border-collapse:collapse;width:100%%"><tr>%s</tr>%s</table>'
             % ("".join("<th %s>%s</th>" % (th, c) for c in cols), "".join(filas)))
 
@@ -199,35 +201,35 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
     tus = [e.trip_update for e in tu.entity if e.HasField("trip_update")]
 
     # -----------------------------------------------------------------------
-    # Medir la antigüedad de la telemetría y contar los vehículos por estado
+    # Measure telemetry age and count vehicles by status
     # -----------------------------------------------------------------------
     edades = [ahora - v.timestamp for v in veh if v.timestamp]
     frescos = sum(1 for v in veh if v.timestamp and 0 <= ahora - v.timestamp <= stale_s)
     # -----------------------------------------------------------------------
-    # Contar como antiguos los tiempos futuros y los viajes aún abiertos
+    # Count future timestamps and trips that are still open as stale
     # -----------------------------------------------------------------------
     viejos = sum(1 for v in veh if v.timestamp and not (0 <= ahora - v.timestamp <= stale_s))
     sin_ts = sum(1 for v in veh if not v.timestamp)
     # -----------------------------------------------------------------------
-    # Detectar viajes que siguen publicados aunque no tengan paradas pendientes
+    # Detect trips that remain published despite having no upcoming stops
     # -----------------------------------------------------------------------
     sin_paradas = sum(1 for t in tus if len(t.stop_time_update) == 0)
     # -----------------------------------------------------------------------
-    # Asociar cada vehículo con las paradas pendientes de su viaje
+    # Associate each vehicle with the upcoming stops for its trip
     # -----------------------------------------------------------------------
     paradas = {t.trip.trip_id: len(t.stop_time_update) for t in tus if t.trip.trip_id}
     lista = _vehiculos(vp, ahora, stale_s, paradas)
     igual_header = sum(1 for v in veh if v.timestamp and abs(v.timestamp - vp.header.timestamp) <= 1)
 
     # -----------------------------------------------------------------------
-    # Verificar los campos obligatorios de cada registro de posición
+    # Check the required fields in each position record
     # -----------------------------------------------------------------------
     def completo_vp(v):
         return bool(v.trip.trip_id) and v.position.HasField("latitude") and v.position.HasField("longitude") \
             and v.timestamp > 0
 
     # -----------------------------------------------------------------------
-    # Verificar los campos obligatorios de cada actualización de viaje
+    # Check the required fields in each trip update
     # -----------------------------------------------------------------------
     def completo_tu(t):
         return bool(t.trip.trip_id) and len(t.stop_time_update) > 0
@@ -236,23 +238,23 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
         "ts_sonda": int(ahora),
         "stale_s": stale_s,
         # -------------------------------------------------------------------
-        # Medir la antigüedad de publicación de ambos feeds
+        # Measure how long ago both feeds were published
         # -------------------------------------------------------------------
         "feed_age_vp_s": ahora - vp.header.timestamp if vp.header.timestamp else None,
         "feed_age_tu_s": ahora - tu.header.timestamp if tu.header.timestamp else None,
         # -------------------------------------------------------------------
-        # Resumir la carga operativa publicada en los feeds
+        # Summarize the operational load published in the feeds
         # -------------------------------------------------------------------
         "v_trips": len(tus),
         "v_vehicles": len(veh),
         # -------------------------------------------------------------------
-        # Resumir la frescura de la telemetría de los vehículos
+        # Summarize vehicle telemetry freshness
         # -------------------------------------------------------------------
         "data_age_p50_s": _quantil(edades, 0.50),
         "data_age_p95_s": _quantil(edades, 0.95),
         "data_age_max_s": max(edades) if edades else None,
         # -------------------------------------------------------------------
-        # Calcular la proporción de vehículos con posición GPS reciente
+        # Calculate the proportion of vehicles with a recent GPS position
         # -------------------------------------------------------------------
         "v_gps_pct": _pct(frescos, len(veh)),
         "v_gps_frescos": frescos,
@@ -260,17 +262,17 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
         "v_gps_sin_ts": sin_ts,
         "v_trips_sin_paradas": sin_paradas,
         # -------------------------------------------------------------------
-        # Entregar el detalle de antigüedad, posición y estado por vehículo
+        # Include each vehicle's age, position, and status details
         # -------------------------------------------------------------------
         "vehiculos": lista,
         "vehiculos_texto": _vehiculos_texto(lista),
         "vehiculos_html": _vehiculos_html(lista, ahora, stale_s),
         # -------------------------------------------------------------------
-        # Estimar el porcentaje de marcas de vehículo iguales al encabezado
+        # Estimate the percentage of vehicle timestamps matching the feed header
         # -------------------------------------------------------------------
         "ts_igual_header_pct": _pct(igual_header, len(veh)),
         # -------------------------------------------------------------------
-        # Calcular la proporción de registros con los campos obligatorios
+        # Calculate the proportion of records containing the required fields
         # -------------------------------------------------------------------
         "v_completeness_vp_pct": _pct(sum(completo_vp(v) for v in veh), len(veh)),
         "v_completeness_tu_pct": _pct(sum(completo_tu(t) for t in tus), len(tus)),
@@ -278,13 +280,13 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
 
 
 # ---------------------------------------------------------------------------
-# Crear una sesión HTTP para reutilizar la conexión entre descargas
+# Create an HTTP session to reuse the connection across downloads
 # ---------------------------------------------------------------------------
 def _sesion(host_header=None):
-    """Una sola sesion HTTP para que las dos descargas reusen la conexion TCP.
+    """Use one HTTP session so both downloads reuse the TCP connection.
 
-    Sin esto la PRIMERA descarga paga DNS y el saludo TCP y la segunda no, con lo
-    que las dos latencias no son comparables (medido: 848 ms contra 12 ms).
+    Otherwise, the FIRST download pays the DNS and TCP handshake costs while the
+    second does not, making their latencies incomparable (measured: 848 ms vs 12 ms).
     """
     import requests
     s = requests.Session()
@@ -294,7 +296,7 @@ def _sesion(host_header=None):
 
 
 # ---------------------------------------------------------------------------
-# Descargar un recurso y medir su latencia
+# Download a resource and measure its latency
 # ---------------------------------------------------------------------------
 def _get(sesion, url, timeout):
     t0 = time.time()
@@ -304,17 +306,17 @@ def _get(sesion, url, timeout):
 
 
 # ---------------------------------------------------------------------------
-# Obtener los feeds, calcular sus métricas e imprimir un objeto JSON
+# Fetch the feeds, calculate their metrics, and print a JSON object
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--base", default=BASE)
     ap.add_argument("--host-header", dest="host_header",
-                    help="Host a enviar; usar un valor que este en ALLOWED_HOSTS de databus")
+                    help="Host header to send; use a value in databus ALLOWED_HOSTS")
     ap.add_argument("--stale", type=int, default=60)
     ap.add_argument("--timeout", type=float, default=10.0)
     ap.add_argument("--no-warmup", dest="no_warmup", action="store_true",
-                    help="no descartar la primera peticion (deja las latencias sin calentar)")
+                    help="do not discard the first request (latencies include connection warm-up)")
     ap.add_argument("--vp-file")
     ap.add_argument("--tu-file")
     a = ap.parse_args()
@@ -327,7 +329,7 @@ def main():
             calentado = 0
             if not a.no_warmup:
                 # -------------------------------------------------------------------
-                # Abrir la conexión antes de medir y descartar la solicitud inicial
+                # Open the connection before measuring and discard the initial request
                 # -------------------------------------------------------------------
                 try:
                     _get(ses, f"{a.base}/trip_updates.pb", a.timeout)
@@ -340,7 +342,7 @@ def main():
         out = {"fetch_ok": 1, **lat, **calcular(vp, tu, time.time(), a.stale)}
     except Exception as e:
         # -------------------------------------------------------------------
-        # Reportar el fallo de descarga como una métrica de disponibilidad
+        # Report download failure as an availability metric
         # -------------------------------------------------------------------
         out = {"fetch_ok": 0, "error": str(e)[:200], "ts_sonda": int(time.time())}
     print(json.dumps(out))

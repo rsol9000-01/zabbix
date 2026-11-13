@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
-Derive MACDT operating parameters from the GTFS Schedule.
+Derivacion de parametros operativos de MACDT a partir del GTFS Schedule.
 
-Calculate the following values without hard-coding them:
-  - H_op        : operating window (first departure / last arrival) by service day
-  - D_op        : days of service during the week
-  - V_trips_max : maximum scheduled trip concurrency (rho normalizer)
-  - S(t)        : scheduled concurrency per minute (completeness baseline)
-  - gaps        : minutes within the window with no scheduled trips
+Fija, sin numeros escritos a mano:
+  - H_op   : ventana operativa (primera salida / ultima llegada) por tipo de dia
+  - D_op   : dias de servicio de la semana
+  - V_trips_max : concurrencia maxima de viajes PROGRAMADOS (normalizador de rho)
+  - S(t)   : concurrencia programada por minuto (linea base de completitud)
+  - huecos : minutos dentro de la ventana con 0 viajes programados
 
-Why derive these values instead of setting them manually: when the GTFS changes
-(new schedule or route), thresholds follow the schedule without modifying
-Zabbix. Run this script after each GTFS import.
+Por que se deriva y no se escribe: si el GTFS cambia (nuevo horario, nueva ruta),
+los umbrales siguen al horario sin tocar Zabbix. Correr tras cada import de GTFS.
 
-Usage:
-  python3 gtfs_window-en.py --zip GTFS_bUCR.zip
-  python3 gtfs_window-en.py --pg "host=... dbname=databus user=zbx_ro password=..."
-  python3 gtfs_window-en.py --zip f.zip --macros
+Uso:
+  python3 gtfs_window.py --zip GTFS_bUCR.zip            # offline, desde el zip
+  python3 gtfs_window.py --pg "host=... dbname=databus user=zbx_ro password=..."
+  python3 gtfs_window.py --zip f.zip --macros           # solo macros de Zabbix
 
-Dependencies: none for --zip; psycopg[binary] for --pg
+Dependencias: ninguna para --zip; psycopg[binary] para --pg
 """
 import os
 import time
@@ -26,13 +25,13 @@ import argparse, collections, csv, io, json, sys, zipfile
 
 DOW = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
 
-DIAS_CORTOS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+DIAS_CORTOS = ["L", "K", "M", "J", "V", "S", "D"]
 
 # ---------------------------------------------------------------------------
-# Convert minutes after midnight to a readable 12-hour time
+# Convertir los minutos del día a una hora legible de 12 horas
 # ---------------------------------------------------------------------------
 def _hora_12(minutos):
-    """Convert minutes after midnight to a time such as '6:10 a.m.'."""
+    """Minuto del dia -> '6:10 a.m.'"""
     h, m = divmod(minutos, 60)
     h = h % 24
     sufijo = "a.m." if h < 12 else "p.m."
@@ -40,24 +39,24 @@ def _hora_12(minutos):
 
 
 # ---------------------------------------------------------------------------
-# Describe the days and hours of an operating window
+# Describir los días y las horas de una ventana operativa
 # ---------------------------------------------------------------------------
 def _horario_texto(dias, inicio_min, fin_min):
-    """Format ['monday'..'friday'], 370, 1318 as 'Mon-Fri from 6:10 a.m. to 9:58 p.m.'."""
+    """['monday'..'friday'], 370, 1318 -> 'L-V de 6:10 a.m. a 9:58 p.m.'"""
     idx = sorted(DOW.index(d) for d in dias)
     if len(idx) > 1 and idx == list(range(idx[0], idx[-1] + 1)):
         dias_txt = "%s-%s" % (DIAS_CORTOS[idx[0]], DIAS_CORTOS[idx[-1]])
     else:
         dias_txt = ",".join(DIAS_CORTOS[i] for i in idx)
-    return "%s from %s to %s" % (dias_txt, _hora_12(inicio_min), _hora_12(fin_min))
+    return "%s de %s a %s" % (dias_txt, _hora_12(inicio_min), _hora_12(fin_min))
 
 # ---------------------------------------------------------------------------
-# Describe intervals with no scheduled trips
+# Describir los intervalos sin viajes programados
 # ---------------------------------------------------------------------------
 def _huecos_texto(huecos):
-    """Format gap records as 'No scheduled buses: 8:21 to 8:24 a.m. · ...'."""
+    """[{'inicio':'08:21','fin':'08:24'}, ...] -> 'Sin buses programados: 8:21 a 8:24 a.m. · ...'"""
     if not huecos:
-        return "No gaps: buses are scheduled throughout the window"
+        return "Sin huecos: siempre hay buses programados"
     partes = []
     for h in huecos:
         a = int(h["inicio"][:2]) * 60 + int(h["inicio"][3:])
@@ -66,29 +65,29 @@ def _huecos_texto(huecos):
         if a == b:
             partes.append(ta)
         elif ta[-4:] == tb[-4:]:
-            partes.append("%s to %s" % (ta[:-5], tb))
+            partes.append("%s a %s" % (ta[:-5], tb))
         else:
-            partes.append("%s to %s" % (ta, tb))
-    return "No scheduled buses: " + " · ".join(partes)
+            partes.append("%s a %s" % (ta, tb))
+    return "Sin buses programados: " + " · ".join(partes)
 
 # ---------------------------------------------------------------------------
-# Convert a GTFS time to seconds after the start of service
+# Convertir una hora GTFS a segundos desde el inicio del servicio
 # ---------------------------------------------------------------------------
 def _sec(t):
-    """Convert GTFS HH:MM:SS to seconds. Supports >24h (unlike databus's TimeField)."""
+    """GTFS HH:MM:SS -> segundos. Admite >24h (no asi el TimeField de databus)."""
     if not t:
         return None
     p = t.strip().split(":")
     return int(p[0]) * 3600 + int(p[1]) * 60 + int(p[2])
 
 # ---------------------------------------------------------------------------
-# Read trips, stop times, and calendars from a GTFS ZIP file
+# Leer del archivo ZIP los viajes, horarios y calendarios GTFS
 # ---------------------------------------------------------------------------
 def desde_zip(path):
-    """Return (spans, calendars) by reading GTFS from a file."""
+    """Devuelve (spans, calendarios) leyendo el GTFS como archivo."""
     with zipfile.ZipFile(path) as z:
         # -------------------------------------------------------------------
-        # Read a CSV file from the ZIP and return its rows
+        # Leer un archivo CSV contenido en el ZIP y devolver sus filas
         # -------------------------------------------------------------------
         def rd(n):
             with z.open(n) as fh:
@@ -107,10 +106,10 @@ def desde_zip(path):
 
 
 # ---------------------------------------------------------------------------
-# Query GTFS trips and calendars from the PostgreSQL database
+# Consultar viajes y calendarios GTFS en la base de datos PostgreSQL
 # ---------------------------------------------------------------------------
 def desde_pg(dsn):
-    """Same as desde_zip, but using the current PostgreSQL feed (feed_trip / feed_stoptime)."""
+    """Igual, contra el feed vigente en PostgreSQL (feed_trip / feed_stoptime)."""
     import psycopg
     q_span = """
         SELECT st.trip_id, t.service_id,
@@ -143,7 +142,7 @@ def desde_pg(dsn):
 
 
 # ---------------------------------------------------------------------------
-# Calculate operating windows, concurrency, service days, and scheduled gaps
+# Calcular ventanas, concurrencia, días de servicio y huecos programados
 # ---------------------------------------------------------------------------
 def analizar(spans, trips, cal):
     servicios = {c["service_id"] for c in cal} or {trips.get(t, "") for t in spans}
@@ -190,14 +189,14 @@ def analizar(spans, trips, cal):
 
 
 # ---------------------------------------------------------------------------
-# Download the GTFS file and get its HTTP status and age
+# Descargar el archivo GTFS y obtener su código HTTP y antigüedad
 # ---------------------------------------------------------------------------
 def _bajar(url, timeout, host_header=None):
-    """Download static GTFS. Return (body, HTTP status, file age in seconds)."""
+    """Baja el GTFS estatico. Devuelve (cuerpo, codigo HTTP, edad del archivo en s)."""
     import email.utils
     import urllib.request
     # -----------------------------------------------------------------------
-    # Send a browser User-Agent to avoid rejection by the GTFS server
+    # Enviar un User-Agent de navegador para evitar el rechazo del servidor GTFS
     # -----------------------------------------------------------------------
     pedido = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) zabbix-macdt/1.0",
@@ -219,10 +218,10 @@ def _bajar(url, timeout, host_header=None):
 
 
 # ---------------------------------------------------------------------------
-# Build the error result using the --now mode's structure
+# Construir el resultado de error con la estructura del modo --now
 # ---------------------------------------------------------------------------
 def _now_degradado(error, http_estado):
-    """Return --now failure JSON with the same keys and window_ok=0."""
+    """JSON de falla para --now: mismas claves, con window_ok=0."""
     import datetime
     ahora = datetime.datetime.now()
     return {
@@ -241,23 +240,23 @@ def _now_degradado(error, http_estado):
 
 
 # ---------------------------------------------------------------------------
-# Process arguments, analyze GTFS, and print the results
+# Procesar los argumentos, analizar el GTFS e imprimir los resultados
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--zip"); g.add_argument("--pg")
-    g.add_argument("--url", help="Static GTFS URL, for example "
+    g.add_argument("--url", help="URL del GTFS estatico, p.ej. "
                                  "http://orchestrator:8000/feed/schedule/feed.zip")
     ap.add_argument("--host-header", dest="host_header",
-                    help="Host header to send with --url; use a value in "
-                         "databus ALLOWED_HOSTS (avoids a 400 DisallowedHost response)")
+                    help="Host a enviar con --url; usar un valor que este en "
+                         "ALLOWED_HOSTS de databus (evita el 400 DisallowedHost)")
     ap.add_argument("--timeout", type=float, default=20.0)
-    ap.add_argument("--macros", action="store_true", help="print only Zabbix macros")
+    ap.add_argument("--macros", action="store_true", help="solo macros de Zabbix")
     ap.add_argument("--now", action="store_true",
-                    help="print current-minute S(t) and operating-window gate (Zabbix Script item)")
-    ap.add_argument("--servicio", help="service_id to use for the macros")
+                    help="S(t) y gate de ventana del minuto actual (item Script de Zabbix)")
+    ap.add_argument("--servicio", help="service_id a usar para las macros")
     a = ap.parse_args()
 
     http_estado, zip_age_s = None, None
@@ -277,7 +276,7 @@ def main():
         r = analizar(spans, trips, cal)
     except Exception as e:
         # -------------------------------------------------------------------
-        # Return an error metric in --now mode so Zabbix can alert on it
+        # Devolver una métrica de error en --now para que Zabbix pueda alertarla
         # -------------------------------------------------------------------
         import urllib.error
         if isinstance(e, urllib.error.HTTPError):

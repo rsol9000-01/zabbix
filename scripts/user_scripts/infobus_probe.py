@@ -1,96 +1,94 @@
 #!/usr/bin/env python3
 """
-Sonda de latencia de la API de InfoBus para MACDT (capa I).
+InfoBus API latency probe for MACDT (Layer I).
 
-Se ejecuta desde dos puntos con el mismo script:
-  - interno (agente de R2, clave infobus.api):      http://orchestrator:8000 -> Daphne + consulta
-  - externo (agente de R4, clave infobus.api.ext):  https://<dominio>         -> red + TLS + Traefik + Daphne + consulta
-La diferencia externo - interno la calcula Zabbix (plantilla simovilab-infobus-ext). Imprime UN objeto JSON: usenlo como item maestro y cuelguen items
-dependientes con JSONPath, igual que gtfsrt_probe.py.
+Run the same script from two locations:
+  - Internal (R2 agent, infobus.api key):      http://orchestrator:8000 -> Daphne + query
+  - External (R4 agent, infobus.api.ext key):  https://<domain>          -> network + TLS + Traefik + Daphne + query
+Zabbix calculates the external-to-internal difference (simovilab-infobus-ext template).
+Prints one JSON object: use it as the master item and attach dependent items with
+JSONPath, as with gtfsrt_probe-en.py.
 
-Por que --repeat 10 y no 30 ni 100 (hallazgo de infobus/backend/infobus/settings.py):
-  NextTripView declara throttle_scope = "realtime", y DEFAULT_THROTTLE_RATES
-  pone "realtime" en 30/min. La cuota es POR IP (AnonRateThrottle), asi que la
-  sonda no le quita capacidad a los pasajeros, pero si se pasa de 30/min se
-  auto-estrangula y a partir de ahi mide 429, no latencia. Con 10 por ciclo de
-  60 s queda en 10/min: un tercio de la cuota, con margen para reintentos.
+Why use --repeat 10 instead of 30 or 100 (based on infobus/backend/infobus/settings.py):
+  NextTripView declares throttle_scope = "realtime", and DEFAULT_THROTTLE_RATES
+  sets "realtime" to 30/min. The limit is per IP (AnonRateThrottle), so the probe
+  does not take capacity from passengers. However, exceeding 30/min triggers
+  throttling and measures 429 responses instead of latency. Ten requests per
+  60-second cycle means 10/min: one third of the limit, leaving room for retries.
 
-Por que se reporta p50 de la rafaga y no p95 (consecuencia de lo anterior):
-  con n = 10 el p95 de la rafaga ES el maximo, asi que no aporta nada. El p95
-  verdadero se calcula en Zabbix sobre la serie almacenada:
+Why report the burst p50 instead of p95:
+  With n = 10, the burst p95 is the maximum and adds no useful information.
+  Zabbix calculates the actual p95 over the stored series:
       percentile(/HOST/infobus.api.lat_p50,1h,95)
-  Eso son ~600 muestras por hora y si tiene sentido estadistico. La rafaga
-  entrega la tendencia central del ciclo, que es el regresor para calibrar beta.
+  This provides about 600 samples per hour and is statistically meaningful.
+  The burst provides the cycle's central tendency, used as the regressor for beta.
 
-Por que se mide /health/ aparte, y dos veces:
-  health_check es una vista Django plana, fuera de DRF, asi que no tiene
-  throttling. La primera peticion de la sesion (health_cold_ms) paga abrir la
-  conexion (DNS + TCP + TLS si es https). La segunda (health_ms) ya reusa la
-  conexion abierta, igual que las peticiones de la rafaga, asi que es el piso
-  comparable con lat_p50_ms. Por eso:
-      setup_ms     = health_cold_ms - health_ms  -> costo de abrir la conexion
-      query_p50_ms = lat_p50_ms - health_ms      -> costo de la consulta, que es
-                                                   lo que beta pretende modelar
+Why measure /health/ separately and twice:
+  health_check is a plain Django view outside DRF, so it is not throttled. The
+  first request in the session (health_cold_ms) pays to open the connection
+  (DNS + TCP + TLS for HTTPS). The second (health_ms) reuses the open connection,
+  like the burst requests, and is therefore a baseline comparable to lat_p50_ms:
+      setup_ms     = health_cold_ms - health_ms  -> connection setup cost
+      query_p50_ms = lat_p50_ms - health_ms      -> query cost, which beta models
 
-Por que tcp_connect_ms:
-  es el tiempo de abrir una conexion TCP al host y puerto de --base, con el DNS
-  ya resuelto: un viaje de ida y vuelta de red, como un ping, pero por el mismo
-  puerto de la API (el firewall no lo bloquea si la API responde). Se toma la
-  mediana de 3 intentos. Desde dentro (red Docker) debe ser casi cero.
+Why report tcp_connect_ms:
+  It is the time to open a TCP connection to the host and port in --base after
+  DNS resolution: a network round trip, like ping, but over the API port (the
+  firewall does not block it when the API responds). The probe takes the median
+  of three attempts. From inside the Docker network, it should be close to zero.
 
-Por que se valida que la respuesta sea un 200 con cuerpo:
-  NextTripView responde 400 si falta stop_id y 404 si la parada no existe. Las
-  dos rutas son rapidas. Un stop_id mal configurado mediria el camino de error
-  y reportaria una latencia excelente y falsa. Si el status no es 200, ok = 0.
+Why require a 200 response with a body:
+  NextTripView responds with 400 when stop_id is missing and 404 when the stop
+  does not exist. Both paths are fast. A misconfigured stop_id would measure the
+  error path and report misleadingly low latency. If the status is not 200, ok = 0.
 
-Excepcion: 204 = dia sin servicio (no es una falla):
-  get_next_trips devuelve None cuando el calendario no tiene servicio para la
-  fecha (en bUCR: sabado y domingo) y NextTripView responde 204. Es una
-  respuesta correcta de infobus, asi que si la rafaga completa responde 200 o
-  204, ok = 1. Si todas fueron 204, sin_servicio = 1 y las latencias quedan en
-  null: el tiempo de una respuesta vacia no es comparable con el de un dia
-  habil y contaminaria el p95.
-  El tiempo de las 204 se reporta aparte en lat_sin_servicio_p50_ms: en ese
-  camino get_next_trips solo hace 4 consultas fijas (feed, parada, agencia,
-  calendario) y se detiene, asi que mide el costo fijo de la peticion (T_0 de
-  la tuberia de umbrales) sin el costo de las horas de paso.
+Exception: 204 means no service that day, not a failure:
+  get_next_trips returns None when the calendar has no service for the date
+  (Saturday and Sunday in bUCR), and NextTripView responds with 204. This is a
+  valid InfoBus response, so a burst of only 200 or 204 responses has ok = 1.
+  If all responses are 204, sin_servicio = 1 and latency values are null: an
+  empty response is not comparable to a service-day response and would distort
+  the p95. The 204 timings are reported separately in lat_sin_servicio_p50_ms:
+  this path performs only four fixed queries (feed, stop, agency, calendar), so
+  it measures the fixed request cost (T_0 in the threshold pipeline), excluding
+  the cost of retrieving stop times.
 
-Por que una sola sesion HTTP:
-  la primera peticion paga DNS, saludo TCP y TLS. Sin reuso de conexion la
-  primera muestra contamina la rafaga (medido en databus: 848 ms contra 12 ms).
-  La peticion de calentamiento se descarta.
+Why use one HTTP session:
+  The first request pays for DNS, TCP handshake, and TLS. Without connection
+  reuse, the first sample contaminates the burst (measured in databus: 848 ms
+  versus 12 ms). The warm-up request is discarded.
 
-Por que --stop-id auto (parada del peor caso):
-  en infobus 9482328, feed/services/queries.py::get_next_trips devuelve TODAS las
-  horas de paso de la parada en las proximas 5 h (arrival_time entre ahora y
-  ahora + 5 h, sin limite y sin filtrar por servicio) y hace 2 consultas SQL por
-  cada una. La latencia de next-trips crece con cuantas horas de paso tiene la
-  parada consultada en esa ventana. Con --stop-id auto la sonda mide la parada
-  con el pico mas alto de horas de paso en 5 h segun el GTFS, es decir, el peor
-  caso, que es el que corresponde comparar contra el RNF.
+Why use --stop-id auto (worst-case stop):
+  In infobus 9482328, feed/services/queries.py::get_next_trips returns all stop
+  times in the next five hours (arrival_time between now and now + 5 h, without
+  a limit or service filter) and makes two SQL queries per stop time. The
+  next-trips latency increases with the number of stop times in that window.
+  With --stop-id auto, the probe measures the stop with the highest number of
+  stop times in five hours according to GTFS: the worst case to compare with
+  the RNF.
 
-  La eleccion depende solo del horario, que no cambia de un dia a otro. Se
-  calcula una vez por version del GTFS y se guarda en cache (--cache). Cada
-  --gtfs-check-s segundos (3600 por omision) se pregunta al servidor si el zip
-  cambio (If-Modified-Since / If-None-Match): con 304 no se descarga nada; con
-  200 se recalcula. Si la revision falla se sigue usando la parada guardada
-  (gtfs_check_ok = 0). Si nunca se pudo calcular, se usa --stop-id-fallback y
-  stop_auto = 0. El conteo replica la consulta de infobus: solo arrival_time,
-  todos los servicios, ventana [t, t + 5 h] sin cruzar medianoche.
+  Stop selection depends only on the schedule, which does not change daily. It
+  is calculated once per GTFS version and saved in the cache (--cache). Every
+  --gtfs-check-s seconds (3600 by default), the server is checked for a new ZIP
+  (If-Modified-Since / If-None-Match): a 304 downloads nothing; a 200 triggers
+  recalculation. If the check fails, the cached stop remains in use
+  (gtfs_check_ok = 0). If no stop could be calculated, --stop-id-fallback is
+  used and stop_auto = 0. The count mirrors the InfoBus query: arrival_time
+  only, all services, window [t, t + 5 h], without crossing midnight.
 
-Uso:
-  python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01
-  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost \
-                           --stop-id auto --transit-system 1
+Usage:
+  python3 infobus_probe-en.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01
+  python3 infobus_probe-en.py --base http://orchestrator:8000 --host-header localhost \
+                              --stop-id auto --transit-system 1
 
-  Por dentro, sin Traefik (contenedor orchestrator de infobus, HTTP en el 8000):
-  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost --stop-id bUCR_0_01
-  --host-header tiene que ser un valor de ALLOWED_HOSTS de infobus; si no, Django responde 400.
-  En ese modo health_ms ya no incluye TLS ni Traefik: mide solo Daphne.
-  python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01 \
-                           --repeat 10 --timeout 5
+  Internally, without Traefik (InfoBus orchestrator container, HTTP on port 8000):
+  python3 infobus_probe-en.py --base http://orchestrator:8000 --host-header localhost --stop-id bUCR_0_01
+  --host-header must be a value in InfoBus ALLOWED_HOSTS; otherwise Django responds with 400.
+  In this mode, health_ms excludes TLS and Traefik and measures Daphne only.
+  python3 infobus_probe-en.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01 \
+                              --repeat 10 --timeout 5
 
-Dependencias: requests (la eleccion de parada usa solo la biblioteca estandar)
+Dependencies: requests (stop selection uses only the standard library)
 """
 import argparse
 import html
@@ -284,8 +282,8 @@ def _tcp_connect_ms(base, timeout, intentos=3):
 # Medir una solicitud HTTP y devolver su estado, duración y bytes recibidos
 # ---------------------------------------------------------------------------
 def _medir(sesion, url, timeout, params=None, cuerpo=False):
-    """Devuelve (status, ms, bytes), o (status, ms, bytes, contenido) con cuerpo=True.
-    No lanza: el fallo es en si una metrica. El cuerpo se lee despues de medir el tiempo."""
+    """Return (status, ms, bytes), or (status, ms, bytes, content) with cuerpo=True.
+    Never raises: a failure is itself a metric. The body is read after timing."""
     t0 = time.perf_counter()
     try:
         r = sesion.get(url, params=params, timeout=timeout)
@@ -300,11 +298,11 @@ def _medir(sesion, url, timeout, params=None, cuerpo=False):
 # Contar las llegadas programadas y los buses en camino de una respuesta 200
 # ---------------------------------------------------------------------------
 def _contar_llegadas(contenido):
-    """(llegadas, buses) de next-trips: N(t) y buses en camino. (None, None) si no se puede leer.
+    """(arrivals, buses) from next-trips: N(t) and buses on their way. (None, None) if unreadable.
 
-    llegadas = horas de paso programadas en la ventana de 5 h (in_progress = false): es N(t),
-               la variable de T_base(t) = b + m*N(t) + delta.
-    buses    = viajes en curso que todavia tienen la parada por delante (in_progress = true).
+    arrivals = scheduled stop times in the 5 h window (in_progress = false): this is N(t),
+               the variable of T_base(t) = b + m*N(t) + delta.
+    buses    = trips in progress that still have the stop ahead (in_progress = true).
     """
     try:
         arr = json.loads(contenido).get("next_arrivals") or []
@@ -357,7 +355,6 @@ def sondear(base, stop_id, repeat, timeout, insecure, warmup=True, host_header=N
     throttled = errores = sin_serv = 0
 
     llegadas = buses = None
-
     for _ in range(repeat):
         status, ms, nbytes, contenido = _medir(ses, api_url, timeout, params, cuerpo=True)
         estados.append(status)
@@ -510,7 +507,7 @@ def _tabla_html(o, base):
     # Formatear un código HTTP o indicar que no hubo conexión
     # -----------------------------------------------------------------------
     def codigo(c):
-        return "sin conexi\u00f3n" if not c else str(c)
+        return "no connection" if not c else str(c)
     # -----------------------------------------------------------------------
     # Aplicar color al texto del estado cuando se indique
     # -----------------------------------------------------------------------
@@ -520,14 +517,14 @@ def _tabla_html(o, base):
     h_vivo = bool(o.get("health_ok"))
     api_vivo = bool(o.get("ok"))
     if not api_vivo:
-        api_estado = estado("Falla", rojo)
+        api_estado = estado("Failure", rojo)
     elif o.get("sin_servicio"):
-        api_estado = estado("Sin servicio", naranja)
+        api_estado = estado("No service", naranja)
     else:
-        api_estado = "Activo"
+        api_estado = "Active"
     codigos = o.get("status_codes") or ([o["status"]] if "status" in o else [])
     filas = [
-        ("/health/", punto(h_vivo), "Activo" if h_vivo else estado("Sin respuesta", rojo),
+        ("/health/", punto(h_vivo), "Active" if h_vivo else estado("No response", rojo),
          codigo(o.get("health_status")), "%s ms" % ms(o.get("health_ms")) if o.get("health_ms") is not None else "-"),
         ("API (next-trips)", punto(api_vivo), api_estado,
          "/".join(codigo(c) for c in codigos) or "-",
@@ -535,8 +532,8 @@ def _tabla_html(o, base):
     ]
     th = 'style="text-align:left;padding:4px 12px;border-bottom:2px solid #8888;white-space:nowrap"'
     td = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap"'
-    cols = ("Servicio", "Alive", "Estado", "C\u00f3digo", "Latencia (200/204)")
-    pie = "%s \u00b7 parada %s \u00b7 %s" % (
+    cols = ("Service", "Alive", "Status", "Code", "Latency (200/204)")
+    pie = "%s \u00b7 stop %s \u00b7 %s" % (
         html.escape(base), html.escape(str(o.get("stop_id") or "-")),
         time.strftime("%H:%M:%S", time.localtime(o.get("ts_sonda") or time.time())))
     if o.get("error"):
@@ -559,7 +556,7 @@ def _tabla_html(o, base):
     # Explicar cada métrica de latencia con una descripción legible
     # -----------------------------------------------------------------------
     sin_serv = o.get("sin_servicio") == 1
-    nota = (" Hoy sin servicio: el valor es de la respuesta vac\u00eda (204), sin horas de paso."
+    nota = (" No service today: the value is from the empty response (204), with no stop times."
             if sin_serv else "")
     # -----------------------------------------------------------------------
     # Seleccionar la latencia disponible e identificar las respuestas HTTP 204
@@ -570,28 +567,28 @@ def _tabla_html(o, base):
             return "%s ms" % ms(v)
         return "-" if v204 is None else "(204: %s ms)" % ms(v204)
     lat = [
-        ("Latencia piso", val(o.get("health_ms")),
-         "Lo m\u00ednimo que tarda infobus en contestar por HTTP con la conexi\u00f3n ya abierta "
-         "(/health/: sin API, sin cuota y sin base de datos). Si sube, el problema est\u00e1 en la red "
-         "o en el servidor web, no en la consulta."),
-        ("Costo de la consulta", val(o.get("query_p50_ms"), o.get("query_sin_servicio_p50_ms")),
-         "Lo que tarda next-trips por encima del piso: capa de API, consultas a la base de datos y "
-         "armado de la respuesta. Crece con las horas de paso de las pr\u00f3ximas 5 h en la parada." + nota),
-        ("Percentil 50", val(o.get("lat_p50_ms"), o.get("lat_sin_servicio_p50_ms")),
-         "Tiempo t\u00edpico de next-trips en este ciclo: la mitad de las 10 consultas tard\u00f3 menos "
-         "que esto y la otra mitad m\u00e1s." + nota),
-        ("Percentil 95 (\u00faltima hora)", val(o.get("lat_p95_1h_sonda_ms"), o.get("lat_sin_servicio_p95_1h_sonda_ms")),
-         "De los tiempos t\u00edpicos de cada minuto de la \u00faltima hora, el 95 %% qued\u00f3 por debajo "
-         "de este valor: solo 3 de cada 60 minutos fueron m\u00e1s lentos. Es el valor que se compara "
-         "con el umbral T_WARN y con el RNF de 200 ms (%s minutos con dato).%s"
+        ("Baseline latency", val(o.get("health_ms")),
+         "The minimum time InfoBus takes to respond over HTTP with the connection already open "
+         "(/health/: no API, rate limit, or database). If it increases, the issue is in the network "
+         "or web server, not the query."),
+        ("Query cost", val(o.get("query_p50_ms"), o.get("query_sin_servicio_p50_ms")),
+         "The time next-trips takes above the baseline: API layer, database queries, and response "
+         "construction. It increases with the number of stop times at the stop in the next 5 hours." + nota),
+        ("50th percentile", val(o.get("lat_p50_ms"), o.get("lat_sin_servicio_p50_ms")),
+         "Typical next-trips time in this cycle: half of the 10 requests took less than this, "
+         "and half took longer." + nota),
+        ("95th percentile (last hour)", val(o.get("lat_p95_1h_sonda_ms"), o.get("lat_sin_servicio_p95_1h_sonda_ms")),
+         "Of the typical times for each minute in the last hour, 95%% were below this value: "
+         "only 3 of 60 minutes were slower. This is the value compared with the T_WARN threshold "
+         "and the 200 ms RNF (%s minutes with data).%s"
          % (o.get("n_p95_1h_sonda") or o.get("n_sin_servicio_p95_1h_sonda") or 0, nota)),
     ]
     td_desc = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"'
     td_val = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"'
     return ('<div style="font-size:calc(1em + 6px)"><br><br>'
-            + tabla("API INFOBUS", cols, filas)
+            + tabla("INFOBUS API", cols, filas)
             + '<div style="opacity:.7;font-size:.75em;margin-top:4px">%s</div><br>' % pie
-            + tabla("LATENCIAS", ("Medida", "Valor", "Qu\u00e9 significa"), lat, {1: td_val, 2: td_desc})
+            + tabla("LATENCIES", ("Metric", "Value", "Meaning"), lat, {1: td_val, 2: td_desc})
             + "</div>")
 
 
@@ -601,30 +598,30 @@ def _tabla_html(o, base):
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--base", default=BASE, help="origen de infobus, con esquema")
+    ap.add_argument("--base", default=BASE, help="InfoBus origin, including the scheme")
     ap.add_argument("--stop-id", dest="stop_id", required=True,
-                    help="stop_id real del GTFS, o 'auto' para medir la parada del peor caso")
+                    help="GTFS stop_id, or 'auto' to measure the worst-case stop")
     ap.add_argument("--gtfs-url", dest="gtfs_url", default=GTFS_URL,
-                    help="GTFS estatico para elegir la parada con --stop-id auto")
+                    help="Static GTFS feed used to select a stop with --stop-id auto")
     ap.add_argument("--gtfs-check-s", dest="gtfs_check_s", type=int, default=3600,
-                    help="cada cuantos segundos se revisa si el GTFS cambio")
+                    help="seconds between checks for GTFS updates")
     ap.add_argument("--stop-id-fallback", dest="stop_id_fallback", default="bUCR_0_01",
-                    help="parada a usar si nunca se pudo calcular la del peor caso")
-    ap.add_argument("--cache", default=CACHE, help="archivo de cache de la parada elegida")
+                    help="stop to use if the worst-case stop cannot be calculated")
+    ap.add_argument("--cache", default=CACHE, help="cache file for the selected stop")
     ap.add_argument("--repeat", type=int, default=10,
-                    help="peticiones por ciclo; tope efectivo 30/min por la cuota realtime")
+                    help="requests per cycle; the effective realtime limit is 30/min")
     ap.add_argument("--timeout", type=float, default=5.0)
     ap.add_argument("--insecure", action="store_true",
-                    help="no verificar TLS (solo si el certificado aun no es valido)")
+                    help="disable TLS verification (only if the certificate is not yet valid)")
     ap.add_argument("--no-warmup", dest="no_warmup", action="store_true")
     ap.add_argument("--host-header", dest="host_header",
-                    help="Host a enviar al conectar directo al orchestrator (valor de ALLOWED_HOSTS)")
+                    help="Host header to send when connecting directly to the orchestrator (ALLOWED_HOSTS value)")
     ap.add_argument("--transit-system", dest="transit_system",
-                    help="id numerico del TransitSystem en infobus (sin el, next-trips da 500)")
+                    help="numeric TransitSystem ID in InfoBus (without it, next-trips returns 500)")
     a = ap.parse_args()
 
     if a.repeat > 25:
-        print(json.dumps({"ok": 0, "error": "repeat > 25 agota la cuota realtime de 30/min",
+        print(json.dumps({"ok": 0, "error": "repeat > 25 exhausts the realtime limit of 30/min",
                           "ts_sonda": int(time.time())}))
         sys.exit(0)
 
