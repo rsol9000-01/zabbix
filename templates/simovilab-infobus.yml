@@ -13,7 +13,7 @@ zabbix_export:
         medicion externa la hace R4 (simovilab-infobus-ext, host Zabbix-server)
         y la resta entre ambas esta aqui (items infobus.net.*). Es el RNF de rendimiento del TFG y el objetivo
         de calibracion de beta.
-
+        
         La sonda hace 10 peticiones por ciclo porque NextTripView declara
         throttle_scope "realtime" y la cuota es 30/min por IP. El p95 real
         no sale de la rafaga (con n=10 el p95 es el maximo) sino del item
@@ -27,131 +27,13 @@ zabbix_export:
           key: infobus.api
           delay: 60s
           history: 1d
-          timeout: 30s
           value_type: TEXT
           description: 'Maestro. 10 peticiones a /api/next-trips/ desde R2, directo al orchestrator. Con --stop-id auto mide la parada con mas horas de paso en 5 h (peor caso). timeout 30s: la sonda tarda mas de 3 s en frio y, una vez por hora, revisa si cambio el GTFS.'
-        - uuid: 923b3c60c12f41e18788a94646949fd2
-          name: 'Parada medida por la sonda'
-          type: DEPENDENT
-          key: infobus.api.stop_id
-          value_type: CHAR
-          history: 90d
-          description: 'stop_id consultado en el ciclo. Con --stop-id auto es la parada del peor caso segun el GTFS vigente; cambia solo cuando cambia el GTFS.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.stop_id
-              error_handler: DISCARD_VALUE
-            - type: DISCARD_UNCHANGED_HEARTBEAT
-              parameters:
-                - 1d
-          master_item:
-            key: infobus.api
-        - uuid: ec07fc29dfb44b33b4ca6ba562b59674
-          name: 'Horas de paso en 5 h de la parada medida (pico)'
-          type: DEPENDENT
-          key: infobus.api.stop_pico_5h
-          value_type: UNSIGNED
-          history: 90d
-          description: 'Pico de horas de paso programadas en una ventana de 5 h para la parada medida (lo que carga la consulta next-trips de infobus 9482328).'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.stop_pico_5h
-              error_handler: DISCARD_VALUE
-            - type: DISCARD_UNCHANGED_HEARTBEAT
-              parameters:
-                - 1d
-          master_item:
-            key: infobus.api
-        - uuid: 08da7cf133364d99b616faf4f8323bcb
-          name: 'Eleccion automatica de parada activa'
-          type: DEPENDENT
-          key: infobus.api.stop_auto
-          value_type: UNSIGNED
-          description: '1 si la parada salio del GTFS; 0 si se uso --stop-id-fallback porque nunca se pudo calcular.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.stop_auto
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api
-        - uuid: 0e0920e623c043728350dc88d8aeca05
-          name: 'Día sin servicio (next-trips responde 204)'
-          type: DEPENDENT
-          key: infobus.api.sin_servicio
-          valuemap:
-            name: 'Servicio del día'
-          value_type: UNSIGNED
-          description: '1 cuando toda la ráfaga respondió 204: el calendario GTFS no tiene servicio hoy (en bUCR, sábado y domingo). Esos ciclos no tienen latencia.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.sin_servicio
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api
-        - uuid: 69bcb15219e54392ae5df19317c75fd4
-          name: 'Tabla API INFOBUS (HTML)'
-          type: DEPENDENT
-          key: infobus.api.tabla_html
-          history: 1d
-          value_type: TEXT
-          description: 'Tabla HTML con /health/ y next-trips: alive, estado, código HTTP y latencia (200/204). Se muestra en el widget Item history con la columna en modo HTML.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.tabla_html
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api
-        - uuid: 46315e08d097484b903040c1c0e309c2
-          name: 'API de InfoBus responde correctamente'
-          type: DEPENDENT
-          key: infobus.api.ok
-          valuemap:
-            name: 'Estado API'
-          value_type: UNSIGNED
-          description: '1 si las 10 peticiones devolvieron 200 con cuerpo, o 204 (día sin servicio, respuesta correcta de infobus). Ver infobus.api.sin_servicio.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.ok
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api
-          triggers:
-            - uuid: 2b3396876e1b4dcab3edccee1e0b5ad5
-              expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
-              name: 'La API de InfoBus no responde correctamente'
-              priority: HIGH
-              description: |
-                Puede ser el servicio, o un stop_id mal configurado en la sonda:
-                NextTripView responde 404 si la parada no existe en la base.
-        - uuid: 4c96a5cd6ad84db4a7e7c930ca8e624a
-          name: 'Llegadas programadas en 5 h, N(t)'
-          type: DEPENDENT
-          key: infobus.api.llegadas
-          value_type: UNSIGNED
-          history: 90d
-          description: 'Horas de paso programadas en la ventana de 5 h que devolvió next-trips en el ciclo (in_progress = false). Es N(t) de T_base(t) = b + m·N(t) + δ y el regresor de m en la calibración.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.llegadas
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^[0-9]+$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api
+          timeout: 30s
         - uuid: 6e0aa045cd3345febb7082ab8d4f2d9c
           name: 'Buses en camino a la parada medida'
           type: DEPENDENT
           key: infobus.api.buses_parada
-          value_type: UNSIGNED
           history: 90d
           description: 'Viajes en curso que todavía tienen la parada medida por delante (in_progress = true en next-trips). Diagnóstico del costo por bus; la calibración usa gtfs.v_trips de databus, que es la variable de rho.'
           preprocessing:
@@ -165,21 +47,78 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
-        - uuid: 7f7c6af0a315498492f7b1bfe177d491
-          name: 'N(t) para MACDT: p95 de llegadas, ventana de 1 h'
-          type: CALCULATED
-          key: infobus.api.llegadas_p95_1h
-          delay: 1m
+        - uuid: 19a0d26a50b44c109f755f6729dcdacd
+          name: 'Primera peticion de la sesion (abre la conexion)'
+          type: DEPENDENT
+          key: infobus.api.health_cold_ms
           value_type: FLOAT
-          params: 'percentile(//infobus.api.llegadas,1h,95)'
-          description: 'Misma ventana y mismo percentil que infobus.api.lat_p95_1h, que es contra lo que se compara T_WARN. El bucle MACDT lo usa como N(t).'
+          units: ms
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_cold_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: dbd0683ceb1641aabec2053b43279e39
+          name: 'Piso de transporte, conexion abierta'
+          type: DEPENDENT
+          key: infobus.api.health_ms
+          value_type: FLOAT
+          units: ms
+          description: '/health/ reusando la conexion. Vista Django plana, sin throttling de DRF.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 38675e6d46ff4483a6164904d5f18580
+          name: 'Disponibilidad de /health/'
+          type: DEPENDENT
+          key: infobus.api.health_ok
+          valuemap:
+            name: 'Estado API'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 129f1485684a4a578c3b4a6add6cc618
+          name: 'L_api maxima del ciclo'
+          type: DEPENDENT
+          key: infobus.api.lat_max
+          value_type: FLOAT
+          units: ms
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_max_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
         - uuid: cd8211b1403b48748e997ceadfedba8f
           name: 'L_api p50 del ciclo'
           type: DEPENDENT
           key: infobus.api.lat_p50
-          units: ms
           value_type: FLOAT
-          description: 'Tendencia central del ciclo. Es la base de infobus.api.lat_p95_1h, que es el dato con el que la calibración de MACDT ajusta su recta.'
+          units: ms
+          description: 'Tendencia central del ciclo. Es el regresor para calibrar beta.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -191,12 +130,75 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
+        - uuid: 4bef03e67e88483da7cd53d216f08a29
+          name: 'L_api p90 del ciclo'
+          type: DEPENDENT
+          key: infobus.api.lat_p90
+          value_type: FLOAT
+          units: ms
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.lat_p90_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+        - uuid: 9be8a046e08a43b89b2d1ac87fe21525
+          name: 'L_api p95 real, ventana de 1 h'
+          type: CALCULATED
+          key: infobus.api.lat_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'percentile(//infobus.api.lat_p50,1h,95)'
+          description: 'El p95 del RNF. ~600 muestras por hora.'
+          triggers:
+            - uuid: 3e04749615074eab87a0535f08e0e027
+              expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_CRIT}'
+              name: 'L_api p95 incumple el RNF de 200 ms'
+              priority: AVERAGE
+              dependencies:
+                - name: 'La API de InfoBus no responde correctamente'
+                  expression: last(/simovilab-infobus/infobus.api.ok)=0
+                - name: 'La sonda agota su cuota: la medicion no es valida'
+                  expression: last(/simovilab-infobus/infobus.api.throttled)>0
+            - uuid: 98edfb6df538451480794907aadbe5f5
+              expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_WARN}'
+              name: 'L_api p95 sobre el umbral adaptativo de MACDT'
+              priority: WARNING
+              dependencies:
+                - name: 'La API de InfoBus no responde correctamente'
+                  expression: last(/simovilab-infobus/infobus.api.ok)=0
+                - name: 'La sonda agota su cuota: la medicion no es valida'
+                  expression: last(/simovilab-infobus/infobus.api.throttled)>0
+                - name: 'L_api p95 sostenido sobre el umbral adaptativo de MACDT'
+                  expression: 'min(/simovilab-infobus/infobus.api.lat_p95_1h,{$T_LATENCY_WARN.SOSTENIDO})>{$T_LATENCY_WARN}'
+            - uuid: 1fc524dae8994f96b8fe9c66353814d0
+              expression: 'min(/simovilab-infobus/infobus.api.lat_p95_1h,{$T_LATENCY_WARN.SOSTENIDO})>{$T_LATENCY_WARN}'
+              name: 'L_api p95 sostenido sobre el umbral adaptativo de MACDT'
+              priority: HIGH
+              description: |
+                El p95 de la última hora estuvo por encima de T_WARN durante todo
+                {$T_LATENCY_WARN.SOSTENIDO} (nunca bajó del umbral en ese lapso): no es un pico,
+                es una degradación sostenida.
+                Estado definitivo: habilitada. Mientras MACDT no esté calibrado (T_WARN cerca del
+                piso y p95 diurno de ~290 ms por las horas de paso de next-trips, hallazgo H-01)
+                se dispara casi todo el día hábil; si hace falta, se deshabilita a mano de forma
+                temporal hasta aplicar la ecuación de tubería.
+              dependencies:
+                - name: 'La API de InfoBus no responde correctamente'
+                  expression: last(/simovilab-infobus/infobus.api.ok)=0
+                - name: 'La sonda agota su cuota: la medicion no es valida'
+                  expression: last(/simovilab-infobus/infobus.api.throttled)>0
         - uuid: 8c5c7829ba894b21b4dfc2b713e9c1b3
           name: 'Latencia en día sin servicio (respuestas 204)'
           type: DEPENDENT
           key: infobus.api.lat_sin_servicio
-          units: ms
           value_type: FLOAT
+          units: ms
           description: 'Mediana de las respuestas 204 del ciclo. Sin servicio, next-trips solo hace 4 consultas fijas (feed, parada, agencia, calendario): mide el costo fijo de la petición (T_0) sin el costo de las horas de paso. Vacío en días hábiles.'
           preprocessing:
             - type: JSONPATH
@@ -220,46 +222,58 @@ zabbix_export:
                 promedio de 10 min supera {$INFOBUS.T204.FACTOR} veces la mediana del
                 último día. Un pico aquí no lo explica el horario: revisar carga del
                 servidor, base de datos o red de infobus.
-        - uuid: 4bef03e67e88483da7cd53d216f08a29
-          name: 'L_api p90 del ciclo'
+        - uuid: 4c96a5cd6ad84db4a7e7c930ca8e624a
+          name: 'Llegadas programadas en 5 h, N(t)'
           type: DEPENDENT
-          key: infobus.api.lat_p90
-          units: ms
-          value_type: FLOAT
+          key: infobus.api.llegadas
+          history: 90d
+          description: 'Horas de paso programadas en la ventana de 5 h que devolvió next-trips en el ciclo (in_progress = false). Es N(t) de T_base(t) = b + m·N(t) + δ y el regresor de m en la calibración.'
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.lat_p90_ms
+                - $.llegadas
               error_handler: DISCARD_VALUE
             - type: MATCHES_REGEX
               parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
+                - '^[0-9]+$'
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
-        - uuid: 129f1485684a4a578c3b4a6add6cc618
-          name: 'L_api maxima del ciclo'
-          type: DEPENDENT
-          key: infobus.api.lat_max
-          units: ms
+        - uuid: 7f7c6af0a315498492f7b1bfe177d491
+          name: 'N(t) para MACDT: p95 de llegadas, ventana de 1 h'
+          type: CALCULATED
+          key: infobus.api.llegadas_p95_1h
           value_type: FLOAT
+          params: 'percentile(//infobus.api.llegadas,1h,95)'
+          description: 'Misma ventana y mismo percentil que infobus.api.lat_p95_1h, que es contra lo que se compara T_WARN. El bucle MACDT lo usa como N(t).'
+        - uuid: 46315e08d097484b903040c1c0e309c2
+          name: 'API de InfoBus responde correctamente'
+          type: DEPENDENT
+          key: infobus.api.ok
+          description: '1 si las 10 peticiones devolvieron 200 con cuerpo, o 204 (día sin servicio, respuesta correcta de infobus). Ver infobus.api.sin_servicio.'
+          valuemap:
+            name: 'Estado API'
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.lat_max_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
+                - $.ok
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
+          triggers:
+            - uuid: 2b3396876e1b4dcab3edccee1e0b5ad5
+              expression: last(/simovilab-infobus/infobus.api.ok)=0
+              name: 'La API de InfoBus no responde correctamente'
+              priority: HIGH
+              description: |
+                Puede ser el servicio, o un stop_id mal configurado en la sonda:
+                NextTripView responde 404 si la parada no existe en la base.
         - uuid: 4ff28ccfec0941c8b1fea42949a4e3b1
           name: 'Costo de la consulta, aislado del transporte'
           type: DEPENDENT
           key: infobus.api.query_p50
-          units: ms
           value_type: FLOAT
+          units: ms
           description: |
             lat_p50 menos health_ms (con la conexion ya abierta). Aisla el costo
             de la consulta del piso de transporte, que no depende de la carga.
@@ -275,47 +289,12 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
-        - uuid: dbd0683ceb1641aabec2053b43279e39
-          name: 'Piso de transporte, conexion abierta'
-          type: DEPENDENT
-          key: infobus.api.health_ms
-          units: ms
-          value_type: FLOAT
-          description: '/health/ reusando la conexion. Vista Django plana, sin throttling de DRF.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.health_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api
-        - uuid: 19a0d26a50b44c109f755f6729dcdacd
-          name: 'Primera peticion de la sesion (abre la conexion)'
-          type: DEPENDENT
-          key: infobus.api.health_cold_ms
-          units: ms
-          value_type: FLOAT
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.health_cold_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api
         - uuid: 8e71c756e0dc4830ae52519da53ca317
           name: 'Costo de abrir la conexión (DNS + TCP)'
           type: DEPENDENT
           key: infobus.api.setup_ms
-          units: ms
           value_type: FLOAT
+          units: ms
           description: 'health_cold_ms - health_ms: resolver el nombre (DNS de Docker) y el saludo TCP antes de la primera petición. Desde dentro de la red Docker y por http (sin TLS). Medido 2026-11-07: mediana 4.4 ms, p95 7.5 ms. Puede salir negativo (2-3 % de las muestras): es una sola resta entre dos peticiones y el ruido es de unos ±3 ms.'
           preprocessing:
             - type: JSONPATH
@@ -339,93 +318,85 @@ zabbix_export:
                 exige superar {$INFOBUS.SETUP.MIN_MS} ms, para no alertar si la mediana fuera
                 muy baja. Revisar DNS de Docker, red del host o saturación del servidor web
                 (aceptar conexiones nuevas).
-        - uuid: 38675e6d46ff4483a6164904d5f18580
-          name: 'Disponibilidad de /health/'
+        - uuid: 0e0920e623c043728350dc88d8aeca05
+          name: 'Día sin servicio (next-trips responde 204)'
           type: DEPENDENT
-          key: infobus.api.health_ok
+          key: infobus.api.sin_servicio
+          description: '1 cuando toda la ráfaga respondió 204: el calendario GTFS no tiene servicio hoy (en bUCR, sábado y domingo). Esos ciclos no tienen latencia.'
           valuemap:
-            name: 'Estado API'
-          value_type: UNSIGNED
+            name: 'Servicio del día'
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.health_ok
+                - $.sin_servicio
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
-        - uuid: e9db3dd0d0cb4988ae012b4ebbfa9b3b
-          name: 'Too Many Requests (429): peticiones rechazadas por la cuota'
+        - uuid: 08da7cf133364d99b616faf4f8323bcb
+          name: 'Eleccion automatica de parada activa'
           type: DEPENDENT
-          key: infobus.api.throttled
-          value_type: UNSIGNED
-          description: 'Si pasa de 0, la medicion del ciclo no es valida.'
+          key: infobus.api.stop_auto
+          description: '1 si la parada salio del GTFS; 0 si se uso --stop-id-fallback porque nunca se pudo calcular.'
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.throttled
+                - $.stop_auto
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
-          triggers:
-            - uuid: 3236bfe193a8489e85d04a9e791189e2
-              expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
-              name: 'La sonda agota su cuota: la medicion no es valida'
-              priority: WARNING
-              description: |
-                Bajar --repeat o subir el intervalo. Mientras dispare, L_api no
-                sirve como dato: se esta midiendo el 429, no la latencia.
-        - uuid: 9be8a046e08a43b89b2d1ac87fe21525
-          name: 'L_api p95 real, ventana de 1 h'
-          type: CALCULATED
-          key: infobus.api.lat_p95_1h
-          units: ms
-          value_type: FLOAT
-          params: 'percentile(//infobus.api.lat_p50,1h,95)'
-          description: 'El p95 del RNF. ~600 muestras por hora.'
-          triggers:
-            - uuid: 98edfb6df538451480794907aadbe5f5
-              expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_WARN}'
-              name: 'L_api p95 sobre el umbral adaptativo de MACDT'
-              priority: WARNING
-              dependencies:
-                - name: 'La API de InfoBus no responde correctamente'
-                  expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
-                - name: 'La sonda agota su cuota: la medicion no es valida'
-                  expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
-                - name: 'L_api p95 sostenido sobre el umbral adaptativo de MACDT'
-                  expression: 'min(/simovilab-infobus/infobus.api.lat_p95_1h,{$T_LATENCY_WARN.SOSTENIDO})>{$T_LATENCY_WARN}'
-            - uuid: 1fc524dae8994f96b8fe9c66353814d0
-              expression: 'min(/simovilab-infobus/infobus.api.lat_p95_1h,{$T_LATENCY_WARN.SOSTENIDO})>{$T_LATENCY_WARN}'
-              name: 'L_api p95 sostenido sobre el umbral adaptativo de MACDT'
-              priority: HIGH
-              description: |
-                El p95 de la última hora estuvo por encima de T_WARN durante todo
-                {$T_LATENCY_WARN.SOSTENIDO} (nunca bajó del umbral en ese lapso): no es un pico,
-                es una degradación sostenida.
-                Estado definitivo: habilitada. Mientras MACDT no esté calibrado (T_WARN cerca del
-                piso y p95 diurno de ~290 ms por las horas de paso de next-trips, hallazgo H-01)
-                se dispara casi todo el día hábil; si hace falta, se deshabilita a mano de forma
-                temporal hasta aplicar la ecuación de tubería.
-              dependencies:
-                - name: 'La API de InfoBus no responde correctamente'
-                  expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
-                - name: 'La sonda agota su cuota: la medicion no es valida'
-                  expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
-            - uuid: 3e04749615074eab87a0535f08e0e027
-              expression: 'last(/simovilab-infobus/infobus.api.lat_p95_1h)>{$T_LATENCY_CRIT}'
-              name: 'L_api p95 incumple el RNF de 200 ms'
-              priority: AVERAGE
-              dependencies:
-                - name: 'La API de InfoBus no responde correctamente'
-                  expression: 'last(/simovilab-infobus/infobus.api.ok)=0'
-                - name: 'La sonda agota su cuota: la medicion no es valida'
-                  expression: 'last(/simovilab-infobus/infobus.api.throttled)>0'
+        - uuid: 923b3c60c12f41e18788a94646949fd2
+          name: 'Parada medida por la sonda'
+          type: DEPENDENT
+          key: infobus.api.stop_id
+          history: 90d
+          value_type: CHAR
+          description: 'stop_id consultado en el ciclo. Con --stop-id auto es la parada del peor caso segun el GTFS vigente; cambia solo cuando cambia el GTFS.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.stop_id
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: infobus.api
+        - uuid: ec07fc29dfb44b33b4ca6ba562b59674
+          name: 'Horas de paso en 5 h de la parada medida (pico)'
+          type: DEPENDENT
+          key: infobus.api.stop_pico_5h
+          history: 90d
+          description: 'Pico de horas de paso programadas en una ventana de 5 h para la parada medida (lo que carga la consulta next-trips de infobus 9482328).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.stop_pico_5h
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1d
+          master_item:
+            key: infobus.api
+        - uuid: 69bcb15219e54392ae5df19317c75fd4
+          name: 'Tabla API INFOBUS (HTML)'
+          type: DEPENDENT
+          key: infobus.api.tabla_html
+          history: 1d
+          value_type: TEXT
+          description: 'Tabla HTML con /health/ y next-trips: alive, estado, código HTTP y latencia (200/204). Se muestra en el widget Item history con la columna en modo HTML.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tabla_html
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
         - uuid: 9417862345c64a3e8332638a5838c0f5
           name: 'Conexion TCP al orchestrator'
           type: DEPENDENT
           key: infobus.api.tcp_connect_ms
-          units: ms
           value_type: FLOAT
+          units: ms
           description: 'Desde dentro, en la red Docker: debe ser casi cero.'
           preprocessing:
             - type: JSONPATH
@@ -438,81 +409,56 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api
-        - uuid: be2242d75ea4436483a48c06969e06a2
-          name: 'Red: RTT de R4 a R2, promedio 15 min'
-          type: CALCULATED
-          key: infobus.net.rtt_ms
-          delay: 1m
-          value_type: FLOAT
-          units: ms
-          params: 'avg(/Zabbix-server/infobus.api.ext.tcp_connect_ms,15m)'
-          description: 'Conexion TCP de R4 al 443 de R2. Zabbix-server es el nombre fijo del host del servidor (LOCAL_HOST_NAME).'
+        - uuid: e9db3dd0d0cb4988ae012b4ebbfa9b3b
+          name: 'Too Many Requests (429): peticiones rechazadas por la cuota'
+          type: DEPENDENT
+          key: infobus.api.throttled
+          description: 'Si pasa de 0, la medicion del ciclo no es valida.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.throttled
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api
+          triggers:
+            - uuid: 3236bfe193a8489e85d04a9e791189e2
+              expression: last(/simovilab-infobus/infobus.api.throttled)>0
+              name: 'La sonda agota su cuota: la medicion no es valida'
+              priority: WARNING
+              description: |
+                Bajar --repeat o subir el intervalo. Mientras dispare, L_api no
+                sirve como dato: se esta midiendo el 429, no la latencia.
         - uuid: 556cdd6a9e9345069f1f96596c926dce
           name: 'Externo - interno: red + TLS + Traefik'
           type: CALCULATED
           key: infobus.net.delta_ms
-          delay: 1m
           value_type: FLOAT
           units: ms
           params: 'avg(/Zabbix-server/infobus.api.ext.health_ms,15m) - avg(//infobus.api.health_ms,15m)'
           description: |
             Resta de los pisos de transporte con la conexion abierta (/health/, sin consulta a la base),
             promediados 15 min porque las dos sondas no corren en el mismo segundo.
+        - uuid: be2242d75ea4436483a48c06969e06a2
+          name: 'Red: RTT de R4 a R2, promedio 15 min'
+          type: CALCULATED
+          key: infobus.net.rtt_ms
+          value_type: FLOAT
+          units: ms
+          params: 'avg(/Zabbix-server/infobus.api.ext.tcp_connect_ms,15m)'
+          description: 'Conexion TCP de R4 al 443 de R2. Zabbix-server es el nombre fijo del host del servidor (LOCAL_HOST_NAME).'
         - uuid: 085e5649f59042cc95db0551d9647c07
           name: 'TLS + Traefik (sin red)'
           type: CALCULATED
           key: infobus.net.tls_traefik_ms
-          delay: 1m
           value_type: FLOAT
           units: ms
           params: 'last(//infobus.net.delta_ms) - last(//infobus.net.rtt_ms)'
           description: 'Externo - interno, menos el RTT de red.'
-        - uuid: faa0bd3f5cd54b55a856229001b5efd6
-          name: 'Estado del bucle MACDT'
-          type: TRAP
-          key: macdt.status
-          value_type: UNSIGNED
-          description: |
-            1 = el ciclo calculo y escribio el umbral.
-            0 = ciclo degradado: dato de rho ausente o viejo, o fallo de API.
-            En degradado el umbral vigente se conserva; no se escribe nada.
-          valuemap:
-            name: 'Estado MACDT'
-          triggers:
-            - uuid: 17d29d1dd90c46aa95fb7a508c5bb616
-              expression: 'last(/simovilab-infobus/macdt.status)=0'
-              name: 'MACDT degradado: el umbral no se esta actualizando'
-              priority: WARNING
-              description: |
-                El bucle sigue vivo pero no pudo calcular: rho sin dato o viejo,
-                o fallo del API. Los triggers de latencia siguen operando con el
-                ultimo umbral valido.
-            - uuid: a190e9f925fe487891ea0bc2373bf4d1
-              expression: 'nodata(/simovilab-infobus/macdt.status,5m)=1'
-              name: 'El bucle MACDT no reporta: puede estar caido'
-              priority: AVERAGE
-              description: |
-                Distinto del anterior: aqui no llega ni el estado de degradado.
-                Un contenedor muerto se ve igual que un sistema sano sin este trigger.
-        - uuid: fb1120a1e6d041b8ad94406cf80af8dc
-          name: 'T_warn escrito por MACDT'
-          type: TRAP
-          key: macdt.t_warn
-          units: ms
-          value_type: FLOAT
-          description: 'El valor que el bucle puso en la macro de host. Para graficarlo contra rho.'
-        - uuid: 267607728bc54d8097df36e1e6bd9d84
-          name: 'T_base(t) calculado por MACDT'
-          type: TRAP
-          key: macdt.t_base
-          units: ms
-          value_type: FLOAT
-          description: 'T_base(t) = b + m·N(t) + δ del ciclo, antes de aplicar (1 + β·ρ) y F_crit. Sin N(t) fresco es {$MACDT.T_BASE}.'
         - uuid: 7b4916825b45488694536791febe3d39
           name: 'Resultado de la calibración de MACDT'
           type: TRAP
           key: macdt.calib
-          value_type: UNSIGNED
           description: |
             1 = recta aplicada. 0 = rechazada (pocos puntos, R² bajo o m <= 0): se conserva la vigente.
             2 = retenida: la recta nueva cambia más que MACDT_CALIB_MAX_DRIFT. No se aplica sola.
@@ -520,7 +466,7 @@ zabbix_export:
             name: 'Calibración MACDT'
           triggers:
             - uuid: b52790ae5c3d497e80404f78c763247f
-              expression: 'last(/simovilab-infobus/macdt.calib)=2'
+              expression: last(/simovilab-infobus/macdt.calib)=2
               name: 'MACDT: la latencia de infobus cambió más de lo permitido'
               priority: WARNING
               description: |
@@ -534,6 +480,46 @@ zabbix_export:
           key: macdt.calib.info
           value_type: TEXT
           description: 'JSON con b, m, c, δ, β, R², puntos y deriva de la última calibración.'
+        - uuid: faa0bd3f5cd54b55a856229001b5efd6
+          name: 'Estado del bucle MACDT'
+          type: TRAP
+          key: macdt.status
+          description: |
+            1 = el ciclo calculo y escribio el umbral.
+            0 = ciclo degradado: dato de rho ausente o viejo, o fallo de API.
+            En degradado el umbral vigente se conserva; no se escribe nada.
+          valuemap:
+            name: 'Estado MACDT'
+          triggers:
+            - uuid: a190e9f925fe487891ea0bc2373bf4d1
+              expression: 'nodata(/simovilab-infobus/macdt.status,5m)=1'
+              name: 'El bucle MACDT no reporta: puede estar caido'
+              priority: AVERAGE
+              description: |
+                Distinto del anterior: aqui no llega ni el estado de degradado.
+                Un contenedor muerto se ve igual que un sistema sano sin este trigger.
+            - uuid: 17d29d1dd90c46aa95fb7a508c5bb616
+              expression: last(/simovilab-infobus/macdt.status)=0
+              name: 'MACDT degradado: el umbral no se esta actualizando'
+              priority: WARNING
+              description: |
+                El bucle sigue vivo pero no pudo calcular: rho sin dato o viejo,
+                o fallo del API. Los triggers de latencia siguen operando con el
+                ultimo umbral valido.
+        - uuid: 267607728bc54d8097df36e1e6bd9d84
+          name: 'T_base(t) calculado por MACDT'
+          type: TRAP
+          key: macdt.t_base
+          value_type: FLOAT
+          units: ms
+          description: 'T_base(t) = b + m·N(t) + δ del ciclo, antes de aplicar (1 + β·ρ) y F_crit. Sin N(t) fresco es {$MACDT.T_BASE}.'
+        - uuid: fb1120a1e6d041b8ad94406cf80af8dc
+          name: 'T_warn escrito por MACDT'
+          type: TRAP
+          key: macdt.t_warn
+          value_type: FLOAT
+          units: ms
+          description: 'El valor que el bucle puso en la macro de host. Para graficarlo contra rho.'
         - uuid: 49556341f1bb4380ad1ba637008f3f83
           name: 'Ecuación de T_warn con valores'
           type: TRAP
@@ -546,9 +532,6 @@ zabbix_export:
               parameters:
                 - 'return ''<span style="font-size:16px">'' + value + ''</span>'';'
       macros:
-        - macro: '{$T_LATENCY_WARN.SOSTENIDO}'
-          value: 30m
-          description: 'Tiempo que el p95 debe mantenerse sobre T_WARN para la alerta Alta "sostenido".'
         - macro: '{$INFOBUS.SETUP.FACTOR}'
           value: '2'
           description: 'Veces la mediana diaria del costo de abrir la conexión que dispara la alerta.'
@@ -558,97 +541,237 @@ zabbix_export:
         - macro: '{$INFOBUS.T204.FACTOR}'
           value: '2'
           description: 'Veces la mediana diaria de la latencia 204 que dispara la alerta de día sin servicio.'
-        - macro: '{$T_LATENCY_WARN}'
-          value: '130'
-          description: 'Semilla igual a T_BASE. Lo sobrescribe el bucle MACDT en F5.'
-        - macro: '{$T_LATENCY_CRIT}'
-          value: '200'
-          description: 'Fijo en el RNF. No lo mueve MACDT.'
-        - macro: '{$MACDT.T_BASE}'
-          value: '130'
-          description: 'Semilla. Se usa como T_base solo si no hay N(t) fresco (infobus.api.llegadas_p95_1h).'
         - macro: '{$MACDT.B}'
           value: '130'
           description: 'b de T_base(t) = b + m·N(t) + δ: costo fijo. Semilla igual a T_BASE; la calibración lo escribe como macro de host.'
-        - macro: '{$MACDT.M}'
-          value: '0'
-          description: 'm: ms por cada llegada programada en 5 h. Con 0 (sin calibrar) T_base es constante, como antes.'
+        - macro: '{$MACDT.BETA}'
+          value: '0.35'
+          description: 'Peso de los buses activos. La calibración lo escribe como macro de host: β = c·V_max ÷ promedio de T_base con buses, con c = ms por bus.'
         - macro: '{$MACDT.DELTA}'
           value: '0'
           description: 'δ: margen, p95 de los residuos de la regresión. Lo escribe la calibración.'
+        - macro: '{$MACDT.F_CRIT}'
+          value: '0.7'
+          description: 'Endurecimiento del umbral con cobertura GPS bajo 70 %.'
+        - macro: '{$MACDT.M}'
+          value: '0'
+          description: 'm: ms por cada llegada programada en 5 h. Con 0 (sin calibrar) T_base es constante, como antes.'
+        - macro: '{$MACDT.T_BASE}'
+          value: '130'
+          description: 'Semilla. Se usa como T_base solo si no hay N(t) fresco (infobus.api.llegadas_p95_1h).'
         - macro: '{$MACDT.T_FLOOR}'
           value: '91'
           description: 'Piso del umbral (decisión 2026-11-05: bajar de 130 a 91). Confirmar con la latencia nocturna.'
         - macro: '{$MACDT.T_RNF}'
           value: '350'
           description: 'Techo contractual. No se mueve.'
-        - macro: '{$MACDT.BETA}'
-          value: '0.35'
-          description: 'Peso de los buses activos. La calibración lo escribe como macro de host: β = c·V_max ÷ promedio de T_base con buses, con c = ms por bus.'
-        - macro: '{$MACDT.F_CRIT}'
-          value: '0.7'
-          description: 'Endurecimiento del umbral con cobertura GPS bajo 70 %.'
+        - macro: '{$Q_CRIT}'
+          value: '150'
+          description: ídem
         - macro: '{$Q_WARN}'
           value: '80'
           description: 'Longitud del stream events de Redis. Pendiente del agente en R2.'
-        - macro: '{$Q_CRIT}'
-          value: '150'
-          description: 'ídem'
+        - macro: '{$T_LATENCY_CRIT}'
+          value: '200'
+          description: 'Fijo en el RNF. No lo mueve MACDT.'
+        - macro: '{$T_LATENCY_WARN}'
+          value: '130'
+          description: 'Semilla igual a T_BASE. Lo sobrescribe el bucle MACDT en F5.'
+        - macro: '{$T_LATENCY_WARN.SOSTENIDO}'
+          value: 30m
+          description: 'Tiempo que el p95 debe mantenerse sobre T_WARN para la alerta Alta "sostenido".'
       dashboards:
         - uuid: 486967a74607447290830f37d336c4bf
           name: 'Operación infobus'
           pages:
-            - name: 'Operación'
+            - name: Operación
               widgets:
                 - type: item
                   name: 'T_LATENCY_WARN actual (escrito por MACDT)'
-                  x: '0'
-                  y: '0'
                   width: '18'
                   height: '3'
                   fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        key: 'macdt.t_warn'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
+                    - type: STRING
+                      name: bg_color
+                      value: 1F2937
                     - type: INTEGER
                       name: decimal_size
                       value: '25'
+                    - type: STRING
+                      name: desc_color
+                      value: FFFFFF
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus
+                        key: macdt.t_warn
+                    - type: STRING
+                      name: time_color
+                      value: FFFFFF
+                    - type: STRING
+                      name: units_color
+                      value: FFFFFF
                     - type: INTEGER
                       name: units_size
                       value: '25'
                     - type: STRING
-                      name: bg_color
-                      value: '1F2937'
-                    - type: STRING
                       name: value_color
-                      value: 'FFFFFF'
-                    - type: STRING
-                      name: units_color
-                      value: 'FFFFFF'
-                    - type: STRING
-                      name: desc_color
-                      value: 'FFFFFF'
-                    - type: STRING
-                      name: time_color
-                      value: 'FFFFFF'
-                    - type: STRING
-                      name: reference
-                      value: OKOSG
-                - type: clock
-                  name: 'Hora local'
-                  x: '18'
-                  y: '0'
-                  width: '18'
+                      value: FFFFFF
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Too Many Requests (429)'
+                  'y': '3'
+                  width: '24'
+                  height: '4'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus
+                        key: infobus.api.throttled
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: itemhistory
+                  name: 'Ecuación de T_warn (último ciclo)'
+                  'y': '7'
+                  width: '24'
                   height: '3'
                   fields:
                     - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-infobus
+                        key: macdt.t_warn.eq
+                    - type: INTEGER
+                      name: columns.0.monospace_font
+                      value: '1'
+                    - type: STRING
+                      name: columns.0.name
+                      value: T_warn
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '1'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                - type: svggraph
+                  name: 'N(t). llegadas programas en 5 horas'
+                  'y': '10'
+                  width: '72'
+                  height: '5'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: B0BEC5
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Llegadas programadas en 5 h, N(t)'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.0.type
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: E53935
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Horas de paso en 5 h de la parada medida (pico)'
+                    - type: INTEGER
+                      name: ds.1.missingdatafunc
+                      value: '1'
+                    - type: INTEGER
+                      name: ds.1.stacked
+                      value: '1'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '4'
+                    - type: STRING
+                      name: ds.2.color
+                      value: 0040FF
+                    - type: INTEGER
+                      name: ds.2.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.2.items.0
+                      value: 'N(t) para MACDT: p95 de llegadas, ventana de 1 h'
+                    - type: INTEGER
+                      name: ds.2.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.2.type
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.2.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '3'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: LZGJZ
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: graph
+                  name: 'Latencia de la API vs umbral de MACDT'
+                  'y': '15'
+                  width: '72'
+                  height: '7'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: simovilab-infobus
+                        name: 'infobus: latencia vs umbral MACDT'
+                    - type: STRING
+                      name: reference
+                      value: MNCSU
+                - type: graph
+                  name: 'Desglose de latencia'
+                  'y': '22'
+                  width: '72'
+                  height: '6'
+                  fields:
+                    - type: GRAPH
+                      name: graphid.0
+                      value:
+                        host: simovilab-infobus
+                        name: 'infobus: desglose de latencia'
+                    - type: STRING
+                      name: reference
+                      value: GYVIK
+                - type: clock
+                  name: 'Hora local'
+                  x: '18'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: bg_color
+                      value: 1F2937
+                    - type: INTEGER
                       name: clock_type
                       value: '1'
+                    - type: STRING
+                      name: date_color
+                      value: FFFFFF
                     - type: INTEGER
                       name: show.0
                       value: '1'
@@ -656,186 +779,80 @@ zabbix_export:
                       name: show.1
                       value: '2'
                     - type: INTEGER
-                      name: time_format
-                      value: '1'
-                    - type: STRING
-                      name: bg_color
-                      value: '1F2937'
-                    - type: STRING
-                      name: date_color
-                      value: 'FFFFFF'
-                    - type: STRING
-                      name: time_color
-                      value: 'FFFFFF'
-                    - type: INTEGER
                       name: time_bold
                       value: '1'
-                - type: item
-                  name: 'Estado del bucle MACDT'
-                  x: '36'
-                  y: '0'
-                  width: '18'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        key: 'macdt.status'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
                     - type: STRING
-                      name: reference
-                      value: QHUJP
-                - type: item
-                  name: 'L_api p95 (última hora)'
-                  x: '54'
-                  y: '0'
-                  width: '18'
-                  height: '3'
-                  fields:
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        key: 'infobus.api.lat_p95_1h'
+                      name: time_color
+                      value: FFFFFF
                     - type: INTEGER
-                      name: value_size
-                      value: '25'
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: STRING
-                      name: reference
-                      value: AVCOU
+                      name: time_format
+                      value: '1'
                 - type: itemhistory
                   name: 'API INFOBUS'
-                  hide_header: 'YES'
                   x: '24'
-                  y: '3'
+                  'y': '3'
                   width: '48'
-                  height: '9'
+                  height: '7'
+                  hide_header: 'YES'
                   fields:
-                    - type: STRING
-                      name: columns.0.name
-                      value: 'API INFOBUS'
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
                     - type: ITEM
                       name: columns.0.itemid
                       value:
                         host: simovilab-infobus
                         key: infobus.api.tabla_html
-                    - type: INTEGER
-                      name: columns.0.display
-                      value: '4'
-                    - type: INTEGER
-                      name: show_lines
-                      value: '1'
+                    - type: STRING
+                      name: columns.0.name
+                      value: 'API INFOBUS'
                     - type: INTEGER
                       name: show_column_header
                       value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
                 - type: item
-                  name: 'Too Many Requests (429)'
-                  x: '0'
-                  y: '3'
-                  width: '24'
+                  name: 'Estado del bucle MACDT'
+                  x: '36'
+                  width: '18'
                   height: '3'
                   fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
                     - type: ITEM
                       name: itemid.0
                       value:
-                        host: 'simovilab-infobus'
-                        key: 'infobus.api.throttled'
-                    - type: INTEGER
-                      name: value_size
-                      value: '35'
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '35'
+                        host: simovilab-infobus
+                        key: macdt.status
                     - type: INTEGER
                       name: units_size
-                      value: '35'
-                    - type: STRING
-                      name: reference
-                      value: GBPMW
-                - type: itemhistory
-                  name: 'Ecuación de T_warn (último ciclo)'
-                  x: '0'
-                  y: '6'
-                  width: '24'
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'L_api p95 (última hora)'
+                  x: '54'
+                  width: '18'
                   height: '3'
                   fields:
-                    - type: STRING
-                      name: columns.0.name
-                      value: 'T_warn'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
                     - type: ITEM
-                      name: columns.0.itemid
+                      name: itemid.0
                       value:
                         host: simovilab-infobus
-                        key: macdt.t_warn.eq
+                        key: infobus.api.lat_p95_1h
                     - type: INTEGER
-                      name: columns.0.display
-                      value: '4'
+                      name: units_size
+                      value: '25'
                     - type: INTEGER
-                      name: show_lines
-                      value: '1'
-                    - type: INTEGER
-                      name: show_column_header
-                      value: '0'
-                - type: graph
-                  name: 'Latencia de la API vs umbral de MACDT'
-                  x: '0'
-                  y: '12'
-                  width: '72'
-                  height: '7'
-                  fields:
-                    - type: GRAPH
-                      name: graphid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        name: 'infobus: latencia vs umbral MACDT'
-                    - type: STRING
-                      name: reference
-                      value: MNCSU
-                - type: graph
-                  name: 'Desglose de latencia'
-                  x: '0'
-                  y: '19'
-                  width: '72'
-                  height: '6'
-                  fields:
-                    - type: GRAPH
-                      name: graphid.0
-                      value:
-                        host: 'simovilab-infobus'
-                        name: 'infobus: desglose de latencia'
-                    - type: STRING
-                      name: reference
-                      value: GYVIK    
+                      name: value_size
+                      value: '25'
       valuemaps:
-        - uuid: 144477bdffd146ddb545f822d7c3d940
-          name: 'Servicio del día'
-          mappings:
-            - value: '0'
-              newvalue: 'Con servicio'
-            - value: '1'
-              newvalue: 'Sin servicio hoy'
-        - uuid: 7f2c0e1a4b6d4f8e9a3c5b7d1e0f2a48
-          name: 'Estado MACDT'
-          mappings:
-            - value: '0'
-              newvalue: Degradado
-            - value: '1'
-              newvalue: Operando
         - uuid: d29358034ea64247b4cbd1a7f9cdd494
           name: 'Calibración MACDT'
           mappings:
@@ -849,51 +866,65 @@ zabbix_export:
           name: 'Estado API'
           mappings:
             - value: '0'
-              newvalue: 'Falla'
+              newvalue: Falla
             - value: '1'
-              newvalue: 'OK'
+              newvalue: OK
+        - uuid: 7f2c0e1a4b6d4f8e9a3c5b7d1e0f2a48
+          name: 'Estado MACDT'
+          mappings:
+            - value: '0'
+              newvalue: Degradado
+            - value: '1'
+              newvalue: Operando
+        - uuid: 144477bdffd146ddb545f822d7c3d940
+          name: 'Servicio del día'
+          mappings:
+            - value: '0'
+              newvalue: 'Con servicio'
+            - value: '1'
+              newvalue: 'Sin servicio hoy'
   graphs:
-    - uuid: 3a38289a271f43a38c58ec5ea84732b1
-      name: 'infobus: latencia vs umbral MACDT'
-      graph_items:
-        - color: 199C0D
-          item:
-            host: 'simovilab-infobus'
-            key: 'infobus.api.lat_p50'
-        - sortorder: '1'
-          color: 2774A4
-          item:
-            host: 'simovilab-infobus'
-            key: 'infobus.api.lat_p95_1h'
-        - sortorder: '2'
-          color: F63100
-          item:
-            host: 'simovilab-infobus'
-            key: 'macdt.t_warn'
-        - sortorder: '3'
-          color: 9C27B0
-          item:
-            host: 'simovilab-infobus'
-            key: 'infobus.api.lat_sin_servicio'
     - uuid: 43ca52f3cd484678bd9bf8b4307cdfa7
       name: 'infobus: desglose de latencia'
       graph_items:
         - color: 2774A4
           item:
-            host: 'simovilab-infobus'
-            key: 'infobus.api.query_p50'
+            host: simovilab-infobus
+            key: infobus.api.query_p50
         - sortorder: '1'
           color: F7941D
           item:
-            host: 'simovilab-infobus'
-            key: 'infobus.api.health_ms'
+            host: simovilab-infobus
+            key: infobus.api.health_ms
         - sortorder: '2'
           color: 9C27B0
           item:
-            host: 'simovilab-infobus'
-            key: 'infobus.api.lat_sin_servicio'
+            host: simovilab-infobus
+            key: infobus.api.lat_sin_servicio
         - sortorder: '3'
           color: 00BCD4
           item:
-            host: 'simovilab-infobus'
-            key: 'infobus.api.setup_ms'
+            host: simovilab-infobus
+            key: infobus.api.setup_ms
+    - uuid: 3a38289a271f43a38c58ec5ea84732b1
+      name: 'infobus: latencia vs umbral MACDT'
+      graph_items:
+        - color: 199C0D
+          item:
+            host: simovilab-infobus
+            key: infobus.api.lat_p50
+        - sortorder: '1'
+          color: 2774A4
+          item:
+            host: simovilab-infobus
+            key: infobus.api.lat_p95_1h
+        - sortorder: '2'
+          color: F63100
+          item:
+            host: simovilab-infobus
+            key: macdt.t_warn
+        - sortorder: '3'
+          color: 9C27B0
+          item:
+            host: simovilab-infobus
+            key: infobus.api.lat_sin_servicio
