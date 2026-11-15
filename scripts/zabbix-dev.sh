@@ -141,7 +141,7 @@ PSK_SEED="${2:-}"
 # Defines the networks to check and create if they do not exist
 # ---------------------------------------------------------------------------
 
-ZBX_TRAEFIK_NETWOK="$(grep '^ZBX_TRAEFIK_NETWOK[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')"
+ZBX_TRAEFIK_NETWORK="$(grep '^ZBX_TRAEFIK_NETWORK[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')"
 ZBX_GESTION_NETWORK="gestion_network"
 
 check_networks() {
