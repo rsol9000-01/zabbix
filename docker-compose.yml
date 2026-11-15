@@ -111,7 +111,15 @@ services:
       - "traefik.http.routers.zabbix.tls=true"
       - "traefik.http.routers.zabbix.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
       - "traefik.http.middlewares.zabbix-ip.ipallowlist.sourcerange=${ZBX_ALLOWED_IPS:-10.20.0.0/16}"
-      - "traefik.http.routers.zabbix.middlewares=zabbix-ip,security-headers@file,compression@file"
+      # Cabeceras de seguridad propias de Zabbix: las mismas de security-headers, sin la CSP
+      - "traefik.http.middlewares.zabbix-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.zabbix-headers.headers.customFrameOptionsValue=SAMEORIGIN"
+      - "traefik.http.middlewares.zabbix-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.zabbix-headers.headers.forceSTSHeader=true"
+      - "traefik.http.middlewares.zabbix-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.zabbix-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.zabbix-headers.headers.customResponseHeaders.X-Robots-Tag=none,noarchive,nosnippet,notranslate,noimageindex"
+      - "traefik.http.routers.zabbix.middlewares=zabbix-ip,zabbix-headers,compression@file"
       - "traefik.http.services.zabbix.loadbalancer.server.port=8080"
     environment:
       - ZBX_SERVER_HOST=${ZBX_SERVER_IP}
