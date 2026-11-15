@@ -138,6 +138,25 @@ FLAG_SERVER=false
 PSK_SEED="${2:-}"
 
 # ---------------------------------------------------------------------------
+# Defines the networks to check and create if they do not exist
+# ---------------------------------------------------------------------------
+
+ZBX_TRAEFIK_NETWOK="$(grep '^ZBX_TRAEFIK_NETWOK[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')"
+ZBX_GESTION_NETWORK="gestion_network"
+
+check_networks() {
+  local red
+  for red in "$@"; do
+    if docker network inspect "$red" >/dev/null 2>&1; then
+      echo "Red '$red': Network already exists!!!"
+    else
+      echo "Red '$red': Network not found. Creating network..."
+      docker network create "$red" >/dev/null
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
 # Validate the number of arguments received
 # ---------------------------------------------------------------------------
 if [[ $# -ne 1 && $# -ne 2 ]]; then
@@ -492,6 +511,12 @@ else
 fi
 
 chmod 644 psk/zabbix_agentd.psk
+
+# ---------------------------------------------------------------------------
+# Checking required networks before running Compose
+# ---------------------------------------------------------------------------
+
+check_networks "$ZBX_GESTION_NETWORK" "$ZBX_TRAEFIK_NETWORK"
 
 # ---------------------------------------------------------------------------
 # Start the Docker Compose deployment and wait for the init result

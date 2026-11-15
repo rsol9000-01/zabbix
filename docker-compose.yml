@@ -13,8 +13,11 @@ volumes:
 # NETWORKS
 ############################
 networks:
-  zabbix_network:
-    driver: bridge
+  gestion_network:
+    external: true
+  traefik_proxy:                       
+    name: ${ZBX_TRAEFIK_NETWORK}         
+    external: true
 ############################
 # SERVICES
 ############################
@@ -24,7 +27,7 @@ services:
   ###########################
   zabbix-postgres-bd:
     networks:
-      - zabbix_network
+      - gestion_network
     image: postgres:17.6
     container_name: zabbix-postgres-bd
     restart: unless-stopped
@@ -47,7 +50,7 @@ services:
   ###########################
   zabbix-server-pgsql:
     networks:
-      - zabbix_network
+      - gestion_network
     image: zabbix/zabbix-server-pgsql:ubuntu-7.4.3
     container_name: zabbix-server-pgsql
     restart: unless-stopped
@@ -79,7 +82,10 @@ services:
   ###########################
   zabbix-dashboard:
     networks:
-      - zabbix_network
+      - gestion_network
+      - traefik_proxy
+    labels:
+      - traefik.docker.network=${ZBX_TRAEFIK_NETWORK}
     image: zabbix/zabbix-web-nginx-pgsql:ubuntu-7.4.3
     container_name: zabbix-dashboard
     restart: unless-stopped
@@ -117,7 +123,7 @@ services:
   ###########################
   zabbix-agent2:
     networks:
-      - zabbix_network
+      - gestion_network
     build:
         context: ./agent2/
         dockerfile: Dockerfile
@@ -153,7 +159,7 @@ services:
   ###########################
   zabbix-init:
     networks:
-      - zabbix_network
+      - gestion_network
     image: alpine/curl:latest
     env_file: .env
     container_name: zabbix-init
@@ -180,7 +186,7 @@ services:
     pull_policy: build
     restart: unless-stopped
     networks:
-      - zabbix_network
+      - gestion_network
     environment:
       ZBX_API_URL: ${API_URL}
       ZBX_API_USER: ${API_WEB_USER}
