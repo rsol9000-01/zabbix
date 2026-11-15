@@ -110,7 +110,7 @@ services:
       - "traefik.http.routers.zabbix.entrypoints=websecure"
       - "traefik.http.routers.zabbix.tls=true"
       - "traefik.http.routers.zabbix.tls.certresolver=${CERT_RESOLVER:-letsencrypt}"
-      #- "traefik.http.middlewares.zabbix-ip.ipallowlist.sourcerange=${ZBX_ALLOWED_IPS:-10.20.0.0/16}"
+      - "traefik.http.middlewares.zabbix-ip.ipallowlist.sourcerange=${ZBX_ALLOWED_IPS:-10.20.0.0/16}"
       - "traefik.http.routers.zabbix.middlewares=zabbix-ip,security-headers@file,compression@file"
       - "traefik.http.services.zabbix.loadbalancer.server.port=8080"
     environment:

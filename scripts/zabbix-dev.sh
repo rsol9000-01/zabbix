@@ -141,9 +141,6 @@ PSK_SEED="${2:-}"
 # Defines the networks to check and create if they do not exist
 # ---------------------------------------------------------------------------
 
-ZBX_TRAEFIK_NETWORK="$(grep '^ZBX_TRAEFIK_NETWORK[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')"
-ZBX_GESTION_NETWORK="gestion_network"
-
 check_networks() {
   local red
   for red in "$@"; do
@@ -291,6 +288,12 @@ if [ "$FLAG_SERVER" = "true" ]; then
   fi
   echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
 fi
+# ---------------------------------------------------------------------------
+# Defines the networks to check and create if they do not exist
+# ---------------------------------------------------------------------------
+
+ZBX_TRAEFIK_NETWORK="$(grep '^ZBX_TRAEFIK_NETWORK[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')"
+ZBX_GESTION_NETWORK="gestion_network"
 
 # ---------------------------------------------------------------------------
 # Create the helper scripts directory and set its permissions
@@ -515,8 +518,11 @@ chmod 644 psk/zabbix_agentd.psk
 # ---------------------------------------------------------------------------
 # Checking required networks before running Compose
 # ---------------------------------------------------------------------------
+if [ "$FLAG_SERVER" = "true" ]; then
+  echo "ℹ️  Server mode: checking required networks..."
+  check_networks "$ZBX_GESTION_NETWORK" "$ZBX_TRAEFIK_NETWORK"
+fi  
 
-check_networks "$ZBX_GESTION_NETWORK" "$ZBX_TRAEFIK_NETWORK"
 
 # ---------------------------------------------------------------------------
 # Start the Docker Compose deployment and wait for the init result
