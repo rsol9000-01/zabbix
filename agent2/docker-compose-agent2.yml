@@ -20,7 +20,7 @@ services:
         dockerfile: Dockerfile
     image: simovilab/zabbix-agent2:ubuntu-7.4.3
     pull_policy: build
-    container_name: remote-zabbix-agent2
+    container_name: zabbix-agent2
     hostname: ${REMOTE_AGENT_HOSTNAME}
     restart: unless-stopped
     #privileged: true              Se está probando 8/10/2026 si se cae se descomenta

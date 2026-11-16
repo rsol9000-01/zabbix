@@ -7,45 +7,55 @@
 ![Static Badge](https://img.shields.io/badge/agent-Zabbix_Agent_2-white?logo=zabbix)
 ![Static Badge](https://img.shields.io/badge/probes-Python-white?logo=python)
 ![Static Badge](https://img.shields.io/badge/infrastructure-Docker-white?logo=docker)
+![Static Badge](https://img.shields.io/badge/proxy-Traefik-white?logo=traefikproxy)
 
 Despliegue con Docker Compose del monitoreo de [databus](https://github.com/simovilab/databus) e [infobus](https://github.com/simovilab/infobus). El repositorio trae dos modos:
 
-- **Servidor (`server`):** Zabbix Server, PostgreSQL, interfaz web, un agente local, el contenedor `zabbix-init`, que deja Zabbix configurado por API, y el bucle **MACDT**, que ajusta el umbral de latencia de infobus según la carga del transporte.
-- **Agente (`agent`):** un Zabbix Agent 2 en cada servidor de aplicación. Se autorregistra en el servidor con su rol (`databus` o `infobus`), se cifra con PSK y corre las sondas de dominio (GTFS, GTFS-RT y la API de infobus).
+- **Servidor (`server`):** Zabbix Server, PostgreSQL, interfaz web, un agente local, el contenedor `zabbix-init`, que deja Zabbix configurado por API, y el bucle **MACDT**, que ajusta el umbral de latencia de infobus según la carga del transporte. Corre en el servidor de gestión (**srv-gestion**), y la interfaz web se publica **solo a través de Traefik**, que corre en el mismo servidor.
+- **Agente (`agent`):** un Zabbix Agent 2 en cada servidor de aplicación (srv-databus y srv-infobus). Se autorregistra en el servidor con su rol (`databus` o `infobus`), se cifra con PSK y corre las sondas de dominio (GTFS, GTFS-RT y la API de infobus).
 
-<img width="80%" alt="Arquitectura de Zabbix en Docker" src="./diagramas/zabbix-docker.png" />
+> **Nombres de los servidores.** srv-gestion es el servidor que antes se llamaba R4, srv-databus era R3 y srv-infobus era R2. Algunos documentos, diagramas y nombres de ítems de Zabbix (por ejemplo *Red: RTT de R4 a R2*) todavía usan R2, R3 y R4.
+
+<img width="80%" alt="Arquitectura de Zabbix en Docker" src="./diagramas/zabbix-docker.svg" />
 
 ## Arquitectura
 
 | Servicio | Dónde | Función | Tecnología |
 | --- | --- | --- | --- |
-| **zabbix-postgres-bd** | Servidor | Base de datos de Zabbix | PostgreSQL 17.6 |
-| **zabbix-server-pgsql** | Servidor | Recibe los datos de los agentes (10051/tcp) y evalúa las alertas | Zabbix Server 7.4.3 |
-| **zabbix-dashboard** | Servidor | Interfaz web y API JSON-RPC | Zabbix Web (nginx) 7.4.3 |
-| **zabbix-agent2** | Servidor | Agente local: sistema operativo y sonda externa de infobus | Zabbix Agent 2 7.4.3 + Python |
-| **zabbix-init** | Servidor | Configuración inicial por API. Corre una vez y termina | alpine/curl + bash + jq |
-| **macdt-loop** | Servidor | Bucle MACDT: calcula T_warn cada minuto y lo escribe como macro | Python 3.12 |
+| **Traefik** *(no está en este repositorio)* | srv-gestion | Proxy inverso: certificado TLS y enrutamiento por dominio hacia las interfaces web de Zabbix y Wazuh | Traefik |
+| **zabbix-postgres-bd** | srv-gestion | Base de datos de Zabbix | PostgreSQL 17.6 |
+| **zabbix-server-pgsql** | srv-gestion | Recibe los datos de los agentes (10051/tcp) y evalúa las alertas | Zabbix Server 7.4.3 |
+| **zabbix-dashboard** | srv-gestion | Interfaz web y API JSON-RPC, accesible a través de Traefik | Zabbix Web (nginx) 7.4.3 |
+| **zabbix-agent2** | srv-gestion | Agente local: sistema operativo y sonda externa de infobus | Zabbix Agent 2 7.4.3 + Python |
+| **zabbix-init** | srv-gestion | Configuración inicial por API. Corre una vez y termina | alpine/curl + bash + jq |
+| **macdt-loop** | srv-gestion | Bucle MACDT: calcula T_warn cada minuto y lo escribe como macro | Python 3.12 |
 | **remote-zabbix-agent2** | Cada servidor de aplicación | Sistema operativo, contenedores y sondas de dominio | Zabbix Agent 2 7.4.3 + Python |
 
 ```mermaid
 flowchart LR
-  subgraph R4["R4 · servidor de monitoreo"]
-    WEB["zabbix-dashboard<br/>web y API :8080 / :8443"]
-    SRV["zabbix-server-pgsql<br/>:10051"]
-    DB[("zabbix-postgres-bd")]
-    AG4["zabbix-agent2 (local)"]
-    LOOP["macdt-loop"]
-    INIT["zabbix-init<br/>(una sola vez)"]
+  ADM(["Navegador del<br/>administrador"])
+  subgraph GES["srv-gestion · servidor de gestión"]
+    TRF4["Traefik<br/>:443 · websecure"]
+    subgraph NET["red gestion_network"]
+      WEB["zabbix-dashboard<br/>web y API :8080"]
+      SRV["zabbix-server-pgsql<br/>:10051"]
+      DB[("zabbix-postgres-bd")]
+      AG4["zabbix-agent2 (local)"]
+      LOOP["macdt-loop"]
+      INIT["zabbix-init<br/>(una sola vez)"]
+    end
   end
-  subgraph R3["R3 · databus"]
+  subgraph DBS["srv-databus"]
     AG3["remote-zabbix-agent2<br/>red databus_internal"]
     DBUS["databus<br/>orchestrator :8000"]
   end
-  subgraph R2["R2 · infobus"]
+  subgraph IBS["srv-infobus"]
     AG2["remote-zabbix-agent2<br/>red infobus_internal"]
     IBUS["infobus<br/>orchestrator :8000"]
     TRF["Traefik :443"]
   end
+  ADM -- "HTTPS · ZBX_WEB_HOST" --> TRF4
+  TRF4 -- "red traefik_proxy<br/>HTTP :8080" --> WEB
   AG3 -- "10051/tcp · PSK" --> SRV
   AG2 -- "10051/tcp · PSK" --> SRV
   AG4 --> SRV
@@ -73,20 +83,33 @@ flowchart LR
 
 | Sonda (clave) | Script | Agente | Qué mide |
 | --- | --- | --- | --- |
-| `gtfs.probe[{$MACDT.STALE_S}]` | `gtfsrt_probe.py` | databus (R3) | Feeds GTFS-RT: viajes y vehículos activos, cobertura GPS, frescura y completitud |
-| `macdt.window` | `gtfs_window.py` | databus (R3) | Horario del GTFS de la fuente: ventana de operación, viajes programados y V_trips_max |
-| `databus.static` | `gtfs_window.py` | databus (R3) | GTFS estático que publica databus y su antigüedad |
-| `infobus.api` | `infobus_probe.py` | infobus (R2) | Latencia interna de `next-trips` (sin Traefik), N(t) y costo de la consulta |
-| `infobus.api.ext` | `infobus_probe.py` | servidor (R4) | Latencia externa de `next-trips` (red + TLS + Traefik) |
+| `gtfs.probe[{$MACDT.STALE_S}]` | `gtfsrt_probe.py` | srv-databus | Feeds GTFS-RT: viajes y vehículos activos, cobertura GPS, frescura y completitud |
+| `macdt.window` | `gtfs_window.py` | srv-databus | Horario del GTFS de la fuente: ventana de operación, viajes programados y V_trips_max |
+| `databus.static` | `gtfs_window.py` | srv-databus | GTFS estático que publica databus y su antigüedad |
+| `infobus.api` | `infobus_probe.py` | srv-infobus | Latencia interna de `next-trips` (sin Traefik), N(t) y costo de la consulta |
+| `infobus.api.ext` | `infobus_probe.py` | srv-gestion | Latencia externa de `next-trips` (red + TLS + Traefik) |
 | `host.tcp.established` | `zabbix-host-tcp-established.sh` | todos | Conexiones TCP establecidas del host |
 
 Las líneas `UserParameter` están en [`agent2/zabbix_agent2.conf`](agent2/zabbix_agent2.conf).
 
+### Redes y acceso web
+
+El stack del servidor usa dos redes de Docker. Las dos son **externas**: Compose no las crea, así que `zabbix-dev.sh` las revisa y crea las que falten antes de levantar el stack.
+
+| Red | Nombre | Quién se une | Para qué sirve |
+| --- | --- | --- | --- |
+| Gestión | `gestion_network` (fijo) | Todos los servicios del servidor | Tráfico interno entre los servicios de Zabbix. El stack de Wazuh del mismo servidor también la usa |
+| Proxy | `ZBX_TRAEFIK_NETWORK` del `.env` (hoy `traefik_proxy`) | Solo `zabbix-dashboard` | Permite que Traefik llegue a la interfaz. Tiene que ser la misma red que usa Traefik |
+
+La interfaz no publica ningún puerto en el host. Traefik lee las etiquetas (labels) de Docker de `zabbix-dashboard` y enruta `https://ZBX_WEB_HOST` hacia `zabbix-dashboard:8080` (HTTP dentro de la red; el TLS termina en Traefik). Los contenedores del stack siguen usando la dirección interna `http://zabbix-dashboard:8080/api_jsonrpc.php` (`API_URL`).
+
+Los agentes remotos no usan ninguna de las dos redes: se unen a la red de la aplicación (`AGENT_DOCKER_NETWORK`) y envían sus datos al `10051/tcp`, que `zabbix-server-pgsql` publica en el host.
+
 ## Servidor
 
-El servidor va en la máquina de monitoreo (R4). Levanta todo el stack con [`docker-compose.yml`](docker-compose.yml) y deja Zabbix configurado sin pasos manuales en la interfaz.
+El servidor va en srv-gestion, junto al servidor de Wazuh y a Traefik. Levanta todo el stack con [`docker-compose.yml`](docker-compose.yml) y deja Zabbix configurado sin pasos manuales en la interfaz.
 
-### Quick start
+### Inicio rápido
 
 ```bash
 git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
@@ -95,24 +118,30 @@ cp .env.example .env     # cambiar contraseñas, usuario web y nombres (ver abaj
 sudo ./scripts/zabbix-dev.sh server 'MiSemilla.2026'
 ```
 
-Al terminar, la interfaz queda en `http://<servidor>:8080`, con el usuario `API_WEB_USER` y la contraseña `API_WEB_PASS` del `.env`.
+Al terminar, la interfaz queda en `https://<ZBX_WEB_HOST>` (por ejemplo `https://simovilab-zabbix.siua.ac.cr`), con el usuario `API_WEB_USER` y la contraseña `API_WEB_PASS` del `.env`.
+
+Cada script tiene dos versiones con la misma lógica: `<nombre>.sh` (o `.py`), con comentarios y mensajes en inglés, y `<nombre>-es.sh` (o `-es.py`), en español. Se puede usar cualquiera de las dos.
 
 > La semilla **es obligatoria** y tiene que ser **la misma** en el servidor y en todos los agentes: de ella sale la clave PSK. Usar una propia, no la del ejemplo. Ver [Semilla y PSK](#semilla-y-psk).
 
-### How to
+### Paso a paso
 
 #### 1. Requisitos
 
 - Linux con Docker Engine y el plugin Docker Compose v2. El grupo `docker` tiene que existir.
 - `python3`, que el script usa para derivar la PSK desde la semilla. `curl` y `openssl` también hacen falta, pero el script los instala con `apt-get` si no están.
 - Ejecutar el script como **root** (`sudo`): ajusta dueños y permisos de archivos del repositorio.
+- **Traefik corriendo en el mismo servidor**, conectado a la red definida en `ZBX_TRAEFIK_NETWORK`, con:
+  - Una entrada HTTPS llamada `websecure`.
+  - Un resolver de certificados (`CERT_RESOLVER`, `letsencrypt` por defecto) o un certificado ya cargado para `ZBX_WEB_HOST`.
+  - El file provider activado, con los middlewares `security-headers` y `compression`.
+- Un registro DNS para `ZBX_WEB_HOST` que apunte a srv-gestion.
 - Puertos abiertos en el firewall del servidor:
 
-| Puerto | Uso |
-| --- | --- |
-| `10051/tcp` | Datos de los agentes (checks activos) y trappers del bucle MACDT |
-| `PORT_HTTP` (8080) | Interfaz web y API |
-| `PORT_HTTPS` (8443) | Interfaz web con HTTPS. Necesita certificados en el volumen `zabbix_certificados`; el script no los genera |
+| Puerto | Uso | Abierto para |
+| --- | --- | --- |
+| `443/tcp` | Interfaz web y API, a través de Traefik | Red de administración |
+| `10051/tcp` | Datos de los agentes (checks activos) y trappers del bucle MACDT | Agentes |
 
 #### 2. Configurar el `.env`
 
@@ -127,9 +156,13 @@ Copiar `.env.example` a `.env`. El archivo `.env` está en `.gitignore`: no subi
 | `MACDT_HOST_DATABUS`, `MACDT_HOST_INFOBUS` | `Databus-host`, `Infobus-host` | Nombres de los hosts de los agentes. Deben ser iguales a `REMOTE_AGENT_HOSTNAME` de cada agente |
 | `MACDT_INTERVAL`, `MACDT_MAX_AGE` | `60`, `180` | Periodo del bucle MACDT y antigüedad máxima de los datos que acepta (s) |
 | `MACDT_CALIB_*` | ver `.env.example` | Calibración de T_base y β. Ver [Bucle MACDT y calibración](#bucle-macdt-y-calibración) |
-| `LOCAL_TEMPLATE_FILES`, `LOCAL_TEMPLATE_NAMES` | ver `.env.example` | Plantillas del host local (R4) |
+| `LOCAL_TEMPLATE_FILES`, `LOCAL_TEMPLATE_NAMES` | ver `.env.example` | Plantillas del host local (srv-gestion) |
 | `ROLE_DATABUS_TEMPLATE_*`, `ROLE_INFOBUS_TEMPLATE_*` | ver `.env.example` | Plantillas que recibe cada agente según su rol |
-| `PORT_HTTP`, `PORT_HTTPS` | `8080`, `8443` | Puertos publicados de la interfaz web |
+| `ZBX_TRAEFIK_NETWORK` | `traefik_proxy` | Red de Docker compartida con Traefik. Tiene que ser exactamente la red que usa Traefik |
+| `ZBX_WEB_HOST` | `simovilab-zabbix.siua.ac.cr` | Dominio que Traefik enruta hacia la interfaz |
+| `CERT_RESOLVER` | `letsencrypt` | Resolver de certificados de Traefik. Opcional: si no se define, se usa `letsencrypt` |
+| `ZBX_ALLOWED_IPS` | `10.20.0.0/16` | Redes que pueden abrir la interfaz, separadas por coma. Opcional: si no se define, se usa `10.20.0.0/16` |
+| `DASHBOARD_NAME` | `simovilab` | Nombre del dashboard global que arma `zabbix-init`. Opcional: si no se define, se usa `simovilab` |
 | `TZ`, `PHP_TZ` | `America/Costa_Rica` | Zona horaria de los contenedores y de la interfaz |
 
 Las listas de plantillas van **en el mismo orden**: archivos separados por coma y nombres por barra vertical. El nombre tiene que ser idéntico al campo `name:` del YAML. Un `-` en lugar del archivo indica una plantilla que ya existe en Zabbix (por ejemplo, `Docker by Zabbix agent 2`).
@@ -147,9 +180,10 @@ El script hace esto, en orden:
 2. Ajusta los permisos de `scripts/user_scripts/` y de `agent2/` (sudoers, `Dockerfile` y `zabbix_agent2.conf`).
 3. Agrega a `zabbix_agent2.conf` los `UserParameter` declarados en `.env` como `AGENT_PARAMS_<sufijo>=clave:script.sh`.
 4. Deriva la PSK desde la semilla y la guarda en `psk/zabbix_agentd.psk`.
-5. Levanta el stack con `docker compose up -d` y muestra el registro de `zabbix-init` hasta que termina.
+5. Revisa que existan las redes `gestion_network` y `ZBX_TRAEFIK_NETWORK`, y crea las que falten.
+6. Levanta el stack con `docker compose up -d` y muestra el registro de `zabbix-init` hasta que termina.
 
-Cuando `zabbix-init` termina sin errores, el script imprime `zabbix-init completed successfully` y arranca `macdt-loop`.
+Cuando `zabbix-init` termina sin errores, el script imprime el mensaje de éxito y arranca `macdt-loop`. Traefik detecta la interfaz solo cuando el contenedor arranca: no hay que reiniciar nada en Traefik.
 
 #### 4. Qué configura `zabbix-init`
 
@@ -162,6 +196,7 @@ Cuando `zabbix-init` termina sin errores, el script imprime `zabbix-init complet
 5. Crea o actualiza el host local `Zabbix-server`, le vincula las plantillas locales y borra el host predeterminado `Zabbix server`.
 6. Crea o actualiza una acción de autorregistro por rol (`Self-registration-simovilab-databus` y `-infobus`). Cada acción agrega el host al grupo, lo saca de *Discovered hosts* y le vincula las plantillas de su rol.
 7. Configura el autorregistro con cifrado PSK (identidad `ZBX_TLSPSKIDENTITY` y la clave derivada de la semilla).
+8. Crea o reconstruye el dashboard global `DASHBOARD_NAME` (`simovilab`): tarjetas de los hosts, pings, reloj y los problemas de `HOST_GROUP`. Este bloque es la fuente de verdad: los cambios que se le hagan a ese dashboard desde la web se pierden en la siguiente corrida. Los paneles de agentes que todavía no se registraron se omiten y se agregan en una corrida posterior.
 
 #### 5. Verificar
 
@@ -169,9 +204,24 @@ Cuando `zabbix-init` termina sin errores, el script imprime `zabbix-init complet
 docker compose -f docker-compose.yml ps        # todo en running/healthy; zabbix-init en exited (0)
 docker compose -f docker-compose.yml logs zabbix-init | tail -20
 docker logs --tail 5 macdt-loop                # una línea por minuto con N, T_base, ρ y T_warn
+
+# Acceso web a través de Traefik
+docker network inspect traefik_proxy --format '{{range .Containers}}{{.Name}} {{end}}'   # tiene que listar traefik y zabbix-dashboard
+docker logs traefik 2>&1 | grep -iE "zabbix|error" | tail -20                           # sin errores de router ni de middleware
+curl -s -o /dev/null -w '%{http_code}\n' --resolve simovilab-zabbix.siua.ac.cr:443:<IP de srv-gestion> https://simovilab-zabbix.siua.ac.cr/   # 200
 ```
 
 En la web: **Data collection → Hosts** muestra `Zabbix-server` con la etiqueta ZBX en verde. Los hosts de los agentes aparecen al desplegar cada uno (ver [Agente](#agente)).
+
+Si la interfaz no abre:
+
+| Síntoma | Causa probable |
+| --- | --- |
+| 404 de Traefik | `ZBX_WEB_HOST` no coincide con el dominio del navegador, o el router tiene un error en el log de Traefik (por ejemplo, un middleware que no existe) |
+| 502 o 504 Bad Gateway | `zabbix-dashboard` no está en la red de Traefik, o el puerto del servicio no es `8080` |
+| 403 Forbidden | Tu IP no está en `ZBX_ALLOWED_IPS` |
+| Advertencia de certificado | Traefik está sirviendo su certificado por defecto: revisar `CERT_RESOLVER` o el certificado del dominio |
+| Gráficos o botones que no funcionan | El middleware `security-headers` envía una Content-Security-Policy demasiado estricta para la interfaz de Zabbix |
 
 #### Bucle MACDT y calibración
 
@@ -233,9 +283,9 @@ docker compose -f docker-compose.yml down
 
 ## Agente
 
-El agente va en cada servidor de aplicación: R3 con databus y R2 con infobus. Se levanta con [`agent2/docker-compose-agent2.yml`](agent2/docker-compose-agent2.yml), se une a la red Docker de la aplicación para llegar a `orchestrator` por nombre y se registra solo en el servidor.
+El agente va en cada servidor de aplicación: srv-databus y srv-infobus. Se levanta con [`agent2/docker-compose-agent2.yml`](agent2/docker-compose-agent2.yml), se une a la red Docker de la aplicación para llegar a `orchestrator` por nombre y se registra solo en el servidor. No usa la red `gestion_network` ni la de Traefik de srv-gestion.
 
-### Quick start
+### Inicio rápido
 
 ```bash
 git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
@@ -246,7 +296,7 @@ sudo ./scripts/zabbix-dev.sh agent 'MiSemilla.2026'   # la MISMA semilla del ser
 
 En un par de minutos el host aparece en **Data collection → Hosts**, con las plantillas de su rol y cifrado PSK.
 
-### How to
+### Paso a paso
 
 #### 1. Requisitos
 
@@ -266,13 +316,13 @@ docker inspect $(docker ps -qf name=orchestrator) --format '{{json .NetworkSetti
 
 En modo agente solo hay que completar el primer bloque del `.env`. El resto se deja como viene en `.env.example`.
 
-| Variable | databus (R3) | infobus (R2) | Qué es |
+| Variable | srv-databus | srv-infobus | Qué es |
 | --- | --- | --- | --- |
-| `AGENT_FQDN` | `databus.example.com` | `infobus.example.com` | Nombre DNS del host del agente |
+| `AGENT_FQDN` | `databus.siua.ac.cr` | `infobus.example.com` | Nombre DNS del host del agente |
 | `REMOTE_AGENT_HOSTNAME` | `Databus-host` | `Infobus-host` | Nombre del host en Zabbix. Tiene que ser igual a `MACDT_HOST_DATABUS` o `MACDT_HOST_INFOBUS` del servidor |
 | `AGENT_DOCKER_NETWORK` | `databus_internal` | `infobus_internal` | Red Docker de la aplicación a la que se une el agente |
 | `AGENT_PGPASSWORD` | *(propia)* | *(propia)* | Contraseña de PostgreSQL para `psql` dentro del agente. Solo la usa el ítem `pgsql.bloat.detail`, hoy comentado en `zabbix_agent2.conf` |
-| `SERVER_FQDN` | `zabbix.example.com` | `zabbix.example.com` | Nombre o IP del servidor Zabbix |
+| `SERVER_FQDN` | `srv-gestion.siua.ac.cr` | `srv-gestion.siua.ac.cr` | Nombre o IP del servidor donde corre `zabbix-server-pgsql` |
 | `ZBX_METADATA` | `docker-autoreg databus` | `docker-autoreg infobus` | Metadatos del autorregistro. El rol decide qué plantillas recibe el host |
 
 `ZBX_TLSPSKIDENTITY` tiene que ser igual a la del servidor. Ya viene así en `.env.example`.
@@ -303,8 +353,8 @@ docker compose -f agent2/docker-compose-agent2.yml --env-file .env restart
 
 ```mermaid
 sequenceDiagram
-  participant A as Agente (R2 o R3)
-  participant S as Servidor Zabbix (R4)
+  participant A as Agente (srv-databus o srv-infobus)
+  participant S as Servidor Zabbix (srv-gestion)
   A->>S: Check activo por 10051/tcp con PSK y metadatos "docker-autoreg databus"
   S->>S: La acción Self-registration-simovilab-databus coincide con los metadatos
   S->>A: Crea el host, lo agrega al grupo y le vincula las plantillas del rol
@@ -320,12 +370,54 @@ Las direcciones que consultan las sondas están en [`agent2/zabbix_agent2.conf`]
 | `gtfs.probe[*]` | `--base` | Ruta del feed GTFS-RT de databus dentro de la red (`http://orchestrator:8000/feed/realtime`) |
 | `macdt.window` | `--url` | GTFS estático de la fuente oficial del horario |
 | `databus.static` | `--url` | GTFS estático que publica databus (`http://orchestrator:8000/feed/schedule/feed.zip`) |
-| `infobus.api` | `--base`, `--host-header`, `--transit-system` | Orchestrator de infobus dentro de la red, un valor de su `ALLOWED_HOSTS` y el id del `TransitSystem` |
+| `infobus.api` | `--base`, `--host-header`, `--transit-system` | Orchestrator de infobus dentro de la red, un valor de su `ALLOWED_HOSTS` y el id del `TransitSystem` (ver el [paso 6](#6-solo-srv-infobus-revisar-el-id-del-transitsystem-de-infobus)) |
 | `infobus.api.ext` | `--base` | URL pública de infobus, detrás de Traefik |
 
 Los scripts se montan en modo solo lectura desde `scripts/user_scripts/`, y el agente los lee en cada ejecución: si se cambia un script, no hay que reiniciar nada. Si se cambia `zabbix_agent2.conf`, reiniciar el agente.
 
-#### 6. Verificar
+#### 6. Solo srv-infobus: revisar el id del `TransitSystem` de InfoBus
+
+Las sondas `infobus.api` e `infobus.api.ext` consultan el endpoint `next-trips` de InfoBus con `--transit-system 1`. InfoBus exige ese parámetro, y tiene que ser el **id en la base de datos** del sistema de transporte bUCR. InfoBus asigna ese id cuando se crea el sistema, así que puede cambiar si InfoBus se reinstala o se vuelven a cargar sus datos. Si el valor no coincide, las sondas reportan estado `500` y los ítems de infobus se quedan sin datos.
+
+Después de desplegar el agente, revisar el id en **srv-infobus**:
+
+```bash
+docker exec $(docker ps --format '{{.Names}}' | grep -i orchestrator | head -1) \
+  uv run python manage.py shell -c "from feed.models import TransitSystem; print(list(TransitSystem.objects.values('id','code')))"
+```
+
+Salida esperada:
+
+```
+[{'id': 1, 'code': 'bUCR'}]
+```
+
+- **El id es `1`:** no hay que hacer nada.
+- **El id es otro número:** cambiar `--transit-system` en `agent2/zabbix_agent2.conf` en **dos lugares**, porque cada sonda corre en un servidor distinto:
+
+| Servidor | Línea de `agent2/zabbix_agent2.conf` | Después reiniciar |
+| --- | --- | --- |
+| srv-infobus | `UserParameter=infobus.api,...` | `docker compose -f agent2/docker-compose-agent2.yml --env-file .env restart` |
+| srv-gestion | `UserParameter=infobus.api.ext,...` | `docker compose restart zabbix-agent2` |
+
+En cada servidor, desde la carpeta del repositorio (`/home/zabbix`), reemplazar `<id>` por el número obtenido:
+
+```bash
+TS=<id>
+sed -i -E "s/(--transit-system )[0-9]+/\1${TS}/" agent2/zabbix_agent2.conf
+grep -n -- '--transit-system' agent2/zabbix_agent2.conf    # las dos líneas tienen que mostrar el id nuevo
+```
+
+La sonda toma el cambio en su siguiente ciclo (un minuto) después de reiniciar el agente.
+
+> Si el id es correcto y la sonda sigue reportando `500`, el problema está dentro de InfoBus, no en el agente. InfoBus está en desarrollo; por ejemplo, después de importar un GTFS nuevo la misma parada puede quedar dos veces y `next-trips` falla para cualquier cliente. Hay que reportarlo al equipo de InfoBus. Este comando muestra si la parada de la sonda está duplicada (más de 1 significa duplicada):
+>
+> ```bash
+> docker exec $(docker ps --format '{{.Names}}' | grep -i orchestrator | head -1) \
+>   uv run python manage.py shell -c "from feed.models import Stop; print(Stop.objects.filter(stop_id='bUCR_0_01').count())"
+> ```
+
+#### 7. Verificar
 
 ```bash
 docker compose -f agent2/docker-compose-agent2.yml --env-file .env ps
@@ -383,9 +475,9 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 | Plantilla | Se aplica a | Ítems |
 | --- | --- | --- |
 | `simovilab servidor y sistema operativo` | los 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 8 + 1 descubrimiento con 5 prototipos por contenedor |
-| `simovilab-databus` | Databus-host (R3) | 38 |
-| `simovilab-infobus` | Infobus-host (R2) | 30 |
-| `simovilab-infobus-ext` | Zabbix-server (R4) | 10 |
+| `simovilab-databus` | Databus-host (srv-databus) | 38 |
+| `simovilab-infobus` | Infobus-host (srv-infobus) | 30 |
+| `simovilab-infobus-ext` | Zabbix-server (srv-gestion) | 10 |
 | `Docker by Zabbix agent 2` | los 3 hosts | Plantilla oficial de Zabbix, sin cambios |
 
 <details>
@@ -585,7 +677,7 @@ Para cambiar una macro sin perder el cambio en la siguiente importación de plan
 
 | Alerta | Plantilla | Se dispara cuando |
 | --- | --- | --- |
-| Server DOWN!!! | `simovilab servidor y sistema operativo` | 3 pings seguidos (unos 30 s) sin respuesta desde R4. "Capa D: sonda sin datos" depende de esta alerta. |
+| Server DOWN!!! | `simovilab servidor y sistema operativo` | 3 pings seguidos (unos 30 s) sin respuesta desde srv-gestion. "Capa D: sonda sin datos" depende de esta alerta. |
 | GTFS estático vencido | `simovilab-databus` | El calendario del GTFS ya no tiene días vigentes. |
 | Sin viajes activos sostenido | `simovilab-databus` | En horario de servicio y con viajes programados, 10 min sin ningún viaje en el feed. |
 
@@ -668,16 +760,19 @@ Para cambiar una macro sin perder el cambio en la siguiente importación de plan
 - **Credenciales:** van solo en `.env`, `agent2/simovilab-plugins.conf` y `psk/`, que están en `.gitignore`. Antes de desplegar, cambiar todos los valores de ejemplo.
 - **Socket de Docker:** los agentes lo montan en modo solo lectura para descubrir contenedores. Eso da mucho acceso al host, así que los agentes se despliegan solo en servidores de confianza y ese acceso se vigila con Wazuh.
 - **Usuario de PostgreSQL:** usar uno de solo lectura con `pg_monitor`, no `postgres`.
-- **Firewall:** abrir solo `10051/tcp` y los puertos web en el servidor, y `10050/tcp` en los agentes solo si se usan checks pasivos.
+- **Interfaz web:** solo se llega a ella a través de Traefik, con certificado válido y lista de IP permitidas (`ZBX_ALLOWED_IPS`). `zabbix-dashboard` no publica ningún puerto en el host.
+- **Firewall:** en el servidor, abrir solo `10051/tcp` para los agentes y `443/tcp` para la red de administración; en los agentes, `10050/tcp` solo si se usan checks pasivos.
 - **Versiones fijas:** las imágenes de Zabbix están fijadas en `7.4.3` y PostgreSQL en `17.6`. Cambiarlas solo a propósito y probarlas antes.
 
 ## Documentación
 
-- [`docker-compose.yml`](docker-compose.yml): stack del servidor.
+- [`docker-compose.yml`](docker-compose.yml): stack del servidor y etiquetas de Traefik de la interfaz.
 - [`agent2/docker-compose-agent2.yml`](agent2/docker-compose-agent2.yml): agente remoto.
 - [`agent2/zabbix_agent2.conf`](agent2/zabbix_agent2.conf): `UserParameter` de las sondas.
-- [`scripts/zabbix-dev.sh`](scripts/zabbix-dev.sh): despliegue de servidor y agente.
-- [`scripts/zabbix-conf-en.sh`](scripts/zabbix-conf-en.sh): configuración inicial que corre `zabbix-init`.
-- [`scripts/user_scripts/`](scripts/user_scripts/): sondas y bucle MACDT.
+- [`scripts/zabbix-dev-es.sh`](scripts/zabbix-dev-es.sh) · [`en`](scripts/zabbix-dev.sh): despliegue de servidor y agente, incluida la revisión de redes.
+- [`scripts/zabbix-conf-en-es.sh`](scripts/zabbix-conf-en-es.sh) · [`en`](scripts/zabbix-conf-en.sh): configuración inicial que corre `zabbix-init`.
+- [`scripts/user_scripts/`](scripts/user_scripts/): sondas y bucle MACDT, cada uno en inglés y en español (`-es`).
 - [`templates/`](templates/): plantillas de Zabbix.
-- [`diagramas/`](diagramas/): diagrama de la arquitectura en draw.io, SVG y PNG.
+- [`docs/`](docs/): documentación detallada de cada script.
+- [`FLUJO-DATOS.md`](FLUJO-DATOS.md) y [`Variables.md`](Variables.md): flujo de datos y referencia de variables.
+- [`diagramas/`](diagramas/): diagramas de la arquitectura en SVG.
