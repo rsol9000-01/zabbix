@@ -347,7 +347,23 @@ def calcular_umbral(t_base, beta, rho, factor, t_floor, t_rnf):
     crudo = t_base * (1.0 + beta * rho) * factor
     return round(max(t_floor, min(crudo, t_rnf)), 1), round(crudo, 1)
 
-
+# ---------------------------------------------------------------------------
+# Armar la ecuación de T_warn con los valores del ciclo (para el dashboard)
+# ---------------------------------------------------------------------------
+def texto_ecuacion(b, m_, delta, n_t, t_base, beta, rho, factor, t_floor, t_rnf, crudo, t_warn):
+    """Sin N(t) fresco, T_base es la semilla y se muestra como un solo número."""
+    if n_t is None:
+        base = f"{t_base:g}"
+        nota = " (sin N(t): T_base = semilla)"
+    else:
+        base = f"({b:g} + {m_:g}·{n_t:g} + {delta:g})"
+        nota = ""
+    eq = (f"T_warn = clamp({base}·(1 + {beta:g}·{rho:.2f})·{factor:g}, {t_floor:g}, {t_rnf:g})"
+          f" = {t_warn:g} ms")
+    if crudo != t_warn:
+        eq += f" (sin limitar: {crudo:g})"
+    return eq + nota
+    
 # ---------------------------------------------------------------------------
 # Create or update a host macro with the calculated threshold
 # ---------------------------------------------------------------------------
@@ -711,8 +727,11 @@ def ciclo(z, dry_run=False):
     enviar_trapper(z, HOST_INFOBUS, "macdt.status", 1)
     enviar_trapper(z, HOST_INFOBUS, "macdt.t_warn", t_warn)
     enviar_trapper(z, HOST_INFOBUS, "macdt.t_base", round(t_base, 1))
+    ecuacion = texto_ecuacion(m["{$MACDT.B}"], m["{$MACDT.M}"], m["{$MACDT.DELTA}"], n_t, t_base,
+                              m["{$MACDT.BETA}"], rho, factor, m["{$MACDT.T_FLOOR}"],
+                              m["{$MACDT.T_RNF}"], crudo, t_warn)
+    enviar_trapper(z, HOST_INFOBUS, "macdt.t_warn.eq", ecuacion)
     registrar(reg)
-
     log(f"N={n_t} T_base={t_base:.1f} rho={rho:.2f} v_gps={v_gps} F={factor} -> T_warn={t_warn} ms ({accion})")
     return reg
 

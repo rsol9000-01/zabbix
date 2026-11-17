@@ -15,6 +15,8 @@ volumes:
 networks:
   gestion_network:
     external: true
+  #zabbix_zabbix_network:
+  #  external: true
   traefik_proxy:                       
     name: ${ZBX_TRAEFIK_NETWORK}         
     external: true
@@ -203,6 +205,7 @@ services:
     restart: unless-stopped
     networks:
       - gestion_network
+    # - zabbix_zabbix_network
     environment:
       ZBX_API_URL: ${API_URL}
       ZBX_API_USER: ${API_WEB_USER}

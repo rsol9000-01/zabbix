@@ -635,7 +635,7 @@ zabbix_export:
                       name: value_size
                       value: '35'
                 - type: itemhistory
-                  name: 'Ecuación de T_warn (último ciclo)'
+                  name: 'T_warn = clamp((b + m·N(t) + δ)·(1 + β·ρ)·F_crit,  {T_FLOOR, T_RNF})'
                   'y': '7'
                   width: '24'
                   height: '3'

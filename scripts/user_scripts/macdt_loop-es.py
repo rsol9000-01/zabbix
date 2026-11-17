@@ -714,6 +714,13 @@ def ciclo(z, dry_run=False):
     enviar_trapper(z, HOST_INFOBUS, "macdt.status", 1)
     enviar_trapper(z, HOST_INFOBUS, "macdt.t_warn", t_warn)
     enviar_trapper(z, HOST_INFOBUS, "macdt.t_base", round(t_base, 1))
+    beta, piso, techo = m["{$MACDT.BETA}"], m["{$MACDT.T_FLOOR}"], m["{$MACDT.T_RNF}"]
+    eq = (f"T_warn = clamp({t_base:.1f} × (1 + {beta:g}·{rho:.2f}) × {factor:g}, "
+          f"{piso:g}, {techo:g}) = {t_warn} ms")
+    if n_t is not None:
+        b, mm, d = m["{$MACDT.B}"], m["{$MACDT.M}"], m["{$MACDT.DELTA}"]
+        eq += f"  ·  T_base = {b:g} + {mm:g}·{n_t:g} + {d:g}"
+    enviar_trapper(z, HOST_INFOBUS, "macdt.t_warn.eq", eq)
     registrar(reg)
 
     log(f"N={n_t} T_base={t_base:.1f} rho={rho:.2f} v_gps={v_gps} F={factor} -> T_warn={t_warn} ms ({accion})")
