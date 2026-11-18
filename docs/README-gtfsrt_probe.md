@@ -116,7 +116,7 @@ The output is one JSON line. `"fetch_ok": 1` means both feeds were downloaded an
 | `v_gps_pct` | `gtfs.v_gps_pct` | % of vehicles with a fresh position (V_gps). `null` with no vehicles |
 | `v_gps_frescos`, `v_gps_viejos`, `v_gps_sin_ts` | `gtfs.v_gps_frescos`, `gtfs.v_gps_viejos`, `gtfs.v_gps_sin_ts` | Vehicles by state |
 | `v_trips_sin_paradas` | `gtfs.v_trips_sin_paradas` | Published trips with no stops ahead |
-| `ts_igual_header_pct` | `gtfs.ts_igual_header_pct` | % of vehicles whose time equals the header time (±1 s): possible filler by databus |
+| `ts_igual_header_pct` | `gtfs.ts_igual_header_pct` | % of vehicles whose time is equal to or later than the header time: possible filler by databus |
 | `v_completeness_vp_pct` | `gtfs.completeness_vp_pct` | % of positions with trip, latitude, longitude and timestamp |
 | `v_completeness_tu_pct` | `gtfs.completeness_tu_pct` | % of trip updates with trip and at least one stop |
 | `vehiculos` | — | List per vehicle: id, trip, timestamp, age, state, position, time source and stops ahead |

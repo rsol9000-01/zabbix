@@ -1,0 +1,10 @@
+[Unit]
+Description=simovilab: run simovilab-host-stats every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

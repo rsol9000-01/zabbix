@@ -167,20 +167,24 @@ zabbix_export:
               expression: 'min(/simovilab-databus/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.WARN}'
               name: 'Feed GTFS-RT atrasado'
               priority: WARNING
-              description: 'Depende de los dos primeros'
+              description: 'Depende de las dos alertas de Capa D y de Feed GTFS-RT muy atrasado: si ya está activa la Alta, esta Advertencia no se abre.'
               dependencies:
                 - name: 'Capa D: feed GTFS-RT no alcanzable'
                   expression: last(/simovilab-databus/gtfs.fetch_ok)=0
                 - name: 'Capa D: sonda sin datos'
                   expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
+                - name: 'Feed GTFS-RT muy atrasado'
+                  expression: 'min(/simovilab-databus/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.CRIT}'
             - uuid: 61525e6b5b024f529e155002e5bdaf0f
               expression: 'min(/simovilab-databus/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.CRIT}'
               name: 'Feed GTFS-RT muy atrasado'
               priority: HIGH
-              description: 'Depende del anterior'
+              description: 'Depende de las dos alertas de Capa D.'
               dependencies:
-                - name: 'Feed GTFS-RT atrasado'
-                  expression: 'min(/simovilab-databus/gtfs.feed_age_tu_s,3m)>{$MACDT.V_AGE.WARN}'
+                - name: 'Capa D: feed GTFS-RT no alcanzable'
+                  expression: last(/simovilab-databus/gtfs.fetch_ok)=0
+                - name: 'Capa D: sonda sin datos'
+                  expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
         - uuid: 477b4b369f6548ac87bfa2f27c363bb4
           name: 'V_age del publicador de posiciones'
           type: DEPENDENT
@@ -1180,13 +1184,17 @@ zabbix_export:
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
+        - name: 'Cobertura GPS crítica'
+          expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.CRIT}'
     - uuid: c507ce1b741b49db9e3dc7c1be0917a5
       expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.CRIT}'
       name: 'Cobertura GPS crítica'
       priority: HIGH
       dependencies:
-        - name: 'Cobertura GPS baja'
-          expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/gtfs.v_gps_pct,5m)<{$MACDT.V_GPS.WARN}'
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-databus/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: c5d6bd8445e64a4b8265a39775f4d25b
       expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/gtfs.completeness_tu_pct,5m)<{$MACDT.COMPL.WARN}'
       name: 'Completitud de predicciones baja'
@@ -1197,7 +1205,7 @@ zabbix_export:
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: abdaec51aaf5480e8f43d9a54715f9ad
-      expression: 'last(/simovilab-databus/macdt.gate)=1 and last(/simovilab-databus/macdt.s_t)>=2 and (min(/simovilab-databus/macdt.s_t,5m)-max(/simovilab-databus/gtfs.v_trips,5m))>=last(/simovilab-databus/macdt.s_t)/2'
+      expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,5m)>=2 and (min(/simovilab-databus/macdt.s_t,5m)-max(/simovilab-databus/gtfs.v_trips,5m))>=min(/simovilab-databus/macdt.s_t,5m)/2'
       name: 'Déficit de viajes'
       priority: AVERAGE
       dependencies:
@@ -1215,7 +1223,7 @@ zabbix_export:
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: 2982be5f6b4044bb8514e2c5c9997e54
-      expression: 'last(/simovilab-databus/macdt.gate)=1 and last(/simovilab-databus/macdt.s_t)>=1 and max(/simovilab-databus/gtfs.v_trips,3m)=0'
+      expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,3m)>=1 and max(/simovilab-databus/gtfs.v_trips,3m)=0'
       name: 'Sin viajes activos'
       priority: WARNING
       dependencies:
@@ -1223,13 +1231,17 @@ zabbix_export:
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
+        - name: 'Sin viajes activos sostenido'
+          expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,10m)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
     - uuid: d2e66eb955194ef28b7c8bcf549da2a3
-      expression: 'last(/simovilab-databus/macdt.gate)=1 and last(/simovilab-databus/macdt.s_t)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
+      expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,10m)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
       name: 'Sin viajes activos sostenido'
       priority: DISASTER
       dependencies:
-        - name: 'Sin viajes activos'
-          expression: 'last(/simovilab-databus/macdt.gate)=1 and last(/simovilab-databus/macdt.s_t)>=1 and max(/simovilab-databus/gtfs.v_trips,3m)=0'
+        - name: 'Capa D: feed GTFS-RT no alcanzable'
+          expression: last(/simovilab-databus/gtfs.fetch_ok)=0
+        - name: 'Capa D: sonda sin datos'
+          expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: 2d1de297a66e437ba61981c7e79f0b60
       expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/gtfs.ts_igual_header_pct,10m)>{$MACDT.TSFILL.WARN}'
       name: 'Sospecha de relleno de timestamps'

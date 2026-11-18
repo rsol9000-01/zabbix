@@ -516,6 +516,36 @@ fi
 chmod 644 psk/zabbix_agentd.psk
 
 # ---------------------------------------------------------------------------
+# Install the timer that copies the server's memory and CPU to /hostfs
+# ---------------------------------------------------------------------------
+# The agent runs in Docker. Inside an LXC it reads the memory of its own
+# container and the CPU and load of the Proxmox host. Every minute the timer
+# writes the server's memory, CPU usage (cgroup) and pressure (PSI) to
+# /srv/zabbix-disco, so the template reads the same correct values on bare metal,
+# VM, cloud VM or LXC. Runs in server and agent mode: both deploy an agent.
+# ---------------------------------------------------------------------------
+HOST_STATS_DIR="$REPO_ROOT/scripts/host_stats"
+install -m 755 "$HOST_STATS_DIR/simovilab-host-stats.sh" /usr/local/sbin/simovilab-host-stats.sh
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  install -m 644 "$HOST_STATS_DIR/simovilab-host-stats.service" /etc/systemd/system/simovilab-host-stats.service
+  install -m 644 "$HOST_STATS_DIR/simovilab-host-stats.timer" /etc/systemd/system/simovilab-host-stats.timer
+  systemctl daemon-reload
+  systemctl enable --now simovilab-host-stats.timer >/dev/null
+  systemctl start simovilab-host-stats.service
+  if [ -s /srv/zabbix-disco/meminfo ]; then
+    echo "✅  Host stats timer installed: /srv/zabbix-disco/meminfo is updated every minute"
+  else
+    echo "❌  Error: simovilab-host-stats did not write /srv/zabbix-disco/meminfo"
+    echo "    Check: systemctl status simovilab-host-stats.service"
+    exit 1
+  fi
+else
+  echo -e "⚠️  ${YELLOW}systemd not found: the host stats timer was not installed.${NC}"
+  echo "    Add this line to root's crontab (crontab -e) so memory and CPU items get data:"
+  echo "    * * * * * /usr/local/sbin/simovilab-host-stats.sh /srv/zabbix-disco"
+fi
+
+# ---------------------------------------------------------------------------
 # Checking required networks before running Compose
 # ---------------------------------------------------------------------------
 if [ "$FLAG_SERVER" = "true" ]; then

@@ -14,6 +14,12 @@ Why report two ages instead of one (based on databus schedule_engine/builders.py
     vehicle omits it, databus substitutes the build time. A feed with no real
     telemetry can therefore appear fresh. ts_igual_header_pct is reported as a
     heuristic warning.
+  - Filler rule: databus writes the header time first and the filled vehicle time
+    afterwards, with separate calls to the same clock in whole seconds. A filled
+    time is therefore equal to the header or 1 s later, never earlier. Real
+    telemetry is always earlier or equal. A vehicle counts as filler when its time
+    is equal to or later than the header. The old rule (within 1 s on either side)
+    flagged real vehicles reporting every 2 s. Requires clocks synchronized by NTP.
 
 Why use --stale 60 instead of 90: databus considers vehicle telemetry valid for
 up to TELEMETRY_GRACE_S = 60 seconds (runs/domain/detection/thresholds.py). With
@@ -98,7 +104,7 @@ def _vehiculos(vp, ahora, stale_s, paradas=None):
         # -------------------------------------------------------------------
         if not v.timestamp:
             origen = None
-        elif vp.header.timestamp and abs(v.timestamp - vp.header.timestamp) <= 1:
+        elif vp.header.timestamp and v.timestamp >= vp.header.timestamp:
             origen = "posible_databus"
         else:
             origen = "bus"
@@ -219,7 +225,7 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
     # -----------------------------------------------------------------------
     paradas = {t.trip.trip_id: len(t.stop_time_update) for t in tus if t.trip.trip_id}
     lista = _vehiculos(vp, ahora, stale_s, paradas)
-    igual_header = sum(1 for v in veh if v.timestamp and abs(v.timestamp - vp.header.timestamp) <= 1)
+    igual_header = sum(1 for v in veh if v.timestamp and v.timestamp >= vp.header.timestamp)
 
     # -----------------------------------------------------------------------
     # Check the required fields in each position record

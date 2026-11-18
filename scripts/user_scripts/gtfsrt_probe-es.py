@@ -13,6 +13,13 @@ Por que dos edades y no una (hallazgo del codigo de databus, schedule_engine/bui
   - entity.vehicle.timestamp viene del ultimo dato de posicion; si el vehiculo no lo trae,
     databus lo reemplaza por la hora de construccion. Un feed sin telemetria real puede
     parecer fresco. Por eso se reporta ts_igual_header_pct como alarma heuristica.
+  - Regla del relleno: databus escribe primero la hora del encabezado y despues la
+    hora rellenada del vehiculo, con llamadas separadas al mismo reloj en segundos
+    enteros. Una hora rellenada es igual al encabezado o 1 s posterior, nunca anterior.
+    La telemetria real siempre es anterior o igual. Un vehiculo cuenta como relleno si
+    su hora es igual o posterior a la del encabezado. La regla anterior (1 s hacia
+    cualquier lado) marcaba buses reales que reportan cada 2 s. Requiere relojes
+    sincronizados por NTP.
 
 Por que --stale 60 y no 90: databus considera vigente la telemetria de un vehiculo
 hasta TELEMETRY_GRACE_S = 60 s (runs/domain/detection/thresholds.py). Con 90 s el
@@ -96,7 +103,7 @@ def _vehiculos(vp, ahora, stale_s, paradas=None):
         # -------------------------------------------------------------------
         if not v.timestamp:
             origen = None
-        elif vp.header.timestamp and abs(v.timestamp - vp.header.timestamp) <= 1:
+        elif vp.header.timestamp and v.timestamp >= vp.header.timestamp:
             origen = "posible_databus"
         else:
             origen = "bus"
@@ -217,7 +224,7 @@ def calcular(vp_bytes, tu_bytes, ahora, stale_s=60):
     # -----------------------------------------------------------------------
     paradas = {t.trip.trip_id: len(t.stop_time_update) for t in tus if t.trip.trip_id}
     lista = _vehiculos(vp, ahora, stale_s, paradas)
-    igual_header = sum(1 for v in veh if v.timestamp and abs(v.timestamp - vp.header.timestamp) <= 1)
+    igual_header = sum(1 for v in veh if v.timestamp and v.timestamp >= vp.header.timestamp)
 
     # -----------------------------------------------------------------------
     # Verificar los campos obligatorios de cada registro de posición

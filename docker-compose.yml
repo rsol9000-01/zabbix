@@ -15,8 +15,8 @@ volumes:
 networks:
   gestion_network:
     external: true
-  #zabbix_zabbix_network:
-  #  external: true
+  zabbix_zabbix_network:
+    external: true
   traefik_proxy:                       
     name: ${ZBX_TRAEFIK_NETWORK}         
     external: true
@@ -178,6 +178,7 @@ services:
   zabbix-init:
     networks:
       - gestion_network
+      - zabbix_zabbix_network
     image: alpine/curl:latest
     env_file: .env
     container_name: zabbix-init

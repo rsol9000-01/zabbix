@@ -1,0 +1,6 @@
+[Unit]
+Description=simovilab: copy memory, CPU and pressure data for the Zabbix agent
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/simovilab-host-stats.sh /srv/zabbix-disco
