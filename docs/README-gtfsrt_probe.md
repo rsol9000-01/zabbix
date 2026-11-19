@@ -1,7 +1,5 @@
 # `gtfsrt_probe.py` · databus GTFS-RT probe
 
-**English** · [Español](README-gtfsrt_probe.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-Python_3-white?logo=python)
 ![Static Badge](https://img.shields.io/badge/runs_in-Zabbix_Agent_2-white?logo=zabbix)
 ![Static Badge](https://img.shields.io/badge/feed-GTFS--Realtime-white)
@@ -14,7 +12,7 @@ MACDT Layer D probe. It downloads the two GTFS-RT feeds that databus publishes (
 | --- | --- |
 | **Location** | `scripts/user_scripts/gtfsrt_probe.py` |
 | **Runs on** | `zabbix-agent2` on the databus server (R3 in the old lab, srv-databus in the new one), inside the `databus_internal` network |
-| **Run by** | Zabbix Agent 2, `UserParameter=gtfs.probe[*]` in [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf) |
+| **Run by** | Zabbix Agent 2, `UserParameter=gtfs.probe[*]` in [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf) |
 | **Item key** | `gtfs.probe[{$MACDT.STALE_S}]` (template `simovilab-databus`) |
 | **Queries** | `<base>/vehicle_positions.pb` and `<base>/trip_updates.pb` |
 | **Dependencies** | `requests`, `gtfs-realtime-bindings` (installed in the agent image) |
@@ -49,11 +47,11 @@ flowchart LR
 #### 1. Prerequisites
 
 - The databus orchestrator reachable from the agent at the `--base` address.
-- `requests` and `gtfs-realtime-bindings`. The agent image ([`agent2/Dockerfile`](../../agent2/Dockerfile)) already installs them.
+- `requests` and `gtfs-realtime-bindings`. The agent image ([`agent2/Dockerfile`](../agent2/Dockerfile)) already installs them.
 
 #### 2. Set the address in the agent
 
-The line is in [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf):
+The line is in [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf):
 
 ```text
 UserParameter=gtfs.probe[*],/var/lib/zabbix/user_scripts/gtfsrt_probe.py --base http://orchestrator:8000/feed/realtime --stale $1
@@ -167,7 +165,7 @@ Requirement: the databus server and the GPS devices must keep their clocks synch
 
 ## Documentation
 
-- [`README.md`](../../README.md): full deployment guide, items and alerts.
-- [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf): `UserParameter` lines.
-- [`templates/simovilab-databus.yml`](../../templates/simovilab-databus.yml): master and dependent items.
-- [`gtfs_window.py`](gtfs_window.py): operating window probe. See [its README](README-gtfs_window.md).
+- [`README.md`](../README.md): full deployment guide, items and alerts.
+- [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf): `UserParameter` lines.
+- [`templates/simovilab-databus.yml`](../templates/simovilab-databus.yml): master and dependent items.
+- [`gtfs_window.py`](../scripts/user_scripts/gtfs_window.py): operating window probe. See [its README](README-gtfs_window.md).

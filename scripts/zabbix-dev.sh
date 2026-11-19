@@ -271,6 +271,42 @@ fi
 echo "✅  Docker Compose file found: $COMPOSE_FILE"
 
 # ---------------------------------------------------------------------------
+# Set the server time zone and check clock synchronization
+# ---------------------------------------------------------------------------
+# Containers take their time zone from TZ in .env. The server uses the same zone
+# so system logs, cron and the containers that mount /etc/localtime show the same
+# time. The time itself comes from the server clock, which must be synchronized
+# by NTP to match the remote agents. Server mode only: agent hosts are not ours.
+# ---------------------------------------------------------------------------
+if [ "$FLAG_SERVER" = "true" ]; then
+  HOST_TZ=$(grep '^TZ[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//' || true)
+  if [ -z "$HOST_TZ" ]; then
+    echo "❌  Error: TZ is not set in .env (example: TZ=America/Costa_Rica)"
+    exit 1
+  fi
+  if [ ! -e "/usr/share/zoneinfo/$HOST_TZ" ]; then
+    echo "❌  Error: invalid time zone in .env: TZ=$HOST_TZ"
+    exit 1
+  fi
+  if command -v timedatectl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    if [ "$(timedatectl show -p Timezone --value)" != "$HOST_TZ" ]; then
+      timedatectl set-timezone "$HOST_TZ"
+    fi
+    timedatectl set-ntp true 2>/dev/null || true
+  else
+    ln -sf "/usr/share/zoneinfo/$HOST_TZ" /etc/localtime
+  fi
+  echo "$HOST_TZ" > /etc/timezone
+  echo "✅  Server time zone: $HOST_TZ ($(date '+%Y-%m-%d %H:%M %Z'))"
+  if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
+    echo "✅  Server clock synchronized by NTP"
+  else
+    echo "⚠️  The server clock does not show as synchronized by NTP."
+    echo "    Check: timedatectl. Inside an LXC the clock is the Proxmox host's: synchronize it on the host."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Verify the server post-installation script configuration
 # ---------------------------------------------------------------------------
 if [ "$FLAG_SERVER" = "true" ]; then

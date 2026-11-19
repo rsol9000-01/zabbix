@@ -1,30 +1,68 @@
 # ==============================================================
-# PLUGINS SIMOVILAB PARA ZABBIX AGENT 2  (copia local, fuera de git)
+# CONFIGURACIÓN GLOBAL DE PLUGINS SIMOVILAB PARA ZABBIX AGENT 2
 # ==============================================================
-# Nombres de servicio de compose: database (PostgreSQL) y state (Redis).
+# ARCHIVO DE EJEMPLO. zabbix-dev.sh (modo agent) lo copia como
+# simovilab-plugins.conf si ese archivo no existe. La copia no se sube
+# al repositorio (.gitignore): ahí van las contraseñas reales de cada servidor.
+#
+# Un solo archivo para srv-databus y srv-infobus. En cada servidor solo hace
+# falta poner la clave real de su propio proyecto; las líneas del otro pueden
+# quedar con el marcador <...>.
+#
+# Se usan los NOMBRES DE SERVICIO de compose (database, state).
 # Cada agente se une solo a la red de su aplicación (AGENT_DOCKER_NETWORK),
-# así que "database" y "state" resuelven a la base y al Redis locales.
-# Las sesiones solo se usan si un ítem las nombra (p. ej. pgsql.ping["infobus"]).
-# En dev, el Redis de infobus se llama "memory" en vez de "state".
+# así que "database" y "state" resuelven siempre a la base y al Redis locales.
+#
+# El nombre de la sesión (databus, infobus) es el valor de la macro {$DB.SESSION}
+# que usa la plantilla simovilab-database. Esa macro la define la plantilla del
+# rol: simovilab-databus = databus, simovilab-infobus = infobus.
+# Las sesiones solo se usan si un ítem las nombra (p. ej. pgsql.ping["databus"]).
 
-#-------- POSTGRESQL (usuario de solo lectura, rol pg_monitor) --------
+#-------- POSTGRESQL --------
+# Usuario de solo lectura zabbix_ro con el rol pg_monitor (ver nota al final).
 Plugins.PostgreSQL.Sessions.databus.Uri=tcp://database:5432
 Plugins.PostgreSQL.Sessions.databus.Database=databus
 Plugins.PostgreSQL.Sessions.databus.User=zabbix_ro
-Plugins.PostgreSQL.Sessions.databus.Password=<clave zabbix_ro de srv-databus>
+Plugins.PostgreSQL.Sessions.databus.Password=<clave de zabbix_ro en srv-databus>
 
 Plugins.PostgreSQL.Sessions.infobus.Uri=tcp://database:5432
 Plugins.PostgreSQL.Sessions.infobus.Database=infobus
 Plugins.PostgreSQL.Sessions.infobus.User=zabbix_ro
-Plugins.PostgreSQL.Sessions.infobus.Password=<clave zabbix_ro de srv-infobus>
+Plugins.PostgreSQL.Sessions.infobus.Password=<clave de zabbix_ro en srv-infobus>
+
+#-------- POSTGRESQL: consultas propias --------
+# Carpeta montada por agent2/docker-compose-agent2.yml desde agent2/pgsql-queries/.
+# simovilab_tables.sql alimenta los dead tuples por tabla de simovilab-database.
+# El plugin lee la carpeta al arrancar: después de agregar un .sql, reiniciar el agente.
+Plugins.PostgreSQL.CustomQueriesPath=/etc/zabbix/pgsql-queries
+Plugins.PostgreSQL.CustomQueriesEnabled=true
 
 #-------- REDIS --------
+# En producción el Redis de los dos proyectos es el servicio "state".
+# En el compose de desarrollo de infobus se llama "memory": usar
+# tcp://memory:6379 en dev.
 Plugins.Redis.Sessions.databus.Uri=tcp://state:6379
 Plugins.Redis.Sessions.databus.Password=<REDIS_PASSWORD del .env de databus>
 
 Plugins.Redis.Sessions.infobus.Uri=tcp://state:6379
 Plugins.Redis.Sessions.infobus.Password=<REDIS_PASSWORD del .env de infobus>
+# Si Redis no tiene contraseña, borrar la línea Password de la sesión.
 
-#-------- POSTGRESQL: consultas propias (dead tuples por tabla) --------
-Plugins.PostgreSQL.CustomQueriesPath=/etc/zabbix/pgsql-queries
-Plugins.PostgreSQL.CustomQueriesEnabled=true
+# ────────────────────────────────────────────────────────────────────────────
+#  NOTA DE CREDENCIALES
+# ────────────────────────────────────────────────────────────────────────────
+#  No usar el usuario 'postgres'. Es el equivalente a root: evade toda
+#  verificación de permisos y, con COPY FROM PROGRAM o plpython3u, permite
+#  ejecutar órdenes en el sistema operativo del contenedor.
+#
+#  Lo que corresponde es un usuario de solo lectura, creado una vez en cada
+#  servidor PostgreSQL:
+#
+#      CREATE ROLE zabbix_ro LOGIN PASSWORD '<una clave propia>';
+#      GRANT pg_monitor TO zabbix_ro;
+#
+#  pg_monitor es un rol predefinido de PostgreSQL y alcanza para todas las
+#  vistas de estadísticas que usa el plugin y para simovilab_tables.sql.
+#  No da lectura de los datos de las tablas.
+#
+#  Procedimiento completo y prueba: docs/README-template-simovilab-database.md

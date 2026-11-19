@@ -8,3 +8,6 @@ agent2/simovilab-plugins.conf
 # Backups
 backups/
 pruebas/
+# Caché de Python
+__pycache__/
+*.pyc

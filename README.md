@@ -496,13 +496,14 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 
 ### Templates
 
-| File | Template | Linked to |
-| --- | --- | --- |
-| [`templates/simovilab-templates.yml`](templates/simovilab-templates.yml) | `simovilab servidor y sistema operativo` | All 3 hosts: operating system, ping from the server and container discovery. Includes the *Servidor* dashboard |
-| [`templates/simovilab-databus.yml`](templates/simovilab-databus.yml) | `simovilab-databus` | Role `databus`: GTFS-RT, static GTFS, operating window and ρ. Includes the *Operación databus* dashboard |
-| [`templates/simovilab-infobus.yml`](templates/simovilab-infobus.yml) | `simovilab-infobus` | Role `infobus`: API latency, N(t), MACDT loop and calibration. Includes the *Operación infobus* dashboard |
-| [`templates/simovilab-infobus-ext.yml`](templates/simovilab-infobus-ext.yml) | `simovilab-infobus-ext` | Server local host: external infobus measurement through Traefik |
-| *(official Zabbix)* | `Docker by Zabbix agent 2` | All 3 hosts |
+| File | Template | Linked to | Guide |
+| --- | --- | --- | --- |
+| [`templates/simovilab-templates.yml`](templates/simovilab-templates.yml) | `simovilab servidor y sistema operativo` | All 3 hosts: operating system, ping from the server and container discovery. Includes the *Servidor* dashboard | [guide](docs/README-template-simovilab-templates.md) |
+| [`templates/simovilab-databus.yml`](templates/simovilab-databus.yml) | `simovilab-databus` | Role `databus`: GTFS-RT, static GTFS, operating window and ρ. Includes the *Operación databus* dashboard | [guide](docs/README-template-simovilab-databus.md) |
+| [`templates/simovilab-infobus.yml`](templates/simovilab-infobus.yml) | `simovilab-infobus` | Role `infobus`: API latency, N(t), MACDT loop and calibration. Includes the *Operación infobus* dashboard | [guide](docs/README-template-simovilab-infobus.md) |
+| [`templates/simovilab-infobus-ext.yml`](templates/simovilab-infobus-ext.yml) | `simovilab-infobus-ext` | Server local host: external infobus measurement through Traefik | [guide](docs/README-template-simovilab-infobus-ext.md) |
+| [`templates/simovilab-database.yml`](templates/simovilab-database.yml) | `simovilab-database` | Roles `databus` and `infobus`: PostgreSQL and Redis of each project. Includes the *DATABASE* dashboard | [guide](docs/README-template-simovilab-database.md) |
+| *(official Zabbix)* | `Docker by Zabbix agent 2` | All 3 hosts | — |
 
 ### Items
 
@@ -512,8 +513,9 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 | --- | --- | --- |
 | `simovilab servidor y sistema operativo` | all 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 17 + 1 discovery rule with 5 prototypes per container |
 | `simovilab-databus` | Databus-host (srv-databus) | 38 |
-| `simovilab-infobus` | Infobus-host (srv-infobus) | 30 |
-| `simovilab-infobus-ext` | Zabbix-server (srv-gestion) | 10 |
+| `simovilab-infobus` | Infobus-host (srv-infobus) | 31 |
+| `simovilab-infobus-ext` | Zabbix-server (srv-gestion) | 19 |
+| `simovilab-database` | srv-databus and srv-infobus | 40 |
 | `Docker by Zabbix agent 2` | all 3 hosts | Official Zabbix template, unchanged |
 
 <details>
@@ -594,7 +596,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 </details>
 
 <details>
-<summary><code>simovilab-infobus</code> — 30 items</summary>
+<summary><code>simovilab-infobus</code> — 31 items</summary>
 
 | Name | Key | Type |
 | --- | --- | --- |
@@ -632,20 +634,77 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 </details>
 
 <details>
-<summary><code>simovilab-infobus-ext</code> — 10 items</summary>
+<summary><code>simovilab-infobus-ext</code> — 19 items</summary>
 
 | Name | Key | Type |
 | --- | --- | --- |
-| Sonda externa de la API de InfoBus | `infobus.api.ext` | Agent (active) |
-| Externo: API responde correctamente | `infobus.api.ext.ok` | Dependent |
-| Externo: Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.ext.throttled` | Dependent |
-| Externo: L_api p50 del ciclo | `infobus.api.ext.lat_p50` | Dependent |
-| Externo: L_api p90 del ciclo | `infobus.api.ext.lat_p90` | Dependent |
-| Externo: costo de la consulta | `infobus.api.ext.query_p50` | Dependent |
-| Externo: piso con conexion abierta (red + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependent |
-| Externo: primera peticion (abre la conexion) | `infobus.api.ext.health_cold_ms` | Dependent |
-| Externo: costo de abrir la conexion (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependent |
-| Externo: conexion TCP de R4 a Traefik (red) | `infobus.api.ext.tcp_connect_ms` | Dependent |
+| External InfoBus API probe | `infobus.api.ext` | Agent (active) |
+| External: API responds correctly | `infobus.api.ext.ok` | Dependent |
+| External: Too Many Requests (429): requests rejected by the rate limit | `infobus.api.ext.throttled` | Dependent |
+| External: L_api cycle p50 | `infobus.api.ext.lat_p50` | Dependent |
+| External: L_api cycle p90 | `infobus.api.ext.lat_p90` | Dependent |
+| External: query cost | `infobus.api.ext.query_p50` | Dependent |
+| External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependent |
+| External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependent |
+| External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependent |
+| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependent |
+| External: burst requests | `infobus.api.ext.n` | Dependent |
+| External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependent |
+| External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependent |
+| External: other or no responses in the burst | `infobus.api.ext.errors` | Dependent |
+| External: INFOBUS API table (HTML) | `infobus.api.ext.tabla_html` | Dependent |
+| External: cycle timings (HTML) | `infobus.api.ext.tiempos_html` | Dependent |
+| External: L_api real p95, 1 h window | `infobus.api.ext.lat_p95_1h` | Calculated |
+| Internal: L_api real p95, 1 h window | `infobus.api.ext.int_p95_1h` | Calculated |
+| External - internal: last hour p95 | `infobus.api.ext.delta_p95_1h` | Calculated |
+
+</details>
+
+<details>
+<summary><code>simovilab-database</code> — 40 items</summary>
+
+| Name | Key | Type |
+| --- | --- | --- |
+| PostgreSQL: availability (ping) | `pgsql.ping["{$DB.SESSION}"]` | Agent (active) |
+| PostgreSQL: connections (raw) | `pgsql.connections["{$DB.SESSION}"]` | Agent (active) |
+| PostgreSQL: active connections | `pgsql.conn.active` | Dependent |
+| PostgreSQL: idle connections | `pgsql.conn.idle` | Dependent |
+| PostgreSQL: idle in transaction connections | `pgsql.conn.idle_in_tx` | Dependent |
+| PostgreSQL: connections waiting on a lock | `pgsql.conn.waiting` | Dependent |
+| PostgreSQL: total connections | `pgsql.conn.total` | Dependent |
+| PostgreSQL: connections used of max_connections | `pgsql.conn.total_pct` | Dependent |
+| PostgreSQL: database statistics (raw, all databases) | `pgsql.dbstat["{$DB.SESSION}"]` | Agent (active) |
+| PostgreSQL: database statistics (raw, this database) | `pgsql.db.stat` | Dependent |
+| PostgreSQL: commits per second | `pgsql.db.commits.rate` | Dependent |
+| PostgreSQL: rollbacks per second | `pgsql.db.rollbacks.rate` | Dependent |
+| PostgreSQL: blocks read from cache per second | `pgsql.db.blks_hit.rate` | Dependent |
+| PostgreSQL: blocks read from disk per second | `pgsql.db.blks_read.rate` | Dependent |
+| PostgreSQL: cache hit ratio | `pgsql.db.cache_hit` | Calculated |
+| PostgreSQL: new deadlocks | `pgsql.db.deadlocks` | Dependent |
+| PostgreSQL: summary table (HTML) | `pgsql.db.summary_html` | Dependent |
+| PostgreSQL: running queries (raw, all databases) | `pgsql.queries["{$DB.SESSION}",,,,"{$PG.SLOW.QUERY.S}"]` | Agent (active) |
+| PostgreSQL: running queries (raw, this database) | `pgsql.db.queries` | Dependent |
+| PostgreSQL: slow queries running | `pgsql.db.slow_queries` | Dependent |
+| PostgreSQL: longest running query | `pgsql.db.query_time_max` | Dependent |
+| PostgreSQL: longest open transaction | `pgsql.db.tx_time_max` | Dependent |
+| PostgreSQL: database size | `pgsql.db.size["{$DB.SESSION}"]` | Agent (active) |
+| PostgreSQL: uptime | `pgsql.uptime["{$DB.SESSION}"]` | Agent (active) |
+| PostgreSQL: table statistics (raw) | `pgsql.custom.query["{$DB.SESSION}",,,,simovilab_tables]` | Agent (active) |
+| PostgreSQL: dead tuples (all tables) | `pgsql.db.dead_tuples` | Dependent |
+| PostgreSQL: dead tuples by table (HTML) | `pgsql.db.tables_html` | Dependent |
+| Redis: availability (ping) | `redis.ping["{$DB.SESSION}"]` | Agent (active) |
+| Redis: INFO (raw) | `redis.info["{$DB.SESSION}"]` | Agent (active) |
+| Redis: connected clients | `redis.clients` | Dependent |
+| Redis: blocked clients | `redis.clients.blocked` | Dependent |
+| Redis: memory used | `redis.mem.used` | Dependent |
+| Redis: memory limit (maxmemory) | `redis.mem.max` | Dependent |
+| Redis: memory used of maxmemory | `redis.mem.pct` | Dependent |
+| Redis: operations per second | `redis.ops` | Dependent |
+| Redis: keys | `redis.keys` | Dependent |
+| Redis: new evicted keys | `redis.evicted` | Dependent |
+| Redis: last RDB save status | `redis.rdb_status` | Dependent |
+| Redis: uptime | `redis.uptime` | Dependent |
+| Redis: summary table (HTML) | `redis.summary_html` | Dependent |
 
 </details>
 
@@ -678,6 +737,7 @@ To change a macro without losing the change on the next template import, overrid
 | `{$MACDT.STALE_S}` | `60` | `simovilab-databus` | Seconds a position counts as fresh. Must equal databus TELEMETRY_GRACE_S. |
 | `{$MACDT.V_AGE.CRIT}` | `70` | `simovilab-databus` | Maximum trip-updates feed age before the high alert (below the 75 s infobus tolerates). |
 | `{$MACDT.V_AGE.WARN}` | `45` | `simovilab-databus` | Maximum trip-updates feed age before warning (3 cycles of 15 s). |
+| `{$DB.SESSION}` | `databus` / `infobus` | `simovilab-databus` / `simovilab-infobus` | Agent 2 session and PostgreSQL database name read by `simovilab-database` on the same host. Must match the session names in `agent2/simovilab-plugins.conf`. |
 
 **Alert fine-tuning (only if they are noisy or miss events)**
 
@@ -691,13 +751,32 @@ To change a macro without losing the change on the next template import, overrid
 | `{$MACDT.CAL.DIAS.WARN}` | `7` | `simovilab-databus` | Days in advance to warn that the GTFS calendar expires. |
 | `{$MACDT.COMPL.CRIT}` | `80` | `simovilab-databus` | Minimum trip-updates completeness (critical level, %). |
 | `{$MACDT.COMPL.WARN}` | `90` | `simovilab-databus` | Minimum trip-updates completeness before warning (%). |
-| `{$MACDT.ZIP.DESFASE.WARN}` | `21600` | `simovilab-databus` | Maximum gap (s) between the databus GTFS and the source GTFS. |
+| `{$MACDT.ZIP.DESFASE.WARN}` | `600` | `simovilab-databus` | Maximum gap (s) between the databus GTFS and the source GTFS. |
 | `{$T_LATENCY_WARN.SOSTENIDO}` | `30m` | `simovilab-infobus` | Time the p95 must stay above T_warn for the "sostenido" high alert. |
 | `{$INFOBUS.SETUP.FACTOR}` | `2` | `simovilab-infobus` | Times the daily median connection-setup cost that fires the alert. |
 | `{$INFOBUS.SETUP.MIN_MS}` | `5` | `simovilab-infobus` | Minimum (ms) to alert on connection-setup cost. |
 | `{$INFOBUS.T204.FACTOR}` | `2` | `simovilab-infobus` | Times the daily median 204 latency that fires the alert. |
 | `{$INFOBUS.EXT.SETUP.FACTOR}` | `2` | `simovilab-infobus-ext` | Same as INFOBUS.SETUP.FACTOR, for the public connection. |
 | `{$INFOBUS.EXT.SETUP.MIN_MS}` | `5` | `simovilab-infobus-ext` | Same as INFOBUS.SETUP.MIN_MS, for the public connection. |
+
+**Database thresholds (specification document, sections 2.2 and 2.3)**
+
+| Macro | Default | Template | What it controls |
+| --- | --- | --- | --- |
+| `{$PG.CACHE.HIT.CRIT}` | `90` | `simovilab-database` | [ESP] 2.2 · cache hit ratio, %, 15 min average |
+| `{$PG.CACHE.HIT.WARN}` | `95` | `simovilab-database` | [ESP] 2.2 · cache hit ratio, %, 15 min average |
+| `{$PG.CONN.ACTIVE.CRIT}` | `120` | `simovilab-database` | [ESP] 2.2 · active connections, 5 min |
+| `{$PG.CONN.ACTIVE.WARN}` | `80` | `simovilab-database` | [ESP] 2.2 · active connections, 5 min |
+| `{$PG.CONN.IDLETX.CRIT}` | `20` | `simovilab-database` | [ESP] 2.2 · idle in transaction, 5 min |
+| `{$PG.CONN.IDLETX.WARN}` | `10` | `simovilab-database` | [ESP] 2.2 · idle in transaction, 5 min |
+| `{$PG.CONN.PCT.CRIT}` | `90` | `simovilab-database` | Connections used of max_connections, %. At 100 % new connections are rejected |
+| `{$PG.DEAD.TUP.CRIT}` | `50000` | `simovilab-database` | [ESP] 2.2 · dead tuples, all tables |
+| `{$PG.DEAD.TUP.WARN}` | `10000` | `simovilab-database` | [ESP] 2.2 · dead tuples, all tables |
+| `{$PG.SLOW.QUERY.S}` | `1` | `simovilab-database` | [INF] Seconds after which a running query counts as slow |
+| `{$REDIS.CLIENTS.CRIT}` | `400` | `simovilab-database` | [ESP] 2.3 · connected clients, 5 min |
+| `{$REDIS.CLIENTS.WARN}` | `200` | `simovilab-database` | [ESP] 2.3 · connected clients, 5 min |
+| `{$REDIS.MEM.PCT.CRIT}` | `90` | `simovilab-database` | [ESP] 2.3 · memory used of maxmemory, %, 5 min |
+| `{$REDIS.MEM.PCT.WARN}` | `75` | `simovilab-database` | [ESP] 2.3 · memory used of maxmemory, %, 5 min |
 
 **Almost fixed: change only if the requirement or the design changes**
 
@@ -708,7 +787,7 @@ To change a macro without losing the change on the next template import, overrid
 | `{$MACDT.V_GPS.WARN}` | `85` | `simovilab-databus` | % of fresh GPS below which a warning fires. F_crit is released above it. |
 | `{$T_LATENCY_CRIT}` | `200` | `simovilab-infobus` | L_api critical threshold: the non-functional requirement. MACDT never changes it. |
 | `{$MACDT.T_FLOOR}` | `91` | `simovilab-infobus` | T_warn floor (ms). |
-| `{$MACDT.T_RNF}` | `200` | `simovilab-infobus` | T_warn ceiling (ms). |
+| `{$MACDT.T_RNF}` | `350` | `simovilab-infobus` | T_warn ceiling (ms). |
 | `{$MACDT.F_CRIT}` | `0.7` | `simovilab-infobus` | Factor that tightens T_warn when GPS coverage is critical. |
 
 **Not used**
@@ -749,6 +828,15 @@ To change a macro without losing the change on the next template import, overrid
 | La API de InfoBus no responde correctamente | `simovilab-infobus` | The next-trips burst did not answer all 200/204 (500, no connection, 429…). |
 | L_api p95 sostenido sobre el umbral adaptativo de MACDT | `simovilab-infobus` | The last-hour p95 stays above {$T_LATENCY_WARN} for {$T_LATENCY_WARN.SOSTENIDO}. The "sobre el umbral" warning depends on this one. |
 | Container {#NAME}: Health state container is unhealthy *(official)* | `Docker by Zabbix agent 2` | Per container: the healthcheck fails twice within 2 min. |
+| PostgreSQL DOWN: database not reachable | `simovilab-database` | Two checks in a row without answer. The application cannot read or write data. |
+| PostgreSQL: active connections critical | `simovilab-database` | More than {$PG.CONN.ACTIVE.CRIT} during 5 minutes. The database is saturated and the API will start to time out. |
+| PostgreSQL: connections stuck in a transaction critical | `simovilab-database` | More than {$PG.CONN.IDLETX.CRIT} during 5 minutes. Locks and table bloat grow until the application blocks. |
+| PostgreSQL: connections close to max_connections | `simovilab-database` | Above {$PG.CONN.PCT.CRIT} % for 5 minutes. When it reaches 100 %, PostgreSQL rejects every new connection (API and workers fail). |
+| PostgreSQL: cache hit ratio critical | `simovilab-database` | Under {$PG.CACHE.HIT.CRIT} %. Most reads hit the disk and response times degrade. |
+| PostgreSQL: vacuum falling behind critical | `simovilab-database` | More than {$PG.DEAD.TUP.CRIT}. Bloat is affecting performance; a manual VACUUM may be needed. |
+| Redis DOWN: state store not reachable | `simovilab-database` | Two checks in a row without answer. The project loses its live state (runs in progress, positions, WebSocket channels). |
+| Redis: too many clients critical | `simovilab-database` | More than {$REDIS.CLIENTS.CRIT} during 5 minutes. Close to rejecting new connections. |
+| Redis: memory usage critical | `simovilab-database` | Above {$REDIS.MEM.PCT.CRIT} % for 5 minutes. Writes of live state are about to fail or keys to be evicted. |
 
 **Average**
 
@@ -762,6 +850,8 @@ To change a macro without losing the change on the next template import, overrid
 | El bucle MACDT no reporta: puede estar caido | `simovilab-infobus` | 5 min without data from macdt.status. |
 | Container {#NAME}: Container has been stopped with error code *(official)* | `Docker by Zabbix agent 2` | Per container: stopped with an exit code above 0. |
 | Docker: Service is down *(official)* | `Docker by Zabbix agent 2` | The agent cannot talk to Docker. |
+| PostgreSQL: deadlock detected | `simovilab-database` | Any deadlock in the last 15 minutes. Two transactions blocked each other and PostgreSQL cancelled one: an operation of the application failed. |
+| Redis: keys evicted, state data lost | `simovilab-database` | Any eviction in the last 15 minutes. In databus and infobus Redis keeps live state, not cache: an evicted key is a run, a position or a subscription that disappears. |
 
 **Warning**
 
@@ -788,15 +878,26 @@ To change a macro without losing the change on the next template import, overrid
 | L_api p95 sobre el umbral adaptativo de MACDT | `simovilab-infobus` | The last-hour p95 is above {$T_LATENCY_WARN} (written by the MACDT loop). |
 | MACDT degradado: el umbral no se esta actualizando | `simovilab-infobus` | The loop runs but cannot compute (stale or missing data). |
 | MACDT: la latencia de infobus cambió más de lo permitido | `simovilab-infobus` | Calibration was held: the new line changes more than MACDT_CALIB_MAX_DRIFT. A person decides whether to apply it. |
-| Externo: costo de abrir la conexión fuera de lo normal | `simovilab-infobus-ext` | Same as above, for the public connection (DNS + TCP + TLS). |
+| External: connection setup cost out of the ordinary | `simovilab-infobus-ext` | Same as above, for the public connection (DNS + TCP + TLS). |
 | Container {#NAME}: An error has occurred in the container *(official)* | `Docker by Zabbix agent 2` | Per container: Docker reports a new error. |
 | Docker: Failed to fetch info data *(official)* | `Docker by Zabbix agent 2` | The agent cannot read Docker information. |
+| PostgreSQL: too many active connections | `simovilab-database` | More than {$PG.CONN.ACTIVE.WARN} during 5 minutes. Queries are piling up: slow queries, locks or a burst of workers. |
+| PostgreSQL: connections stuck in a transaction | `simovilab-database` | More than {$PG.CONN.IDLETX.WARN} during 5 minutes. Usually application code that does not commit; they hold locks and prevent vacuum. |
+| PostgreSQL: low cache hit ratio | `simovilab-database` | Under {$PG.CACHE.HIT.WARN} %. Queries go to disk: shared_buffers too small for the data or full scans without index. |
+| PostgreSQL: slow queries for 5 minutes | `simovilab-database` | There was at least one in every check during 5 minutes. A heavy query, a missing index or a lock is slowing the application. |
+| PostgreSQL: vacuum falling behind | `simovilab-database` | More than {$PG.DEAD.TUP.WARN}. Tables grow (bloat) and queries scan useless rows. |
+| Redis: too many clients | `simovilab-database` | More than {$REDIS.CLIENTS.WARN} during 5 minutes. Usually a connection leak in the application or too many WebSocket subscribers. |
+| Redis: memory usage high | `simovilab-database` | Above {$REDIS.MEM.PCT.WARN} % for 5 minutes. When it reaches 100 %, Redis evicts keys or rejects writes. |
+| Redis: snapshot to disk failed | `simovilab-database` | The last save failed (disk full or no write permission). If Redis restarts now, the state since the last good snapshot is lost. |
 
 **Information**
 
 | Alert | Template | Fires when |
 | --- | --- | --- |
 | Docker: Version has changed *(official)* | `Docker by Zabbix agent 2` | The Docker version changed. |
+| PostgreSQL: service restarted | `simovilab-database` | It restarted in the last 10 minutes (deploy, container restart or crash). Closes by itself. |
+| Redis: no memory limit set | `simovilab-database` | There is no limit, so the memory usage alert cannot work and Redis can grow until the server runs out of memory. |
+| Redis: service restarted | `simovilab-database` | It restarted in the last 10 minutes. Live state is rebuilt by the application or reloaded from the snapshot. Closes by itself. |
 
 **Not classified**
 
@@ -823,6 +924,6 @@ To change a macro without losing the change on the next template import, overrid
 - [`scripts/zabbix-conf-en.sh`](scripts/zabbix-conf-en.sh): initial setup run by `zabbix-init`.
 - [`scripts/user_scripts/`](scripts/user_scripts/): probes and MACDT loop, each one in English and Spanish (`-es`).
 - [`templates/`](templates/): Zabbix templates.
-- [`docs/`](docs/): detailed documentation of each script.
+- [`docs/`](docs/): detailed documentation of each script, and one guide per template (`docs/README-template-*.md`): what it measures, requirements, alert tree, macros and dashboard.
 - [`FLUJO-DATOS.md`](FLUJO-DATOS.md) and [`Variables.md`](Variables.md): data flow and variable reference (Spanish).
 - [`diagramas/`](diagramas/): architecture diagrams in SVG.
