@@ -1,7 +1,5 @@
 # `infobus_probe.py` · infobus API latency probe
 
-**English** · [Español](README-infobus_probe.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-Python_3-white?logo=python)
 ![Static Badge](https://img.shields.io/badge/runs_in-Zabbix_Agent_2-white?logo=zabbix)
 ![Static Badge](https://img.shields.io/badge/API-infobus_next--trips-white)
@@ -18,7 +16,7 @@ Zabbix computes the external minus internal difference in the `simovilab-infobus
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/infobus_probe.py` |
-| **Runs on** | `remote-zabbix-agent2` of infobus (R2) and `zabbix-agent2` of the server (R4) |
+| **Runs on** | `zabbix-agent2` on the infobus server (R2 / srv-infobus) and on the management server (R4 / srv-gestion) |
 | **Run by** | Zabbix Agent 2, `UserParameter=infobus.api` and `UserParameter=infobus.api.ext` |
 | **Item keys** | `infobus.api` (template `simovilab-infobus`), `infobus.api.ext` (template `simovilab-infobus-ext`) |
 | **Queries** | `<base>/health/` and `<base>/api/next-trips/?stop_id=...&transit_system=...` |
@@ -63,7 +61,7 @@ flowchart LR
 
 #### 2. Set the addresses in the agent
 
-The lines are in [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf):
+The lines are in [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf):
 
 ```text
 UserParameter=infobus.api,/var/lib/zabbix/user_scripts/infobus_probe.py --base http://orchestrator:8000 --host-header localhost --stop-id auto --repeat 10 --transit-system 1
@@ -179,7 +177,7 @@ With `--stop-id auto`, the probe measures the stop with the highest number of sc
 
 ## Documentation
 
-- [`README.md`](../../README.md): full deployment guide, items and alerts.
-- [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf): `UserParameter` lines.
-- [`templates/simovilab-infobus.yml`](../../templates/simovilab-infobus.yml) and [`templates/simovilab-infobus-ext.yml`](../../templates/simovilab-infobus-ext.yml): master and dependent items.
-- [`macdt_loop.py`](macdt_loop.py): MACDT loop that uses N(t) and the latency. See [its README](README-macdt_loop.md).
+- [`README.md`](../README.md): full deployment guide, items and alerts.
+- [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf): `UserParameter` lines.
+- [`templates/simovilab-infobus.yml`](../templates/simovilab-infobus.yml) and [`templates/simovilab-infobus-ext.yml`](../templates/simovilab-infobus-ext.yml): master and dependent items.
+- [`macdt_loop.py`](../scripts/user_scripts/macdt_loop.py): MACDT loop that uses N(t) and the latency. See [its README](README-macdt_loop.md).

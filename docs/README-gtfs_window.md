@@ -1,7 +1,5 @@
 # `gtfs_window.py` · operating window from the static GTFS
 
-**English** · [Español](README-gtfs_window.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-Python_3-white?logo=python)
 ![Static Badge](https://img.shields.io/badge/runs_in-Zabbix_Agent_2-white?logo=zabbix)
 ![Static Badge](https://img.shields.io/badge/feed-GTFS_Schedule-white)
@@ -18,7 +16,7 @@ The same script feeds two master items:
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/gtfs_window.py` |
-| **Runs on** | `remote-zabbix-agent2` of databus (R3) |
+| **Runs on** | `zabbix-agent2` on the databus server (R3 / srv-databus) |
 | **Run by** | Zabbix Agent 2, `UserParameter=macdt.window` and `UserParameter=databus.static` |
 | **Item keys** | `macdt.window`, `databus.static` (template `simovilab-databus`) |
 | **Sources** | GTFS ZIP by URL (`--url`), local file (`--zip`) or databus PostgreSQL (`--pg`) |
@@ -60,7 +58,7 @@ flowchart LR
 
 #### 2. Set the addresses in the agent
 
-The lines are in [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf):
+The lines are in [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf):
 
 ```text
 UserParameter=macdt.window,/var/lib/zabbix/user_scripts/gtfs_window.py --url https://feeds.simovi.org/bucr/schedule/gtfs.zip --now
@@ -151,7 +149,7 @@ Full JSON with one block per `service_id`: `dias`, `vigencia`, `ventana`, `viaje
 
 ## Documentation
 
-- [`README.md`](../../README.md): full deployment guide, items and alerts.
-- [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf): `UserParameter` lines.
-- [`templates/simovilab-databus.yml`](../../templates/simovilab-databus.yml): master and dependent items.
-- [`gtfsrt_probe.py`](gtfsrt_probe.py): GTFS-RT probe. See [its README](README-gtfsrt_probe.md).
+- [`README.md`](../README.md): full deployment guide, items and alerts.
+- [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf): `UserParameter` lines.
+- [`templates/simovilab-databus.yml`](../templates/simovilab-databus.yml): master and dependent items.
+- [`gtfsrt_probe.py`](../scripts/user_scripts/gtfsrt_probe.py): GTFS-RT probe. See [its README](README-gtfsrt_probe.md).

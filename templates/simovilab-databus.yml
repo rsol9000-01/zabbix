@@ -578,6 +578,9 @@ zabbix_export:
           value_type: FLOAT
           params: 'min(last(//gtfs.v_trips) / last(//macdt.v_trips_max), {$MACDT.RHO_CAP})'
       macros:
+        - macro: '{$DB.SESSION}'
+          value: databus
+          description: 'Agent 2 session (simovilab-plugins.conf) and PostgreSQL database name used by the simovilab-database template linked to the same host.'
         - macro: '{$MACDT.CAL.DIAS.WARN}'
           value: '7'
           description: 'Avisar una semana antes de que venza el calendario'

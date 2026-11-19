@@ -1,7 +1,5 @@
 # `zabbix-dev.sh` · server and agent deployment
 
-**English** · [Español](README-zabbix-dev.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-Bash-white?logo=gnubash)
 ![Static Badge](https://img.shields.io/badge/runs_on-host_(root)-white?logo=linux)
 ![Static Badge](https://img.shields.io/badge/infrastructure-Docker-white?logo=docker)
@@ -9,7 +7,7 @@
 Deployment script for the Zabbix stack. It prepares the host (dependencies, permissions, agent configuration and PSK) and starts the services with Docker Compose. It has two modes:
 
 - **Server (`server`):** starts the full stack from [`docker-compose.yml`](../docker-compose.yml) and follows the `zabbix-init` log until it ends.
-- **Agent (`agent`):** starts only `remote-zabbix-agent2` from [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml).
+- **Agent (`agent`):** starts only `zabbix-agent2` from [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml).
 
 ## Overview
 
@@ -175,5 +173,5 @@ sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 - [`README.md`](../README.md): full deployment guide.
 - [`docker-compose.yml`](../docker-compose.yml): server stack.
 - [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml): remote agent.
-- [`scripts/zabbix-conf-en.sh`](zabbix-conf-en.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf-en.md).
-- [`scripts/user_scripts/`](user_scripts/): probes and MACDT loop.
+- [`scripts/zabbix-conf-en.sh`](../scripts/zabbix-conf-en.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf-en.md).
+- [`scripts/user_scripts/`](../scripts/user_scripts/): probes and MACDT loop.

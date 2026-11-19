@@ -1,0 +1,2214 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 19a51f2ca0864028ba21eb9633248ac3
+      name: Templates/Simovilab
+  templates:
+    - uuid: 1fb735b4dade4e96b925f368576d5fa0
+      template: simovilab-database
+      name: simovilab-database
+      description: |
+        Database layer of databus and infobus: PostgreSQL (service "database") and Redis (service "state").
+        One template for both projects. The only difference is the macro {$DB.SESSION}, which is at the same
+        time the Agent 2 session name in simovilab-plugins.conf and the PostgreSQL database name. It is NOT
+        defined here: it comes from the role template linked to the same host (simovilab-databus = databus,
+        simovilab-infobus = infobus), so autoregistration needs no manual host macro.
+        PostgreSQL is read with the read-only role zabbix_ro (pg_monitor). Redis is read with its password.
+        Dead tuples per table need the custom query agent2/pgsql-queries/simovilab_tables.sql.
+        Thresholds come from the specification document, section 2.2 and 2.3. Redis in both projects stores
+        authoritative state (runs, positions, WebSocket subscriptions), not cache: hit ratio is not measured
+        and any evicted key is treated as lost data.
+      groups:
+        - name: Templates/Simovilab
+      items:
+        # ───────────────────────── POSTGRESQL ─────────────────────────
+        - uuid: cf2ee40b5ee34bad98278c168e3bef82
+          name: 'PostgreSQL: availability (ping)'
+          type: ZABBIX_ACTIVE
+          key: 'pgsql.ping["{$DB.SESSION}"]'
+          delay: 1m
+          description: 'Opens a connection with zabbix_ro and runs a test query. 1 = the database answers, 0 = it does not (stopped, unreachable or wrong credentials).'
+          valuemap:
+            name: 'Service state'
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: c54134d1ceb44f28aaa2eab4f55318da
+              expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              name: 'PostgreSQL DOWN: database not reachable'
+              priority: HIGH
+              description: |
+                Measures: test connection to PostgreSQL every minute with the zabbix_ro role.
+                ERROR: two checks in a row without answer. The application cannot read or write data.
+                Check: container "database" is running, the agent is on the project network, zabbix_ro password in simovilab-plugins.conf.
+                Root of the PostgreSQL tree: while it is open, the other PostgreSQL alerts stay suppressed.
+              dependencies:
+                - name: 'Server DOWN!!!'
+                  expression: 'max(/simovilab servidor y sistema operativo/icmpping[,3],#3)=0'
+                  recovery_expression: 'last(/simovilab servidor y sistema operativo/icmpping[,3])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: d466527c3053450db7645aaebb16f37c
+          name: 'PostgreSQL: connections (raw)'
+          type: ZABBIX_ACTIVE
+          key: 'pgsql.connections["{$DB.SESSION}"]'
+          delay: 1m
+          history: 1h
+          value_type: TEXT
+          description: 'Master item. Connections of the whole PostgreSQL server grouped by state (pg_stat_activity).'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: b06b9ea4172540b099c25b8a8d7c5a80
+          name: 'PostgreSQL: active connections'
+          type: DEPENDENT
+          key: pgsql.conn.active
+          description: 'Connections running a query right now.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.active
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.connections["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: 9640d1117de24339b93135668798af64
+              expression: 'min(/simovilab-database/pgsql.conn.active,5m)>{$PG.CONN.ACTIVE.WARN}'
+              name: 'PostgreSQL: too many active connections'
+              event_name: 'PostgreSQL: too many active connections (over {$PG.CONN.ACTIVE.WARN} for 5 min)'
+              opdata: 'Active: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: |
+                Measures: connections executing a query at the same time.
+                ERROR: more than {$PG.CONN.ACTIVE.WARN} during 5 minutes. Queries are piling up: slow queries, locks or a burst of workers.
+                Check: longest running query, connections waiting on a lock.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+                - name: 'PostgreSQL: active connections critical'
+                  expression: 'min(/simovilab-database/pgsql.conn.active,5m)>{$PG.CONN.ACTIVE.CRIT}'
+              tags:
+                - tag: layer
+                  value: database
+            - uuid: 867f10f5f0034d3789728d6c90e0d03e
+              expression: 'min(/simovilab-database/pgsql.conn.active,5m)>{$PG.CONN.ACTIVE.CRIT}'
+              name: 'PostgreSQL: active connections critical'
+              event_name: 'PostgreSQL: active connections critical (over {$PG.CONN.ACTIVE.CRIT} for 5 min)'
+              opdata: 'Active: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: |
+                Measures: connections executing a query at the same time.
+                ERROR: more than {$PG.CONN.ACTIVE.CRIT} during 5 minutes. The database is saturated and the API will start to time out.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: db0cf792e845410fb9a3d7ef76b88ab7
+          name: 'PostgreSQL: idle connections'
+          type: DEPENDENT
+          key: pgsql.conn.idle
+          description: 'Open connections doing nothing (normal in a connection pool).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.idle
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.connections["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 1b39d1d3623e45c3a284eeb932f07257
+          name: 'PostgreSQL: idle in transaction connections'
+          type: DEPENDENT
+          key: pgsql.conn.idle_in_tx
+          description: 'Connections that opened a transaction and are not doing anything. They hold locks and block vacuum.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.idle_in_transaction
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.connections["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: a7178bab5dd24bfa887a5b3b5cb61e18
+              expression: 'min(/simovilab-database/pgsql.conn.idle_in_tx,5m)>{$PG.CONN.IDLETX.WARN}'
+              name: 'PostgreSQL: connections stuck in a transaction'
+              event_name: 'PostgreSQL: connections stuck in a transaction (over {$PG.CONN.IDLETX.WARN} for 5 min)'
+              opdata: 'Idle in transaction: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: |
+                Measures: connections with an open transaction that are not running anything.
+                ERROR: more than {$PG.CONN.IDLETX.WARN} during 5 minutes. Usually application code that does not commit; they hold locks and prevent vacuum.
+                Check: longest open transaction.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+                - name: 'PostgreSQL: connections stuck in a transaction critical'
+                  expression: 'min(/simovilab-database/pgsql.conn.idle_in_tx,5m)>{$PG.CONN.IDLETX.CRIT}'
+              tags:
+                - tag: layer
+                  value: database
+            - uuid: 733abfcb3c1d42e5aaea8e88f58e58d3
+              expression: 'min(/simovilab-database/pgsql.conn.idle_in_tx,5m)>{$PG.CONN.IDLETX.CRIT}'
+              name: 'PostgreSQL: connections stuck in a transaction critical'
+              event_name: 'PostgreSQL: connections stuck in a transaction critical (over {$PG.CONN.IDLETX.CRIT} for 5 min)'
+              opdata: 'Idle in transaction: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: |
+                Measures: connections with an open transaction that are not running anything.
+                ERROR: more than {$PG.CONN.IDLETX.CRIT} during 5 minutes. Locks and table bloat grow until the application blocks.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 4be98bfb4f44455180b7e8eb3b4883cb
+          name: 'PostgreSQL: connections waiting on a lock'
+          type: DEPENDENT
+          key: pgsql.conn.waiting
+          description: 'Connections blocked waiting for a lock held by another one.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.waiting
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.connections["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: d6ebba5656ae41e6a90a18bdea793752
+          name: 'PostgreSQL: total connections'
+          type: DEPENDENT
+          key: pgsql.conn.total
+          description: 'All connections of the server, in any state.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.connections["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 3c87aa0ec5d8481e86db9575ec15d3b8
+          name: 'PostgreSQL: connections used of max_connections'
+          type: DEPENDENT
+          key: pgsql.conn.total_pct
+          value_type: FLOAT
+          units: '%'
+          description: 'Total connections as a percentage of max_connections. At 100 % new connections are rejected.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.total_pct
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.connections["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: 045de022927740e89620bdf16d30be97
+              expression: 'min(/simovilab-database/pgsql.conn.total_pct,5m)>{$PG.CONN.PCT.CRIT}'
+              name: 'PostgreSQL: connections close to max_connections'
+              event_name: 'PostgreSQL: connections close to max_connections (over {$PG.CONN.PCT.CRIT} % for 5 min)'
+              opdata: 'Used: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: |
+                Measures: open connections against the server limit (max_connections).
+                ERROR: above {$PG.CONN.PCT.CRIT} % for 5 minutes. When it reaches 100 %, PostgreSQL rejects every new connection (API and workers fail).
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 0cfa5cb419914351ae0c2318bdf0e932
+          name: 'PostgreSQL: database statistics (raw, all databases)'
+          type: ZABBIX_ACTIVE
+          key: 'pgsql.dbstat["{$DB.SESSION}"]'
+          delay: 1m
+          history: 1h
+          value_type: TEXT
+          description: 'Master item. pg_stat_database for every database of the server, keyed by name.'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 0d481943299b4c34aed2caa91ff5c2f1
+          name: 'PostgreSQL: database statistics (raw, this database)'
+          type: DEPENDENT
+          key: pgsql.db.stat
+          history: '0'
+          value_type: TEXT
+          description: 'Only the row of the project database ({$DB.SESSION}). Counters since the last statistics reset.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[''{$DB.SESSION}'']'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.dbstat["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 9a931fb79a4d4e54a30b9404f36c61b8
+          name: 'PostgreSQL: commits per second'
+          type: DEPENDENT
+          key: pgsql.db.commits.rate
+          value_type: FLOAT
+          units: tps
+          description: 'Transactions confirmed per second in the project database.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.xact_commit
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: pgsql.db.stat
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 5e9778133098467c980cddd2f7378f5a
+          name: 'PostgreSQL: rollbacks per second'
+          type: DEPENDENT
+          key: pgsql.db.rollbacks.rate
+          value_type: FLOAT
+          units: tps
+          description: 'Transactions undone per second (by the application or by an error).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.xact_rollback
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: pgsql.db.stat
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: fbb4591042a34489a2bd7936aa91ac40
+          name: 'PostgreSQL: blocks read from cache per second'
+          type: DEPENDENT
+          key: pgsql.db.blks_hit.rate
+          value_type: FLOAT
+          description: 'Data blocks found in shared_buffers. Input of the cache hit ratio.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.blks_hit
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: pgsql.db.stat
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 5b0fdbc5b2674d888d52fea3fd12ec0c
+          name: 'PostgreSQL: blocks read from disk per second'
+          type: DEPENDENT
+          key: pgsql.db.blks_read.rate
+          value_type: FLOAT
+          description: 'Data blocks that had to be read from disk. Input of the cache hit ratio.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.blks_read
+            - type: CHANGE_PER_SECOND
+              parameters:
+                - ''
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: pgsql.db.stat
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 70779de2be3e41f793c23c777bc50fc3
+          name: 'PostgreSQL: cache hit ratio'
+          type: CALCULATED
+          key: pgsql.db.cache_hit
+          delay: 1m
+          value_type: FLOAT
+          units: '%'
+          params: '(last(//pgsql.db.blks_hit.rate)+last(//pgsql.db.blks_read.rate)=0)*100+(last(//pgsql.db.blks_hit.rate)+last(//pgsql.db.blks_read.rate)>0)*last(//pgsql.db.blks_hit.rate)*100/(last(//pgsql.db.blks_hit.rate)+last(//pgsql.db.blks_read.rate)+(last(//pgsql.db.blks_hit.rate)+last(//pgsql.db.blks_read.rate)=0))'
+          description: 'Share of block reads served from memory during the last minute. 100 % when there were no reads.'
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: 7ff4f24285d64a8bbb8df612f08b030c
+              expression: 'avg(/simovilab-database/pgsql.db.cache_hit,15m)<{$PG.CACHE.HIT.WARN}'
+              name: 'PostgreSQL: low cache hit ratio'
+              event_name: 'PostgreSQL: low cache hit ratio (under {$PG.CACHE.HIT.WARN} % in 15 min)'
+              opdata: 'Cache hit: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: |
+                Measures: share of data blocks read from memory instead of disk (15-minute average).
+                ERROR: under {$PG.CACHE.HIT.WARN} %. Queries go to disk: shared_buffers too small for the data or full scans without index.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+                - name: 'PostgreSQL: cache hit ratio critical'
+                  expression: 'avg(/simovilab-database/pgsql.db.cache_hit,15m)<{$PG.CACHE.HIT.CRIT}'
+              tags:
+                - tag: layer
+                  value: database
+            - uuid: 75d846390618491a9531a7a58b60f215
+              expression: 'avg(/simovilab-database/pgsql.db.cache_hit,15m)<{$PG.CACHE.HIT.CRIT}'
+              name: 'PostgreSQL: cache hit ratio critical'
+              event_name: 'PostgreSQL: cache hit ratio critical (under {$PG.CACHE.HIT.CRIT} % in 15 min)'
+              opdata: 'Cache hit: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: |
+                Measures: share of data blocks read from memory instead of disk (15-minute average).
+                ERROR: under {$PG.CACHE.HIT.CRIT} %. Most reads hit the disk and response times degrade.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: bc44a5decfd7468e9b39b703edb36d12
+          name: 'PostgreSQL: new deadlocks'
+          type: DEPENDENT
+          key: pgsql.db.deadlocks
+          description: 'Deadlocks detected since the previous check (1 min).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.deadlocks
+            - type: SIMPLE_CHANGE
+              parameters:
+                - ''
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: pgsql.db.stat
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: 3f50805205d142bd920b8186a21ca078
+              expression: 'sum(/simovilab-database/pgsql.db.deadlocks,15m)>0'
+              name: 'PostgreSQL: deadlock detected'
+              event_name: 'PostgreSQL: deadlock detected ({ITEM.LASTVALUE1} in the last check)'
+              priority: AVERAGE
+              description: |
+                Measures: deadlocks in the project database.
+                ERROR: any deadlock in the last 15 minutes. Two transactions blocked each other and PostgreSQL cancelled one: an operation of the application failed.
+                Closes by itself after 15 minutes without new deadlocks. Check the PostgreSQL log for the statements involved.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 9738d6133aca409fb2bc2e6a41521029
+          name: 'PostgreSQL: summary table (HTML)'
+          type: DEPENDENT
+          key: pgsql.db.summary_html
+          history: 1d
+          value_type: TEXT
+          description: 'Summary table of the project database for the DATABASE dashboard.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value);
+                  function n(v) { v = Number(v); return isNaN(v) ? 0 : v; }
+                  function mac(s, def) { var v = Number(s); return isNaN(v) ? def : v; }
+                  function fmt(v) { return String(Math.round(n(v))).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+                  function bytes(v) { v = n(v); var u = ['B', 'KB', 'MB', 'GB', 'TB']; var i = 0; while (v >= 1024 && i < 4) { v /= 1024; i++; } return (Math.round(v * 10) / 10) + ' ' + u[i]; }
+                  var C = { OK: '#43A047', WARN: '#FB8C00', ERROR: '#E53935', INFO: '#1E88E5' };
+                  function st(s) { return s ? '<span style="color:#fff;background:' + C[s] + ';padding:1px 6px;border-radius:3px;font-weight:bold">' + s + '</span>' : ''; }
+                  var th = 'style="text-align:left;padding:4px 10px;border-bottom:2px solid #8888;white-space:nowrap"';
+                  var td = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap"';
+                  var tdn = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"';
+                  var tdd = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"';
+                  var hit = n(d.blks_hit), rd = n(d.blks_read);
+                  var hitPct = (hit + rd) > 0 ? Math.round(hit * 1000 / (hit + rd)) / 10 : 100;
+                  var hw = mac('{$PG.CACHE.HIT.WARN}', 95), hc = mac('{$PG.CACHE.HIT.CRIT}', 90);
+                  var com = n(d.xact_commit), rb = n(d.xact_rollback);
+                  var rbPct = (com + rb) > 0 ? Math.round(rb * 1000 / (com + rb)) / 10 : 0;
+                  var rows = [
+                    ['Backends connected', fmt(d.numbackends), '', 'Connections open to this database right now', 'See connections gauge'],
+                    ['Cache hit ratio', hitPct + ' %', hitPct < hc ? 'ERROR' : (hitPct < hw ? 'WARN' : 'OK'), 'Block reads served from memory. Low means queries read from disk', '< ' + hw + ' % warning, < ' + hc + ' % critical (15 min average)'],
+                    ['Transactions committed', fmt(com), '', 'Confirmed transactions', ''],
+                    ['Transactions rolled back', fmt(rb) + ' (' + rbPct + ' %)', '', 'Undone by the application or by an error', ''],
+                    ['Deadlocks', fmt(d.deadlocks), n(d.deadlocks) > 0 ? 'INFO' : 'OK', 'Two transactions blocked each other; PostgreSQL cancelled one', 'Any new deadlock in 15 min'],
+                    ['Rows read', fmt(d.tup_fetched), '', 'Rows fetched by queries', ''],
+                    ['Rows written', fmt(n(d.tup_inserted) + n(d.tup_updated) + n(d.tup_deleted)), '', 'Inserted ' + fmt(d.tup_inserted) + ' · updated ' + fmt(d.tup_updated) + ' · deleted ' + fmt(d.tup_deleted), ''],
+                    ['Temporary files', fmt(d.temp_files) + ' (' + bytes(d.temp_bytes) + ')', '', 'Queries that did not fit in work_mem and spilled to disk', '']
+                  ];
+                  if (d.checksum_failures !== undefined && d.checksum_failures !== null) {
+                    rows.push(['Checksum failures', fmt(d.checksum_failures), n(d.checksum_failures) > 0 ? 'ERROR' : 'OK', 'Damaged data pages detected on read', 'Any failure: data corruption']);
+                  }
+                  var h = '<div style="font-size:calc(1em + 4px)"><br><div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">POSTGRESQL</div><br>';
+                  h += '<table style="border-collapse:collapse"><tr><th ' + th + '>Measurement</th><th ' + th + '>Value</th><th ' + th + '>Status</th><th ' + th + '>What it means</th><th ' + th + '>Error when</th></tr>';
+                  for (var i = 0; i < rows.length; i++) {
+                    h += '<tr><td ' + td + '>' + rows[i][0] + '</td><td ' + tdn + '>' + rows[i][1] + '</td><td ' + td + '>' + st(rows[i][2]) + '</td><td ' + tdd + '>' + rows[i][3] + '</td><td ' + tdd + '>' + rows[i][4] + '</td></tr>';
+                  }
+                  h += '</table><div style="opacity:.7;font-size:.75em;margin-top:4px">Counters since the last statistics reset. Alerts use the per-minute rates.</div></div>';
+                  return h;
+          master_item:
+            key: pgsql.db.stat
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: dcd03e0a7a414641b238654a0776e11f
+          name: 'PostgreSQL: running queries (raw, all databases)'
+          type: ZABBIX_ACTIVE
+          key: 'pgsql.queries["{$DB.SESSION}",,,,"{$PG.SLOW.QUERY.S}"]'
+          delay: 1m
+          history: 1h
+          value_type: TEXT
+          description: 'Master item. Duration of the queries and transactions running now, per database. A query counts as slow above {$PG.SLOW.QUERY.S} s.'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 40b634300ac24e88ba8f09bbced2e5aa
+          name: 'PostgreSQL: running queries (raw, this database)'
+          type: DEPENDENT
+          key: pgsql.db.queries
+          history: '0'
+          value_type: TEXT
+          description: 'Only the project database. Empty object when nothing is running.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$[''{$DB.SESSION}'']'
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '{}'
+          master_item:
+            key: 'pgsql.queries["{$DB.SESSION}",,,,"{$PG.SLOW.QUERY.S}"]'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 09a98da214eb4abe9b2ef0394e8a48cc
+          name: 'PostgreSQL: slow queries running'
+          type: DEPENDENT
+          key: pgsql.db.slow_queries
+          description: 'Queries running for more than {$PG.SLOW.QUERY.S} s at the moment of the check.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.query_slow_count
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: pgsql.db.queries
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: 6710370510a04da9afdec7253075ea20
+              expression: 'min(/simovilab-database/pgsql.db.slow_queries,5m)>0'
+              name: 'PostgreSQL: slow queries for 5 minutes'
+              event_name: 'PostgreSQL: slow queries for 5 minutes (over {$PG.SLOW.QUERY.S} s)'
+              opdata: 'Slow now: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: |
+                Measures: queries running longer than {$PG.SLOW.QUERY.S} s, checked every minute.
+                ERROR: there was at least one in every check during 5 minutes. A heavy query, a missing index or a lock is slowing the application.
+                Check: longest running query and connections waiting on a lock.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 92b6fa31bac94856b929693f410f296d
+          name: 'PostgreSQL: longest running query'
+          type: DEPENDENT
+          key: pgsql.db.query_time_max
+          value_type: FLOAT
+          units: s
+          description: 'Duration of the longest query running at the moment of the check. 0 when none is running.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.query_time_max
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: pgsql.db.queries
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 13536f02751f4a8cba6fd622b5f70560
+          name: 'PostgreSQL: longest open transaction'
+          type: DEPENDENT
+          key: pgsql.db.tx_time_max
+          value_type: FLOAT
+          units: s
+          description: 'Age of the oldest open transaction. Long transactions hold locks and block vacuum.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tx_time_max
+              error_handler: CUSTOM_VALUE
+              error_handler_params: '0'
+          master_item:
+            key: pgsql.db.queries
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: 452e5187132342169d9b0aa521074ccf
+          name: 'PostgreSQL: database size'
+          type: ZABBIX_ACTIVE
+          key: 'pgsql.db.size["{$DB.SESSION}"]'
+          delay: 5m
+          units: B
+          description: 'Size on disk of the project database (tables, indexes and TOAST). Trend only: the container disk is not measured here.'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: b9a5ba8a07bb4898873fb9c363589ff5
+          name: 'PostgreSQL: uptime'
+          type: ZABBIX_ACTIVE
+          key: 'pgsql.uptime["{$DB.SESSION}"]'
+          delay: 5m
+          value_type: FLOAT
+          units: uptime
+          description: 'Time since PostgreSQL started.'
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: f29b119081e44c329de7a10a7fb3163b
+              expression: 'last(/simovilab-database/pgsql.uptime["{$DB.SESSION}"])<10m'
+              name: 'PostgreSQL: service restarted'
+              event_name: 'PostgreSQL: service restarted (uptime under 10 min)'
+              priority: INFO
+              description: |
+                Measures: time since PostgreSQL started.
+                INFO: it restarted in the last 10 minutes (deploy, container restart or crash). Closes by itself.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: ab637c41259d477590d4dade9126d13a
+          name: 'PostgreSQL: table statistics (raw)'
+          type: ZABBIX_ACTIVE
+          key: 'pgsql.custom.query["{$DB.SESSION}",,,,simovilab_tables]'
+          delay: 5m
+          history: 1h
+          value_type: TEXT
+          description: 'Master item. Custom query agent2/pgsql-queries/simovilab_tables.sql: live and dead rows, last vacuum and size of every table of the project database.'
+          tags:
+            - tag: component
+              value: postgresql
+        - uuid: d8fc427c95894f919551849d24225bcc
+          name: 'PostgreSQL: dead tuples (all tables)'
+          type: DEPENDENT
+          key: pgsql.db.dead_tuples
+          description: 'Rows deleted or updated that vacuum has not cleaned yet, summed over every table of the project database.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var r = JSON.parse(value);
+                  if (!Array.isArray(r)) { r = r.rows || []; }
+                  var s = 0;
+                  for (var i = 0; i < r.length; i++) { s += Number(r[i].dead) || 0; }
+                  return s;
+          master_item:
+            key: 'pgsql.custom.query["{$DB.SESSION}",,,,simovilab_tables]'
+          tags:
+            - tag: component
+              value: postgresql
+          triggers:
+            - uuid: 3f0bfdabd9ff459780ccc3804851a2d6
+              expression: 'last(/simovilab-database/pgsql.db.dead_tuples)>{$PG.DEAD.TUP.WARN}'
+              name: 'PostgreSQL: vacuum falling behind'
+              event_name: 'PostgreSQL: vacuum falling behind (over {$PG.DEAD.TUP.WARN} dead tuples)'
+              opdata: 'Dead tuples: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: |
+                Measures: rows deleted or updated that autovacuum has not cleaned, in all tables.
+                ERROR: more than {$PG.DEAD.TUP.WARN}. Tables grow (bloat) and queries scan useless rows.
+                Check: table "dead tuples by table" in the dashboard, long open transactions (they block vacuum).
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+                - name: 'PostgreSQL: vacuum falling behind critical'
+                  expression: 'last(/simovilab-database/pgsql.db.dead_tuples)>{$PG.DEAD.TUP.CRIT}'
+              tags:
+                - tag: layer
+                  value: database
+            - uuid: 4865468ff02a4054b615072d6001d734
+              expression: 'last(/simovilab-database/pgsql.db.dead_tuples)>{$PG.DEAD.TUP.CRIT}'
+              name: 'PostgreSQL: vacuum falling behind critical'
+              event_name: 'PostgreSQL: vacuum falling behind critical (over {$PG.DEAD.TUP.CRIT} dead tuples)'
+              opdata: 'Dead tuples: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: |
+                Measures: rows deleted or updated that autovacuum has not cleaned, in all tables.
+                ERROR: more than {$PG.DEAD.TUP.CRIT}. Bloat is affecting performance; a manual VACUUM may be needed.
+              dependencies:
+                - name: 'PostgreSQL DOWN: database not reachable'
+                  expression: 'max(/simovilab-database/pgsql.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/pgsql.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 248f433f2f8746d5aee0c523643c05e6
+          name: 'PostgreSQL: dead tuples by table (HTML)'
+          type: DEPENDENT
+          key: pgsql.db.tables_html
+          history: 1d
+          value_type: TEXT
+          description: 'Top 10 tables by dead rows, for the DATABASE dashboard.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var r = JSON.parse(value);
+                  if (!Array.isArray(r)) { r = r.rows || []; }
+                  function n(v) { v = Number(v); return isNaN(v) ? 0 : v; }
+                  function fmt(v) { return String(Math.round(n(v))).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+                  function bytes(v) { v = n(v); var u = ['B', 'KB', 'MB', 'GB', 'TB']; var i = 0; while (v >= 1024 && i < 4) { v /= 1024; i++; } return (Math.round(v * 10) / 10) + ' ' + u[i]; }
+                  function age(s) { s = n(s); if (s < 0) { return 'never'; } if (s < 3600) { return Math.round(s / 60) + ' min ago'; } if (s < 172800) { return Math.round(s / 3600) + ' h ago'; } return Math.round(s / 86400) + ' days ago'; }
+                  var C = { OK: '#43A047', WARN: '#FB8C00' };
+                  function st(s, label) { return '<span style="color:#fff;background:' + C[s] + ';padding:1px 6px;border-radius:3px;font-weight:bold">' + label + '</span>'; }
+                  var th = 'style="text-align:left;padding:4px 10px;border-bottom:2px solid #8888;white-space:nowrap"';
+                  var td = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap"';
+                  var tdn = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"';
+                  var total = 0, due = 0;
+                  for (var i = 0; i < r.length; i++) { total += n(r[i].dead); if (n(r[i].dead) > 50 + 0.2 * n(r[i].live)) { due++; } }
+                  var h = '<div style="font-size:calc(1em + 4px)"><br><div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">DEAD TUPLES BY TABLE (TOP 10)</div><br>';
+                  h += '<table style="border-collapse:collapse"><tr><th ' + th + '>Table</th><th ' + th + '>Live rows</th><th ' + th + '>Dead rows</th><th ' + th + '>Dead %</th><th ' + th + '>Last vacuum</th><th ' + th + '>Size</th><th ' + th + '>Status</th></tr>';
+                  for (var j = 0; j < r.length && j < 10; j++) {
+                    var lv = n(r[j].live), dd = n(r[j].dead);
+                    var pct = (lv + dd) > 0 ? Math.round(dd * 1000 / (lv + dd)) / 10 : 0;
+                    var s = dd > 50 + 0.2 * lv ? st('WARN', 'VACUUM DUE') : st('OK', 'OK');
+                    h += '<tr><td ' + td + '>' + r[j].tbl + '</td><td ' + tdn + '>' + fmt(lv) + '</td><td ' + tdn + '>' + fmt(dd) + '</td><td ' + tdn + '>' + pct + ' %</td><td ' + td + '>' + age(r[j].vacuum_age_s) + '</td><td ' + tdn + '>' + bytes(r[j].size_b) + '</td><td ' + td + '>' + s + '</td></tr>';
+                  }
+                  h += '</table><div style="opacity:.7;font-size:.75em;margin-top:4px">' + r.length + ' tables · ' + fmt(total) + ' dead rows in total · ' + due + ' waiting for vacuum. VACUUM DUE = dead rows above the autovacuum threshold of PostgreSQL (50 + 20 % of live rows).</div></div>';
+                  return h;
+          master_item:
+            key: 'pgsql.custom.query["{$DB.SESSION}",,,,simovilab_tables]'
+          tags:
+            - tag: component
+              value: postgresql
+        # ───────────────────────── REDIS ─────────────────────────
+        - uuid: 0556b75475a847bcad9ac25cbc1a3ea0
+          name: 'Redis: availability (ping)'
+          type: ZABBIX_ACTIVE
+          key: 'redis.ping["{$DB.SESSION}"]'
+          delay: 1m
+          description: 'Sends PING with the Redis password. 1 = Redis answers, 0 = it does not (stopped, unreachable or wrong password).'
+          valuemap:
+            name: 'Service state'
+          tags:
+            - tag: component
+              value: redis
+          triggers:
+            - uuid: 3196ded0b1984c508dcaef6af8ce2811
+              expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+              recovery_mode: RECOVERY_EXPRESSION
+              recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+              name: 'Redis DOWN: state store not reachable'
+              priority: HIGH
+              description: |
+                Measures: PING to Redis every minute.
+                ERROR: two checks in a row without answer. The project loses its live state (runs in progress, positions, WebSocket channels).
+                Check: container "state" is running, the agent is on the project network, Redis password in simovilab-plugins.conf.
+                Root of the Redis tree: while it is open, the other Redis alerts stay suppressed.
+              dependencies:
+                - name: 'Server DOWN!!!'
+                  expression: 'max(/simovilab servidor y sistema operativo/icmpping[,3],#3)=0'
+                  recovery_expression: 'last(/simovilab servidor y sistema operativo/icmpping[,3])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 2c1e683af67c4086b68aa350508f879c
+          name: 'Redis: INFO (raw)'
+          type: ZABBIX_ACTIVE
+          key: 'redis.info["{$DB.SESSION}"]'
+          delay: 1m
+          history: 1h
+          value_type: TEXT
+          description: 'Master item. Output of INFO (default sections) as JSON.'
+          tags:
+            - tag: component
+              value: redis
+        - uuid: 812e60c398314c74b0afc6d35dbd2d5e
+          name: 'Redis: connected clients'
+          type: DEPENDENT
+          key: redis.clients
+          description: 'Open connections: application, workers and WebSocket channels.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Clients.connected_clients
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+          triggers:
+            - uuid: 66c784caf3534dd6915da55752129d45
+              expression: 'min(/simovilab-database/redis.clients,5m)>{$REDIS.CLIENTS.WARN}'
+              name: 'Redis: too many clients'
+              event_name: 'Redis: too many clients (over {$REDIS.CLIENTS.WARN} for 5 min)'
+              opdata: 'Clients: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: |
+                Measures: connections open to Redis.
+                ERROR: more than {$REDIS.CLIENTS.WARN} during 5 minutes. Usually a connection leak in the application or too many WebSocket subscribers.
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+                - name: 'Redis: too many clients critical'
+                  expression: 'min(/simovilab-database/redis.clients,5m)>{$REDIS.CLIENTS.CRIT}'
+              tags:
+                - tag: layer
+                  value: database
+            - uuid: fa075811e12c4c4e9b8f5a2c5c510a6b
+              expression: 'min(/simovilab-database/redis.clients,5m)>{$REDIS.CLIENTS.CRIT}'
+              name: 'Redis: too many clients critical'
+              event_name: 'Redis: too many clients critical (over {$REDIS.CLIENTS.CRIT} for 5 min)'
+              opdata: 'Clients: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: |
+                Measures: connections open to Redis.
+                ERROR: more than {$REDIS.CLIENTS.CRIT} during 5 minutes. Close to rejecting new connections.
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 32d5b0d19b8f436eb26380c9e4e99ff9
+          name: 'Redis: blocked clients'
+          type: DEPENDENT
+          key: redis.clients.blocked
+          description: 'Clients waiting on a blocking command (BLPOP, XREAD BLOCK...).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Clients.blocked_clients
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+        - uuid: 58615d4721b5439fab4493b298e792f5
+          name: 'Redis: memory used'
+          type: DEPENDENT
+          key: redis.mem.used
+          units: B
+          description: 'Memory used by the data stored in Redis.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Memory.used_memory
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+        - uuid: 109cae2cefd149fc8636d9e307972488
+          name: 'Redis: memory limit (maxmemory)'
+          type: DEPENDENT
+          key: redis.mem.max
+          units: B
+          description: 'Configured memory limit. 0 = no limit.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Memory.maxmemory
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+          triggers:
+            - uuid: a99b17f3e094459f8524ebdaffcb9180
+              expression: 'last(/simovilab-database/redis.mem.max)=0'
+              name: 'Redis: no memory limit set'
+              event_name: 'Redis: no memory limit set (maxmemory = 0)'
+              priority: INFO
+              description: |
+                Measures: the maxmemory setting.
+                INFO: there is no limit, so the memory usage alert cannot work and Redis can grow until the server runs out of memory.
+                Not an outage. To be decided by the project team (maxmemory and a noeviction policy).
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: b21f1fa7a030405d88dca6fc8069b457
+          name: 'Redis: memory used of maxmemory'
+          type: DEPENDENT
+          key: redis.mem.pct
+          value_type: FLOAT
+          units: '%'
+          description: 'Memory used as a percentage of maxmemory. 0 when there is no limit.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var m = JSON.parse(value).Memory || {};
+                  var mx = Number(m.maxmemory) || 0;
+                  if (mx <= 0) { return 0; }
+                  return Math.round(Number(m.used_memory) * 1000 / mx) / 10;
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+          triggers:
+            - uuid: 52443011db584238964141f142640c94
+              expression: 'min(/simovilab-database/redis.mem.pct,5m)>{$REDIS.MEM.PCT.WARN}'
+              name: 'Redis: memory usage high'
+              event_name: 'Redis: memory usage high (over {$REDIS.MEM.PCT.WARN} % of maxmemory for 5 min)'
+              opdata: 'Used: {ITEM.LASTVALUE1}'
+              priority: WARNING
+              description: |
+                Measures: memory used against maxmemory.
+                ERROR: above {$REDIS.MEM.PCT.WARN} % for 5 minutes. When it reaches 100 %, Redis evicts keys or rejects writes.
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+                - name: 'Redis: memory usage critical'
+                  expression: 'min(/simovilab-database/redis.mem.pct,5m)>{$REDIS.MEM.PCT.CRIT}'
+              tags:
+                - tag: layer
+                  value: database
+            - uuid: 1654acaa2f694cedae29d99fc8148370
+              expression: 'min(/simovilab-database/redis.mem.pct,5m)>{$REDIS.MEM.PCT.CRIT}'
+              name: 'Redis: memory usage critical'
+              event_name: 'Redis: memory usage critical (over {$REDIS.MEM.PCT.CRIT} % of maxmemory for 5 min)'
+              opdata: 'Used: {ITEM.LASTVALUE1}'
+              priority: HIGH
+              description: |
+                Measures: memory used against maxmemory.
+                ERROR: above {$REDIS.MEM.PCT.CRIT} % for 5 minutes. Writes of live state are about to fail or keys to be evicted.
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 6b7837496df043a19dc59092b510d2f1
+          name: 'Redis: operations per second'
+          type: DEPENDENT
+          key: redis.ops
+          units: ops
+          description: 'Commands processed per second (instantaneous value reported by Redis).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Stats.instantaneous_ops_per_sec
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+        - uuid: d9580a7f49f34461a44176117d434d14
+          name: 'Redis: keys'
+          type: DEPENDENT
+          key: redis.keys
+          description: 'Keys stored, summed over every logical database.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var k = JSON.parse(value).Keyspace || {};
+                  var s = 0;
+                  for (var db in k) {
+                    var o = k[db];
+                    s += (typeof o === 'object') ? (Number(o.keys) || 0) : (Number(String(o).replace(/^keys=(\d+).*$/, '$1')) || 0);
+                  }
+                  return s;
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+        - uuid: 694d358c629a47a796ce5a5cad944f91
+          name: 'Redis: new evicted keys'
+          type: DEPENDENT
+          key: redis.evicted
+          description: 'Keys deleted since the previous check because memory was full.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Stats.evicted_keys
+            - type: SIMPLE_CHANGE
+              parameters:
+                - ''
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+          triggers:
+            - uuid: 928c5d1f751f4ea0a94e72c37cc06c55
+              expression: 'sum(/simovilab-database/redis.evicted,15m)>0'
+              name: 'Redis: keys evicted, state data lost'
+              event_name: 'Redis: keys evicted, state data lost ({ITEM.LASTVALUE1} in the last check)'
+              priority: AVERAGE
+              description: |
+                Measures: keys that Redis deleted because it reached maxmemory.
+                ERROR: any eviction in the last 15 minutes. In databus and infobus Redis keeps live state, not cache: an evicted key is a run, a position or a subscription that disappears.
+                Fix: raise maxmemory or set the policy to noeviction. Closes by itself after 15 minutes without evictions.
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 95cc4185c4f14914a0d57287cc070818
+          name: 'Redis: last RDB save status'
+          type: DEPENDENT
+          key: redis.rdb_status
+          description: 'Result of the last snapshot to disk (BGSAVE). 1 = ok, 0 = error.'
+          valuemap:
+            name: 'Save status'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Persistence.rdb_last_bgsave_status
+              error_handler: DISCARD_VALUE
+            - type: BOOL_TO_DECIMAL
+              parameters:
+                - ''
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+          triggers:
+            - uuid: c98b7a5bdee74e7ea23f74304b61dd1f
+              expression: 'last(/simovilab-database/redis.rdb_status)=0'
+              name: 'Redis: snapshot to disk failed'
+              priority: WARNING
+              description: |
+                Measures: result of the last RDB snapshot.
+                ERROR: the last save failed (disk full or no write permission). If Redis restarts now, the state since the last good snapshot is lost.
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 9802851fa099479d8695e6755f079cc0
+          name: 'Redis: uptime'
+          type: DEPENDENT
+          key: redis.uptime
+          units: uptime
+          description: 'Time since Redis started.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.Server.uptime_in_seconds
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+          triggers:
+            - uuid: 75ae2e08b3f54cafa1e79508b60cece6
+              expression: 'last(/simovilab-database/redis.uptime)<10m'
+              name: 'Redis: service restarted'
+              event_name: 'Redis: service restarted (uptime under 10 min)'
+              priority: INFO
+              description: |
+                Measures: time since Redis started.
+                INFO: it restarted in the last 10 minutes. Live state is rebuilt by the application or reloaded from the snapshot. Closes by itself.
+              dependencies:
+                - name: 'Redis DOWN: state store not reachable'
+                  expression: 'max(/simovilab-database/redis.ping["{$DB.SESSION}"],#2)=0'
+                  recovery_expression: 'last(/simovilab-database/redis.ping["{$DB.SESSION}"])=1'
+              tags:
+                - tag: layer
+                  value: database
+        - uuid: 6fea07ee291f492abde6a44af2ee6409
+          name: 'Redis: summary table (HTML)'
+          type: DEPENDENT
+          key: redis.summary_html
+          history: 1d
+          value_type: TEXT
+          description: 'Summary table of Redis for the DATABASE dashboard.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var r = JSON.parse(value);
+                  var S = r.Server || {}, Cl = r.Clients || {}, M = r.Memory || {}, P = r.Persistence || {}, St = r.Stats || {}, R = r.Replication || {}, K = r.Keyspace || {};
+                  function n(v) { v = Number(v); return isNaN(v) ? 0 : v; }
+                  function mac(s, def) { var v = Number(s); return isNaN(v) ? def : v; }
+                  function fmt(v) { return String(Math.round(n(v))).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+                  function bytes(v) { v = n(v); var u = ['B', 'KB', 'MB', 'GB', 'TB']; var i = 0; while (v >= 1024 && i < 4) { v /= 1024; i++; } return (Math.round(v * 10) / 10) + ' ' + u[i]; }
+                  function dur(s) { s = n(s); var d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return (d ? d + ' d ' : '') + h + ' h ' + m + ' min'; }
+                  var C = { OK: '#43A047', WARN: '#FB8C00', ERROR: '#E53935', INFO: '#1E88E5' };
+                  function st(s) { return s ? '<span style="color:#fff;background:' + C[s] + ';padding:1px 6px;border-radius:3px;font-weight:bold">' + s + '</span>' : ''; }
+                  var th = 'style="text-align:left;padding:4px 10px;border-bottom:2px solid #8888;white-space:nowrap"';
+                  var td = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap"';
+                  var tdn = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"';
+                  var tdd = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"';
+                  var cw = mac('{$REDIS.CLIENTS.WARN}', 200), cc = mac('{$REDIS.CLIENTS.CRIT}', 400);
+                  var mw = mac('{$REDIS.MEM.PCT.WARN}', 75), mc = mac('{$REDIS.MEM.PCT.CRIT}', 90);
+                  var cli = n(Cl.connected_clients), used = n(M.used_memory), mx = n(M.maxmemory);
+                  var pct = mx > 0 ? Math.round(used * 1000 / mx) / 10 : null;
+                  var keys = 0, dbs = [];
+                  for (var db in K) { var o = K[db]; var k = (typeof o === 'object') ? n(o.keys) : n(String(o).replace(/^keys=(\d+).*$/, '$1')); keys += k; dbs.push(db + ': ' + fmt(k)); }
+                  var now = Math.floor(Date.now() / 1000);
+                  var saveOk = String(P.rdb_last_bgsave_status) === 'ok';
+                  var aofOn = n(P.aof_enabled) === 1;
+                  var aofOk = String(P.aof_last_write_status) === 'ok';
+                  var ev = n(St.evicted_keys);
+                  var rows = [
+                    ['Version and role', (S.redis_version || '-') + ' · ' + (R.role || '-'), '', 'Redis version and replication role', ''],
+                    ['Uptime', dur(S.uptime_in_seconds), '', 'Time since the last start', ''],
+                    ['Connected clients', fmt(cli), cli > cc ? 'ERROR' : (cli > cw ? 'WARN' : 'OK'), 'Application, workers and WebSocket channels', '> ' + cw + ' warning, > ' + cc + ' critical (5 min)'],
+                    ['Blocked clients', fmt(Cl.blocked_clients), '', 'Waiting on a blocking command', ''],
+                    ['Memory used', bytes(used) + ' (peak ' + bytes(M.used_memory_peak) + ')', '', 'Memory taken by the stored data', ''],
+                    ['Memory limit', mx > 0 ? bytes(mx) : 'no limit', mx > 0 ? 'OK' : 'INFO', 'maxmemory. Without it, usage alerts cannot fire', 'INFO when not set'],
+                    ['Memory usage', pct === null ? '-' : pct + ' %', pct === null ? '' : (pct > mc ? 'ERROR' : (pct > mw ? 'WARN' : 'OK')), 'Used against the limit', '> ' + mw + ' % warning, > ' + mc + ' % critical (5 min)'],
+                    ['Eviction policy', M.maxmemory_policy || '-', '', 'What Redis deletes when full. For live state, noeviction is the safe choice', ''],
+                    ['Keys', fmt(keys), '', dbs.length ? dbs.join(' · ') : 'empty', ''],
+                    ['Operations per second', fmt(St.instantaneous_ops_per_sec), '', 'Commands processed per second', ''],
+                    ['Evicted keys (total)', fmt(ev), ev > 0 ? 'ERROR' : 'OK', 'Keys deleted because memory was full: lost state', 'Any eviction in 15 min'],
+                    ['Expired keys (total)', fmt(St.expired_keys), '', 'Keys removed by their TTL (normal)', ''],
+                    ['Last snapshot (RDB)', (P.rdb_last_bgsave_status || '-') + ' · ' + dur(now - n(P.rdb_last_save_time)) + ' ago · ' + fmt(P.rdb_changes_since_last_save) + ' changes pending', saveOk ? 'OK' : 'ERROR', 'Copy of the data on disk', 'Last save failed'],
+                    ['Append-only file (AOF)', aofOn ? ('on · last write ' + (P.aof_last_write_status || '-')) : 'off', aofOn ? (aofOk ? 'OK' : 'ERROR') : '', 'Write log on disk, if enabled', aofOn ? 'Last write failed' : '']
+                  ];
+                  var h = '<div style="font-size:calc(1em + 4px)"><br><div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">REDIS (STATE)</div><br>';
+                  h += '<table style="border-collapse:collapse"><tr><th ' + th + '>Measurement</th><th ' + th + '>Value</th><th ' + th + '>Status</th><th ' + th + '>What it means</th><th ' + th + '>Error when</th></tr>';
+                  for (var i = 0; i < rows.length; i++) {
+                    h += '<tr><td ' + td + '>' + rows[i][0] + '</td><td ' + tdn + '>' + rows[i][1] + '</td><td ' + td + '>' + st(rows[i][2]) + '</td><td ' + tdd + '>' + rows[i][3] + '</td><td ' + tdd + '>' + rows[i][4] + '</td></tr>';
+                  }
+                  h += '</table><div style="opacity:.7;font-size:.75em;margin-top:4px">Redis holds live state in databus and infobus, not cache: hit ratio is not measured and any eviction is an error.</div></div>';
+                  return h;
+          master_item:
+            key: 'redis.info["{$DB.SESSION}"]'
+          tags:
+            - tag: component
+              value: redis
+      tags:
+        - tag: layer
+          value: database
+      macros:
+        - macro: '{$PG.CACHE.HIT.CRIT}'
+          value: '90'
+          description: '[ESP] 2.2 · cache hit ratio, %, 15 min average'
+        - macro: '{$PG.CACHE.HIT.WARN}'
+          value: '95'
+          description: '[ESP] 2.2 · cache hit ratio, %, 15 min average'
+        - macro: '{$PG.CONN.ACTIVE.CRIT}'
+          value: '120'
+          description: '[ESP] 2.2 · active connections, 5 min'
+        - macro: '{$PG.CONN.ACTIVE.WARN}'
+          value: '80'
+          description: '[ESP] 2.2 · active connections, 5 min'
+        - macro: '{$PG.CONN.IDLETX.CRIT}'
+          value: '20'
+          description: '[ESP] 2.2 · idle in transaction, 5 min'
+        - macro: '{$PG.CONN.IDLETX.WARN}'
+          value: '10'
+          description: '[ESP] 2.2 · idle in transaction, 5 min'
+        - macro: '{$PG.CONN.PCT.CRIT}'
+          value: '90'
+          description: 'Connections used of max_connections, %. At 100 % new connections are rejected'
+        - macro: '{$PG.DEAD.TUP.CRIT}'
+          value: '50000'
+          description: '[ESP] 2.2 · dead tuples, all tables'
+        - macro: '{$PG.DEAD.TUP.WARN}'
+          value: '10000'
+          description: '[ESP] 2.2 · dead tuples, all tables'
+        - macro: '{$PG.SLOW.QUERY.S}'
+          value: '1'
+          description: '[INF] Seconds after which a running query counts as slow'
+        - macro: '{$REDIS.CLIENTS.CRIT}'
+          value: '400'
+          description: '[ESP] 2.3 · connected clients, 5 min'
+        - macro: '{$REDIS.CLIENTS.WARN}'
+          value: '200'
+          description: '[ESP] 2.3 · connected clients, 5 min'
+        - macro: '{$REDIS.MEM.PCT.CRIT}'
+          value: '90'
+          description: '[ESP] 2.3 · memory used of maxmemory, %, 5 min'
+        - macro: '{$REDIS.MEM.PCT.WARN}'
+          value: '75'
+          description: '[ESP] 2.3 · memory used of maxmemory, %, 5 min'
+      dashboards:
+        - uuid: 2a233a47d40e48a6a9af411e6886a00a
+          name: DATABASE
+          pages:
+            - name: PostgreSQL
+              widgets:
+                - type: item
+                  name: 'PostgreSQL'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: 'pgsql.ping["{$DB.SESSION}"]'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'E53935'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '43A047'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Redis'
+                  x: '9'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: 'redis.ping["{$DB.SESSION}"]'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'E53935'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '43A047'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Active connections'
+                  x: '18'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: pgsql.conn.active
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Idle in transaction'
+                  x: '27'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: pgsql.conn.idle_in_tx
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Cache hit ratio'
+                  x: '36'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: pgsql.db.cache_hit
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Database size'
+                  x: '45'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: 'pgsql.db.size["{$DB.SESSION}"]'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: clock
+                  name: 'Local time'
+                  x: '54'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: bg_color
+                      value: '1F2937'
+                    - type: INTEGER
+                      name: clock_type
+                      value: '1'
+                    - type: STRING
+                      name: date_color
+                      value: 'FFFFFF'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: time_bold
+                      value: '1'
+                    - type: STRING
+                      name: time_color
+                      value: 'FFFFFF'
+                    - type: INTEGER
+                      name: time_format
+                      value: '1'
+                - type: itemhistory
+                  name: PostgreSQL
+                  'y': '3'
+                  width: '36'
+                  height: '11'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-database
+                        key: pgsql.db.summary_html
+                    - type: STRING
+                      name: columns.0.name
+                      value: PostgreSQL
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                - type: itemhistory
+                  name: 'Dead tuples by table'
+                  x: '36'
+                  'y': '3'
+                  width: '36'
+                  height: '11'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-database
+                        key: pgsql.db.tables_html
+                    - type: STRING
+                      name: columns.0.name
+                      value: Tables
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                - type: gauge
+                  name: 'Connections used of max_connections'
+                  'y': '14'
+                  width: '18'
+                  height: '7'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: pgsql.conn.total_pct
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: DBGCP
+                    - type: STRING
+                      name: th.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: th.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '90'
+                - type: svggraph
+                  name: 'Connections by state'
+                  x: '18'
+                  'y': '14'
+                  width: '54'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: '1E88E5'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'PostgreSQL: active connections'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: '9E9E9E'
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'PostgreSQL: idle connections'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.2.color
+                      value: 'FB8C00'
+                    - type: INTEGER
+                      name: ds.2.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.2.items.0
+                      value: 'PostgreSQL: idle in transaction connections'
+                    - type: INTEGER
+                      name: ds.2.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.2.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.3.color
+                      value: 'E53935'
+                    - type: INTEGER
+                      name: ds.3.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.3.items.0
+                      value: 'PostgreSQL: connections waiting on a lock'
+                    - type: INTEGER
+                      name: ds.3.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.3.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '4'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBCON'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+                - type: svggraph
+                  name: 'Transactions per second'
+                  'y': '21'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: '43A047'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'PostgreSQL: commits per second'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 'E53935'
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'PostgreSQL: rollbacks per second'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBTPS'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Cache hit ratio'
+                  x: '36'
+                  'y': '21'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: '1E88E5'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'PostgreSQL: cache hit ratio'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '1'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBHIT'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+                - type: svggraph
+                  name: 'Longest query and transaction · slow queries'
+                  'y': '28'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: '1E88E5'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'PostgreSQL: longest running query'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 'FB8C00'
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'PostgreSQL: longest open transaction'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.2.axisy
+                      value: '1'
+                    - type: STRING
+                      name: ds.2.color
+                      value: 'E53935'
+                    - type: INTEGER
+                      name: ds.2.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.2.items.0
+                      value: 'PostgreSQL: slow queries running'
+                    - type: INTEGER
+                      name: ds.2.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.2.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '3'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBQRT'
+                    - type: INTEGER
+                      name: righty
+                      value: '1'
+                    - type: STRING
+                      name: righty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+                - type: svggraph
+                  name: 'Dead tuples · database size'
+                  x: '36'
+                  'y': '28'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: 'FB8C00'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'PostgreSQL: dead tuples (all tables)'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.1.axisy
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: '9E9E9E'
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'PostgreSQL: database size'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBDED'
+                    - type: INTEGER
+                      name: righty
+                      value: '1'
+                    - type: STRING
+                      name: righty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+            - name: Redis
+              widgets:
+                - type: item
+                  name: 'PostgreSQL'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: 'pgsql.ping["{$DB.SESSION}"]'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'E53935'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '43A047'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Redis'
+                  x: '9'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: 'redis.ping["{$DB.SESSION}"]'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'E53935'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '43A047'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Connected clients'
+                  x: '18'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: redis.clients
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Memory used'
+                  x: '27'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: redis.mem.used
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Keys'
+                  x: '36'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: redis.keys
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Operations per second'
+                  x: '45'
+                  width: '9'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: redis.ops
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: clock
+                  name: 'Local time'
+                  x: '54'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: bg_color
+                      value: '1F2937'
+                    - type: INTEGER
+                      name: clock_type
+                      value: '1'
+                    - type: STRING
+                      name: date_color
+                      value: 'FFFFFF'
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: time_bold
+                      value: '1'
+                    - type: STRING
+                      name: time_color
+                      value: 'FFFFFF'
+                    - type: INTEGER
+                      name: time_format
+                      value: '1'
+                - type: itemhistory
+                  name: Redis
+                  'y': '3'
+                  width: '36'
+                  height: '14'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-database
+                        key: redis.summary_html
+                    - type: STRING
+                      name: columns.0.name
+                      value: Redis
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                - type: gauge
+                  name: 'Memory used of maxmemory'
+                  x: '36'
+                  'y': '3'
+                  width: '18'
+                  height: '7'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: redis.mem.pct
+                    - type: STRING
+                      name: max
+                      value: '100'
+                    - type: STRING
+                      name: min
+                      value: '0'
+                    - type: STRING
+                      name: reference
+                      value: DBGRM
+                    - type: STRING
+                      name: th.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: th.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: th.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: th.1.threshold
+                      value: '75'
+                    - type: STRING
+                      name: th.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: th.2.threshold
+                      value: '90'
+                - type: item
+                  name: 'Last snapshot to disk'
+                  x: '54'
+                  'y': '3'
+                  width: '18'
+                  height: '7'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-database
+                        key: redis.rdb_status
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 'E53935'
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: '43A047'
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: svggraph
+                  name: 'Memory used and limit'
+                  x: '36'
+                  'y': '10'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: '1E88E5'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Redis: memory used'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 'E53935'
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Redis: memory limit (maxmemory)'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBRME'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Clients'
+                  'y': '17'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: '1E88E5'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Redis: connected clients'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 'FB8C00'
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Redis: blocked clients'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBRCL'
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                    - type: INTEGER
+                      name: simple_triggers
+                      value: '1'
+                - type: svggraph
+                  name: 'Operations per second · keys'
+                  x: '36'
+                  'y': '17'
+                  width: '36'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: '43A047'
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'Redis: operations per second'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: INTEGER
+                      name: ds.1.axisy
+                      value: '1'
+                    - type: STRING
+                      name: ds.1.color
+                      value: '1E88E5'
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Redis: keys'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: 'DBROP'
+                    - type: INTEGER
+                      name: righty
+                      value: '1'
+                    - type: STRING
+                      name: righty_min
+                      value: '0'
+      valuemaps:
+        - uuid: 0390322c6ad44ff9aae18c604e9e9af4
+          name: 'Save status'
+          mappings:
+            - value: '0'
+              newvalue: Error
+            - value: '1'
+              newvalue: OK
+        - uuid: 34162ac70acc48a3acba3112f9891229
+          name: 'Service state'
+          mappings:
+            - value: '0'
+              newvalue: Down
+            - value: '1'
+              newvalue: Up

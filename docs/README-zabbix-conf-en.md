@@ -1,7 +1,5 @@
 # `zabbix-conf-en.sh` · initial Zabbix setup through the API
 
-**English** · [Español](README-zabbix-conf-en.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-Bash-white?logo=gnubash)
 ![Static Badge](https://img.shields.io/badge/runs_in-zabbix--init-white?logo=docker)
 ![Static Badge](https://img.shields.io/badge/API-Zabbix_JSON--RPC-white?logo=zabbix)
@@ -174,6 +172,6 @@ Requiring both conditions keeps the local host (metadata without a role) out of 
 ## Documentation
 
 - [`README.md`](../README.md#4-what-zabbix-init-configures): what `zabbix-init` configures.
-- [`scripts/zabbix-dev.sh`](zabbix-dev.sh): deployment that starts `zabbix-init`. See [its README](README-zabbix-dev.md).
+- [`scripts/zabbix-dev.sh`](../scripts/zabbix-dev.sh): deployment that starts `zabbix-init`. See [its README](README-zabbix-dev.md).
 - [`docker-compose.yml`](../docker-compose.yml): `zabbix-init` service.
 - [`templates/`](../templates/): Zabbix templates.

@@ -532,6 +532,9 @@ zabbix_export:
               parameters:
                 - 'return ''<span style="font-size:16px">'' + value + ''</span>'';'
       macros:
+        - macro: '{$DB.SESSION}'
+          value: infobus
+          description: 'Agent 2 session (simovilab-plugins.conf) and PostgreSQL database name used by the simovilab-database template linked to the same host.'
         - macro: '{$INFOBUS.SETUP.FACTOR}'
           value: '2'
           description: 'Veces la mediana diaria del costo de abrir la conexión que dispara la alerta.'

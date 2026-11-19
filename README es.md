@@ -29,7 +29,7 @@ Despliegue con Docker Compose del monitoreo de [databus](https://github.com/simo
 | **zabbix-agent2** | srv-gestion | Agente local: sistema operativo y sonda externa de infobus | Zabbix Agent 2 7.4.3 + Python |
 | **zabbix-init** | srv-gestion | Configuración inicial por API. Corre una vez y termina | alpine/curl + bash + jq |
 | **macdt-loop** | srv-gestion | Bucle MACDT: calcula T_warn cada minuto y lo escribe como macro | Python 3.12 |
-| **remote-zabbix-agent2** | Cada servidor de aplicación | Sistema operativo, contenedores y sondas de dominio | Zabbix Agent 2 7.4.3 + Python |
+| **zabbix-agent2** | Cada servidor de aplicación (srv-databus, srv-infobus) | Sistema operativo, contenedores y sondas de dominio | Zabbix Agent 2 7.4.3 + Python |
 
 ```mermaid
 flowchart LR
@@ -46,11 +46,11 @@ flowchart LR
     end
   end
   subgraph DBS["srv-databus"]
-    AG3["remote-zabbix-agent2<br/>red databus_internal"]
+    AG3["zabbix-agent2<br/>red databus_internal"]
     DBUS["databus<br/>orchestrator :8000"]
   end
   subgraph IBS["srv-infobus"]
-    AG2["remote-zabbix-agent2<br/>red infobus_internal"]
+    AG2["zabbix-agent2<br/>red infobus_internal"]
     IBUS["infobus<br/>orchestrator :8000"]
     TRF["Traefik :443"]
   end
@@ -334,7 +334,7 @@ cd /home/zabbix
 sudo ./scripts/zabbix-dev.sh agent 'MiSemilla.2026'
 ```
 
-El script hace lo mismo que en el servidor (permisos, sudoers, `UserParameter` y PSK), pero levanta solo `remote-zabbix-agent2`. Además, la primera vez crea `agent2/simovilab-plugins.conf` a partir de `agent2/simovilab-plugins.conf.example`.
+El script hace lo mismo que en el servidor (permisos, sudoers, `UserParameter` y PSK), pero levanta solo `zabbix-agent2`. Además, la primera vez crea `agent2/simovilab-plugins.conf` a partir de `agent2/simovilab-plugins.conf.example`.
 
 `simovilab-plugins.conf` tiene las sesiones de los plugins de PostgreSQL y Redis, con contraseñas de ejemplo. Está en `.gitignore`: cada servidor guarda su copia. Editarlo con las contraseñas reales de ese servidor. Para PostgreSQL, usar un usuario de solo lectura con el rol `pg_monitor`, no `postgres`:
 
@@ -360,6 +360,43 @@ sequenceDiagram
   S->>A: Crea el host, lo agrega al grupo y le vincula las plantillas del rol
   A->>S: Envía los ítems de las sondas cada minuto
 ```
+
+#### Memoria y CPU en LXC, VM o nube
+
+El agente corre en Docker. En una VM, una VM en la nube (AWS EC2, DigitalOcean, Azure, GCP) o un servidor físico, lee el `/proc` del propio servidor. Dentro de un LXC (Proxmox, OpenVZ) no:
+
+- `/proc/meminfo`: lxcfs responde según el cgroup de quien lo lee, así que el agente ve **su propio contenedor** (por ejemplo, 0,45 % de uso en un LXC de 8 GiB que está al 52 %).
+- `/proc/loadavg` y `/proc/stat`: muestran **todo el host Proxmox**, incluso desde la shell del LXC. La carga por CPU queda como la carga del host dividida entre los núcleos del LXC (1,76 en un LXC de 4 núcleos con el host en 7), y el % de CPU y la espera de disco son los del host.
+
+Los ítems estándar del agente no lo pueden corregir desde Docker. Por eso `zabbix-dev.sh` (modo servidor y agente) instala en el servidor un timer de systemd, `simovilab-host-stats.timer`. Cada minuto escribe estos archivos en `/srv/zabbix-disco`, que el agente monta como `/hostfs`:
+
+| Archivo | Fuente | Para qué |
+| --- | --- | --- |
+| `meminfo` | `/proc/meminfo` | Memoria total, usada, disponible y % usado (sin contar la caché de disco) |
+| `cpu` | `usage_usec` de `/sys/fs/cgroup/cpu.stat` y `nproc` | % de CPU sobre los núcleos del propio servidor |
+| `cpu.pressure` | `/sys/fs/cgroup/cpu.pressure`, o `/proc/pressure/cpu` si no existe | Presión de CPU (PSI) |
+| `io.pressure` | `/sys/fs/cgroup/io.pressure`, o `/proc/pressure/io` si no existe | Presión de disco (PSI) |
+
+Dentro de un LXC los archivos del cgroup son del LXC; en una VM o servidor físico el cgroup raíz es el sistema completo. La plantilla lee solo estos archivos, así que los valores significan lo mismo en cualquier plataforma.
+
+La carga por CPU se reemplaza por la **presión de CPU** (PSI): Linux no lleva carga promedio por contenedor, y PSI da la parte del tiempo en que los procesos esperaron por CPU. La espera de disco se reemplaza igual por la **presión de disco**. Los dos umbrales son macros (`{$CPU.PSI.*}`, `{$IO.PSI.*}`).
+
+| Plataforma | Ítems estándar del agente | Archivos exportados |
+| --- | --- | --- |
+| Servidor físico, VM, VM en la nube | Correctos, salvo que la memoria cuenta la caché como usada | Correctos |
+| LXC, OpenVZ | Incorrectos: memoria del contenedor del agente, CPU y carga del host | Correctos |
+| Contenedores administrados (Fargate, Kubernetes) | Incorrectos | No aplica: usar las métricas de la plataforma |
+
+Requisitos: systemd (sin él, el script muestra una línea para agregar al crontab) y cgroup v2 con PSI (Linux 4.20 o posterior, activo por defecto en las distribuciones actuales y en Proxmox 7 y 8). Sin cgroup v2, el % de CPU usa `/proc/stat`, que solo es correcto fuera de un LXC.
+
+Revisar en el servidor:
+
+```bash
+systemctl status simovilab-host-stats.timer
+head -3 /srv/zabbix-disco/meminfo; cat /srv/zabbix-disco/cpu /srv/zabbix-disco/cpu.pressure
+```
+
+Si los archivos dejan de actualizarse, la alerta *Datos de memoria sin actualizar* salta a los 5 min.
 
 #### 5. Ajustar las sondas a la instalación
 
@@ -421,16 +458,15 @@ La sonda toma el cambio en su siguiente ciclo (un minuto) después de reiniciar 
 
 ```bash
 docker compose -f agent2/docker-compose-agent2.yml --env-file .env ps
-docker logs --tail 20 remote-zabbix-agent2
+docker logs --tail 20 zabbix-agent2
 ```
 
 En la web: **Data collection → Hosts** muestra el host con la etiqueta ZBX en verde y el candado PSK. En **Monitoring → Latest data** aparecen los ítems de su rol.
 
-> `remote-zabbix-agent2` monta el `/proc` del host en modo solo lectura, así que `docker exec` sobre ese contenedor falla. Para probar una sonda a mano, correrla en un contenedor temporal con la misma imagen y en la misma red:
+> Para probar una sonda a mano, correr su ítem a través del agente, con los mismos parámetros que usa Zabbix:
 >
 > ```bash
-> docker run --rm --network databus_internal -v "$PWD/scripts/user_scripts":/s:ro --entrypoint bash \
->   simovilab/zabbix-agent2:ubuntu-7.4.3 -c '/s/gtfsrt_probe.py --base http://orchestrator:8000/feed/realtime --stale 60'
+> docker exec zabbix-agent2 zabbix_agent2 -t 'gtfs.probe[60]'
 > ```
 
 #### Operaciones comunes
@@ -474,7 +510,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 
 | Plantilla | Se aplica a | Ítems |
 | --- | --- | --- |
-| `simovilab servidor y sistema operativo` | los 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 8 + 1 descubrimiento con 5 prototipos por contenedor |
+| `simovilab servidor y sistema operativo` | los 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 17 + 1 descubrimiento con 5 prototipos por contenedor |
 | `simovilab-databus` | Databus-host (srv-databus) | 38 |
 | `simovilab-infobus` | Infobus-host (srv-infobus) | 30 |
 | `simovilab-infobus-ext` | Zabbix-server (srv-gestion) | 10 |
@@ -487,12 +523,21 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 | --- | --- | --- |
 | TCP connections ESTABLISHED | `host.tcp.established` | Agente (activo) |
 | Server UP/DOWN | `icmpping[,3]` | Chequeo simple |
-| Load average per CPU (1 min) | `system.cpu.load[percpu,avg1]` | Agente (activo) |
-| CPU utilization (user + system) | `system.cpu.util` | Agente (pasivo) |
-| Disk I/O wait | `system.cpu.util[,iowait]` | Agente (activo) |
+| CPU: uso y núcleos del servidor (archivo) | `vfs.file.contents[/hostfs/cpu]` | Agente (activo) |
+| CPU utilization (user + system) | `simovilab.cpu.util` | Dependiente |
+| CPU: presión (archivo) | `vfs.file.contents[/hostfs/cpu.pressure]` | Agente (activo) |
+| CPU pressure (1 min) | `simovilab.cpu.psi` | Dependiente |
+| Disco: presión (archivo) | `vfs.file.contents[/hostfs/io.pressure]` | Agente (activo) |
+| Disk I/O pressure (1 min) | `simovilab.io.psi` | Dependiente |
 | Uptime | `system.uptime` | Agente (activo) |
 | Disk space free (/) | `vfs.fs.size[/hostfs,pfree]` | Agente (activo) |
-| Memory utilization (% used) | `vm.memory.size[pused]` | Agente (activo) |
+| Memoria: /proc/meminfo del servidor | `vfs.file.contents[/hostfs/meminfo]` | Agente (activo) |
+| Memoria total | `simovilab.mem.total` | Dependiente |
+| Memoria libre (disponible) | `simovilab.mem.available` | Dependiente |
+| Memoria usada | `simovilab.mem.used` | Dependiente |
+| Memory utilization (% used) | `simovilab.mem.pused` | Dependiente |
+| Memoria: usada + libre = total | `simovilab.mem.html` | Dependiente |
+| Memoria: última actualización del archivo | `vfs.file.time[/hostfs/meminfo,modify]` | Agente (activo) |
 | *Contenedores (todos, incluidos los detenidos)* | `docker.containers.discovery[true]` | Descubrimiento |
 | ↳ Contenedor {#NAME}: info (short) | `docker.container_info["{#NAME}",short]` | Prototipo |
 | ↳ Contenedor {#NAME}: código de salida | `simovilab.contenedor.exitcode["{#NAME}"]` | Prototipo |
@@ -639,6 +684,10 @@ Para cambiar una macro sin perder el cambio en la siguiente importación de plan
 | Macro | Valor por defecto | Plantilla | Qué controla |
 | --- | --- | --- | --- |
 | `{$CONTENEDOR.REINICIO.VENTANA}` | `600` | `simovilab servidor y sistema operativo` | Segundos que la alerta "se reinició" queda activa. |
+| `{$CPU.PSI.CRIT}` | `40` | `simovilab servidor y sistema operativo` | Presión de CPU (% del tiempo esperando CPU, promedio de 1 min) para la alerta crítica. |
+| `{$CPU.PSI.WARN}` | `20` | `simovilab servidor y sistema operativo` | Presión de CPU para la alerta de advertencia. Debajo de 2 % en el laboratorio sin carga anómala. |
+| `{$IO.PSI.CRIT}` | `40` | `simovilab servidor y sistema operativo` | Presión de disco (% del tiempo esperando disco, promedio de 1 min) para la alerta crítica. |
+| `{$IO.PSI.WARN}` | `20` | `simovilab servidor y sistema operativo` | Presión de disco para la alerta de advertencia. Entre 0 y 5 % en el laboratorio sin carga anómala. |
 | `{$MACDT.CAL.DIAS.WARN}` | `7` | `simovilab-databus` | Días de anticipación para avisar que vence el calendario del GTFS. |
 | `{$MACDT.COMPL.CRIT}` | `80` | `simovilab-databus` | Completitud mínima de predicciones (nivel crítico, %). |
 | `{$MACDT.COMPL.WARN}` | `90` | `simovilab-databus` | Completitud mínima de predicciones antes de avisar (%). |
@@ -686,11 +735,11 @@ Para cambiar una macro sin perder el cambio en la siguiente importación de plan
 | Alerta | Plantilla | Se dispara cuando |
 | --- | --- | --- |
 | Too many established TCP connections | `simovilab servidor y sistema operativo` | Más de 1200 conexiones TCP establecidas durante 5 min. |
-| System load per CPU is critical | `simovilab servidor y sistema operativo` | Carga por CPU > 1 durante 5 min. |
-| CPU utilization critical | `simovilab servidor y sistema operativo` | CPU > 90 % durante 5 min. |
-| Disk I/O wait critical | `simovilab servidor y sistema operativo` | Espera de disco > 30 % durante 5 min. |
+| CPU pressure is critical | `simovilab servidor y sistema operativo` | Procesos esperando CPU más del {$CPU.PSI.CRIT} % del tiempo durante 5 min. |
+| CPU utilization critical | `simovilab servidor y sistema operativo` | CPU usada por el servidor (solo sus núcleos) > 90 % durante 5 min. |
+| Disk I/O pressure is critical | `simovilab servidor y sistema operativo` | Procesos esperando disco más del {$IO.PSI.CRIT} % del tiempo durante 5 min. |
 | Disk space critical (/) | `simovilab servidor y sistema operativo` | Menos de 10 % libre en /. |
-| Memory utilization critical | `simovilab servidor y sistema operativo` | Memoria > 90 % durante 5 min. |
+| Memory utilization critical | `simovilab servidor y sistema operativo` | Memoria en uso (sin la caché que se puede liberar) > 90 % durante 5 min. |
 | Feed GTFS-RT muy atrasado | `simovilab-databus` | El feed de predicciones tiene más de {$MACDT.V_AGE.CRIT} s durante 3 min. |
 | Capa D: feed GTFS-RT no alcanzable | `simovilab-databus` | La sonda no pudo descargar el feed de tiempo real. |
 | Capa D: sonda sin datos | `simovilab-databus` | 5 min sin datos de gtfs.probe. |
@@ -719,12 +768,13 @@ Para cambiar una macro sin perder el cambio en la siguiente importación de plan
 | Alerta | Plantilla | Se dispara cuando |
 | --- | --- | --- |
 | Too many established TCP connections | `simovilab servidor y sistema operativo` | Más de 800 conexiones TCP establecidas durante 5 min. |
-| System load per CPU is high | `simovilab servidor y sistema operativo` | Carga por CPU > 0,7 durante 5 min. |
-| CPU utilization high | `simovilab servidor y sistema operativo` | CPU > 70 % durante 5 min. |
-| Disk I/O wait high | `simovilab servidor y sistema operativo` | Espera de disco > 15 % durante 5 min. |
+| CPU pressure is high | `simovilab servidor y sistema operativo` | Procesos esperando CPU más del {$CPU.PSI.WARN} % del tiempo durante 5 min. |
+| CPU utilization high | `simovilab servidor y sistema operativo` | CPU usada por el servidor (solo sus núcleos) > 70 % durante 5 min. |
+| Disk I/O pressure is high | `simovilab servidor y sistema operativo` | Procesos esperando disco más del {$IO.PSI.WARN} % del tiempo durante 5 min. |
 | Server has been restarted recently | `simovilab servidor y sistema operativo` | El servidor lleva menos de 5 min encendido. |
 | Disk space low (/) | `simovilab servidor y sistema operativo` | Menos de 20 % libre en /. |
-| Memory utilization high | `simovilab servidor y sistema operativo` | Memoria > 75 % durante 5 min. |
+| Memory utilization high | `simovilab servidor y sistema operativo` | Memoria en uso (sin la caché que se puede liberar) > 75 % durante 5 min. |
+| Datos de memoria sin actualizar | `simovilab servidor y sistema operativo` | `/srv/zabbix-disco/meminfo` tiene más de 5 min o no se puede leer (los archivos de CPU y presión salen del mismo timer). |
 | Contenedor {#NAME} se reinició | `simovilab servidor y sistema operativo` | Por contenedor: arrancó hace menos de {$CONTENEDOR.REINICIO.VENTANA} s. |
 | Feed GTFS-RT atrasado | `simovilab-databus` | El feed de predicciones tiene más de {$MACDT.V_AGE.WARN} s durante 3 min. |
 | Cobertura GPS baja | `simovilab-databus` | En horario, menos de {$MACDT.V_GPS.WARN} % de vehículos con GPS fresco durante 5 min. |
@@ -770,7 +820,7 @@ Para cambiar una macro sin perder el cambio en la siguiente importación de plan
 - [`agent2/docker-compose-agent2.yml`](agent2/docker-compose-agent2.yml): agente remoto.
 - [`agent2/zabbix_agent2.conf`](agent2/zabbix_agent2.conf): `UserParameter` de las sondas.
 - [`scripts/zabbix-dev-es.sh`](scripts/zabbix-dev-es.sh) · [`en`](scripts/zabbix-dev.sh): despliegue de servidor y agente, incluida la revisión de redes.
-- [`scripts/zabbix-conf-en-es.sh`](scripts/zabbix-conf-en-es.sh) · [`en`](scripts/zabbix-conf-en.sh): configuración inicial que corre `zabbix-init`.
+- [`scripts/zabbix-conf-en.sh`](scripts/zabbix-conf-en.sh): configuración inicial que corre `zabbix-init`.
 - [`scripts/user_scripts/`](scripts/user_scripts/): sondas y bucle MACDT, cada uno en inglés y en español (`-es`).
 - [`templates/`](templates/): plantillas de Zabbix.
 - [`docs/`](docs/): documentación detallada de cada script.

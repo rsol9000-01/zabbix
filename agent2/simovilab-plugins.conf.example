@@ -1,52 +1,30 @@
 # ==============================================================
-# CONFIGURACIÓN GLOBAL DE PLUGINS SIMOVILAB PARA ZABBIX AGENT 2
+# PLUGINS SIMOVILAB PARA ZABBIX AGENT 2  (copia local, fuera de git)
 # ==============================================================
-# ARCHIVO DE EJEMPLO. zabbix-dev.sh (modo agent) lo copia como
-# simovilab-plugins.conf si ese archivo no existe. La copia no se sube
-# al repositorio (.gitignore): ahí van las contraseñas reales de cada servidor.
-#
-# Un solo archivo para R3 (databus) y R2 (infobus), en dev o prod.
-#
-# Se usan los NOMBRES DE SERVICIO de compose (database, state).
+# Nombres de servicio de compose: database (PostgreSQL) y state (Redis).
 # Cada agente se une solo a la red de su aplicación (AGENT_DOCKER_NETWORK),
-# así que "database" y "state" resuelven siempre a la base y al Redis locales.
-#
-# Las sesiones solo se usan si un ítem las nombra (p. ej. pgsql.ping["databus"]).
-# Que exista la sesión de la otra aplicación no afecta a este servidor.
+# así que "database" y "state" resuelven a la base y al Redis locales.
+# Las sesiones solo se usan si un ítem las nombra (p. ej. pgsql.ping["infobus"]).
+# En dev, el Redis de infobus se llama "memory" en vez de "state".
 
-#-------- POSTGRESQL --------
+#-------- POSTGRESQL (usuario de solo lectura, rol pg_monitor) --------
 Plugins.PostgreSQL.Sessions.databus.Uri=tcp://database:5432
 Plugins.PostgreSQL.Sessions.databus.Database=databus
-Plugins.PostgreSQL.Sessions.databus.User=postgres
-Plugins.PostgreSQL.Sessions.databus.Password=postgres
+Plugins.PostgreSQL.Sessions.databus.User=zabbix_ro
+Plugins.PostgreSQL.Sessions.databus.Password=<clave zabbix_ro de srv-databus>
 
 Plugins.PostgreSQL.Sessions.infobus.Uri=tcp://database:5432
 Plugins.PostgreSQL.Sessions.infobus.Database=infobus
-Plugins.PostgreSQL.Sessions.infobus.User=postgres
-Plugins.PostgreSQL.Sessions.infobus.Password=postgres
+Plugins.PostgreSQL.Sessions.infobus.User=zabbix_ro
+Plugins.PostgreSQL.Sessions.infobus.Password=<clave zabbix_ro de srv-infobus>
 
 #-------- REDIS --------
 Plugins.Redis.Sessions.databus.Uri=tcp://state:6379
-Plugins.Redis.Sessions.databus.Password=redispassword
+Plugins.Redis.Sessions.databus.Password=<REDIS_PASSWORD del .env de databus>
 
-Plugins.Redis.Sessions.infobus.Uri=tcp://memory:6379
-Plugins.Redis.Sessions.infobus.Password=changeme-use-a-strong-value
+Plugins.Redis.Sessions.infobus.Uri=tcp://state:6379
+Plugins.Redis.Sessions.infobus.Password=<REDIS_PASSWORD del .env de infobus>
 
-# ────────────────────────────────────────────────────────────────────────────
-#  NOTA DE CREDENCIALES  —  leer antes de descomentar
-# ────────────────────────────────────────────────────────────────────────────
-#  No use el usuario 'postgres'. Es el equivalente a root: evade toda
-#  verificación de permisos y, con COPY FROM PROGRAM o plpython3u, permite
-#  ejecutar órdenes en el sistema operativo del contenedor.
-#
-#  Lo que corresponde es un usuario de solo lectura, creado por el equipo que
-#  opera cada despliegue:
-#
-#      CREATE ROLE zabbix_ro LOGIN PASSWORD '<una clave propia>';
-#      GRANT pg_monitor TO zabbix_ro;
-#
-#  pg_monitor es un rol predefinido de PostgreSQL y alcanza para todas las
-#  vistas de estadísticas que usa el plugin. No da lectura de los datos.
-#
-#  Mientras ese usuario no exista, deje estas sesiones comentadas: el agente
-#  arranca igual y el resto del monitoreo funciona.
+#-------- POSTGRESQL: consultas propias (dead tuples por tabla) --------
+Plugins.PostgreSQL.CustomQueriesPath=/etc/zabbix/pgsql-queries
+Plugins.PostgreSQL.CustomQueriesEnabled=true
