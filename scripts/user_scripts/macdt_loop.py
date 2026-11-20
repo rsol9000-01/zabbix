@@ -84,12 +84,12 @@ Why GPS tightening uses persistence and hysteresis:
   F = 1.0: missing data does not tighten the threshold.
 
 Usage:
-  macdt_loop-en.py                    # continuous loop
-  macdt_loop-en.py --once             # run one cycle and exit
-  macdt_loop-en.py --once --dry-run   # calculate and display without writing
-  macdt_loop-en.py --calibrate --dry-run   # fit the line and display it, no writes
-  macdt_loop-en.py --calibrate             # calibrate and apply if it passes the guards
-  macdt_loop-en.py --calibrate --force     # apply even if it changes more than MAX_DRIFT
+  macdt_loop.py                    # continuous loop
+  macdt_loop.py --once             # run one cycle and exit
+  macdt_loop.py --once --dry-run   # calculate and display without writing
+  macdt_loop.py --calibrate --dry-run   # fit the line and display it, no writes
+  macdt_loop.py --calibrate             # calibrate and apply if it passes the guards
+  macdt_loop.py --calibrate --force     # apply even if it changes more than MAX_DRIFT
 
 Environment variables (all have reasonable defaults except access credentials):
   ZBX_API_URL, ZBX_API_USER, ZBX_API_PASS

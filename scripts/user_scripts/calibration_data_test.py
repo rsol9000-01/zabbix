@@ -10,10 +10,10 @@ Usa exactamente los mismos datos que macdt_loop-en.py --calibrate (version p95):
   buses     = gtfs.v_trips                  (host databus)   -> V
   Latencia y llegadas se unen por minuto, igual que la calibracion.
 
-Se corre dentro del contenedor macdt-loop (ya tiene credenciales y variables):
-  docker cp verificar_variacion.py macdt-loop:/tmp/
-  docker exec macdt-loop python3 /tmp/verificar_variacion.py          # ventana de MACDT_CALIB_WINDOW_D dias
-  docker exec macdt-loop python3 /tmp/verificar_variacion.py --dias 3
+Se corre dentro del contenedor macdt-loop (ya tiene credenciales y variables), desde la carpeta del proyecto:
+  docker cp scripts/user_scripts/calibration_data_test.py macdt-loop:/tmp/
+  docker exec macdt-loop python3 /tmp/calibration_data_test.py          # ventana de MACDT_CALIB_WINDOW_D dias
+  docker exec macdt-loop python3 /tmp/calibration_data_test.py --dias 3
 """
 import argparse
 import sys
