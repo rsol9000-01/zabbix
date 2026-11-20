@@ -1,7 +1,5 @@
 # `zabbix-dev.sh` · server and agent deployment
 
-**English** · [Español](README-zabbix-dev.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-Bash-white?logo=gnubash)
 ![Static Badge](https://img.shields.io/badge/runs_on-host_(root)-white?logo=linux)
 ![Static Badge](https://img.shields.io/badge/infrastructure-Docker-white?logo=docker)
@@ -9,7 +7,7 @@
 Deployment script for the Zabbix stack. It prepares the host (dependencies, permissions, agent configuration and PSK) and starts the services with Docker Compose. It has two modes:
 
 - **Server (`server`):** starts the full stack from [`docker-compose.yml`](../docker-compose.yml) and follows the `zabbix-init` log until it ends.
-- **Agent (`agent`):** starts only `remote-zabbix-agent2` from [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml).
+- **Agent (`agent`):** starts only `zabbix-agent2` from [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml).
 
 ## Overview
 
@@ -65,7 +63,7 @@ sudo ./scripts/zabbix-dev.sh agent 'MySeed.2026'   # on R2 and R3, with the SAME
 
 | Variable | Mode | Use in the script |
 | --- | --- | --- |
-| `SCRIPT_POST_INSTALL` | server | Initial setup script run by `zabbix-init`. The file must exist (default `scripts/zabbix-conf-en.sh`) |
+| `SCRIPT_POST_INSTALL` | server | Initial setup script run by `zabbix-init`. The file must exist (default `scripts/zabbix-conf.sh`) |
 | `AGENT_SUDOERS_FILE` | both | Name of the sudoers file inside `agent2/` (default `simovilab-sudoers`) |
 | `ZBX_AGENT_CONFIG_FILE` | both | Name of the agent configuration file inside `agent2/` (default `zabbix_agent2.conf`) |
 | `AGENT_PARAMS_<suffix>` | both | `key:script` pairs added as `UserParameter` lines. Example: `AGENT_PARAMS_00=host.tcp.established:zabbix-host-tcp-established.sh` |
@@ -120,7 +118,11 @@ In `server` mode, the last lines must show `zabbix-init completed successfully`.
 #### Common operations
 
 ```bash
-# Redeploy after changing templates or .env (same seed)
+# Update templates or apply .env changes: run only zabbix-init
+DOCKER_GID=$(getent group docker | cut -d: -f3) \
+  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
+
+# Redeploy after changing docker-compose.yml or the PSK (same seed)
 sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 
 # Print the usage
@@ -175,5 +177,5 @@ sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 - [`README.md`](../README.md): full deployment guide.
 - [`docker-compose.yml`](../docker-compose.yml): server stack.
 - [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml): remote agent.
-- [`scripts/zabbix-conf-en.sh`](zabbix-conf-en.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf-en.md).
-- [`scripts/user_scripts/`](user_scripts/): probes and MACDT loop.
+- [`scripts/zabbix-conf.sh`](../scripts/zabbix-conf.sh) · [`-es`](../scripts/zabbix-conf-es.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf.md).
+- [`scripts/user_scripts/`](../scripts/user_scripts/): probes and MACDT loop.

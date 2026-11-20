@@ -1,7 +1,5 @@
 # `zabbix-host-tcp-established.sh` · established TCP connections on the host
 
-**English** · [Español](README-zabbix-host-tcp-established.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-sh_+_awk-white?logo=gnubash)
 ![Static Badge](https://img.shields.io/badge/runs_in-Zabbix_Agent_2-white?logo=zabbix)
 
@@ -12,7 +10,7 @@ Counts the TCP connections in `ESTABLISHED` state on the **host**, not inside th
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/zabbix-host-tcp-established.sh` |
-| **Runs on** | Every Zabbix agent: `zabbix-agent2` (R4) and `remote-zabbix-agent2` (R2 and R3) |
+| **Runs on** | Every Zabbix agent: the `zabbix-agent2` container on srv-gestion (R4), srv-databus (R3) and srv-infobus (R2) |
 | **Run by** | Zabbix Agent 2, `UserParameter=host.tcp.established` with `sudo` |
 | **Item key** | `host.tcp.established` (template `simovilab servidor y sistema operativo`) |
 | **Reads** | `/proc/1/net/tcp` and `/proc/1/net/tcp6` |
@@ -41,7 +39,7 @@ sudo /var/lib/zabbix/user_scripts/zabbix-host-tcp-established.sh   # inside the 
 #### 1. Prerequisites
 
 - The host `/proc` mounted read-only in the agent container (`/proc:/proc:ro`). Both Compose files already do it.
-- The sudoers file created by [`zabbix-dev.sh`](../README-zabbix-dev.md), which lets the `zabbix` user run `user_scripts/*` as root.
+- The sudoers file created by [`zabbix-dev.sh`](README-zabbix-dev.md), which lets the `zabbix` user run `user_scripts/*` as root.
 
 #### 2. Register the item in the agent
 
@@ -51,7 +49,7 @@ sudo /var/lib/zabbix/user_scripts/zabbix-host-tcp-established.sh   # inside the 
 AGENT_PARAMS_00=host.tcp.established:zabbix-host-tcp-established.sh
 ```
 
-The result in [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf) is:
+The result in [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf) is:
 
 ```text
 UserParameter=host.tcp.established,sudo /var/lib/zabbix/user_scripts/zabbix-host-tcp-established.sh
@@ -98,7 +96,7 @@ In the frontend: **Monitoring → Latest data**, item *TCP connections ESTABLISH
 
 ## Documentation
 
-- [`README.md`](../../README.md): full deployment guide, items and alerts.
-- [`agent2/zabbix_agent2.conf`](../../agent2/zabbix_agent2.conf): `UserParameter` lines.
-- [`templates/simovilab-templates.yml`](../../templates/simovilab-templates.yml): item and alerts.
-- [`scripts/zabbix-dev.sh`](../zabbix-dev.sh): adds the `UserParameter` line and the sudoers file.
+- [`README.md`](../README.md): full deployment guide, items and alerts.
+- [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf): `UserParameter` lines.
+- [`templates/simovilab-templates.yml`](../templates/simovilab-templates.yml): item and alerts.
+- [`scripts/zabbix-dev.sh`](../scripts/zabbix-dev.sh): adds the `UserParameter` line and the sudoers file.

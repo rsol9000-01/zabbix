@@ -1564,6 +1564,24 @@ zabbix_export:
                     - type: STRING
                       name: min
                       value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '80'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '90'
                 - type: svggraph
                   name: 'Cache hit ratio'
                   x: '36'
@@ -1930,6 +1948,24 @@ zabbix_export:
                     - type: STRING
                       name: min
                       value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '75'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '90'
                 - type: svggraph
                   name: 'Memory used and limit'
                   x: '36'
@@ -2135,4 +2171,3 @@ zabbix_export:
               newvalue: Down
             - value: '1'
               newvalue: Up
-

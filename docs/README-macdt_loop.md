@@ -1,7 +1,5 @@
 # `macdt_loop.py` · MACDT adaptive threshold loop
 
-**English** · [Español](README-macdt_loop.es.md)
-
 ![Static Badge](https://img.shields.io/badge/language-Python_3.12-white?logo=python)
 ![Static Badge](https://img.shields.io/badge/runs_in-macdt--loop-white?logo=docker)
 ![Static Badge](https://img.shields.io/badge/API-Zabbix_JSON--RPC-white?logo=zabbix)
@@ -21,7 +19,7 @@ Executor of the MACDT loop (F5). Every minute it reads the transit load from dat
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/macdt_loop.py`, mounted as `/macdt_loop.py` |
-| **Runs on** | The `macdt-loop` container on the server (R4), image `simovilab/macdt-loop:1.0` ([`agent2/Dockerfile_local`](../../agent2/Dockerfile_local)) |
+| **Runs on** | The `macdt-loop` container on the server (R4), image `simovilab/macdt-loop:1.0` ([`agent2/Dockerfile_local`](../agent2/Dockerfile_local)) |
 | **Run by** | The container entrypoint, as a continuous loop, after `zabbix-init` ends successfully |
 | **Talks to** | Zabbix JSON-RPC API (`ZBX_API_URL`) |
 | **Writes** | Host macros on Infobus-host, trapper items, files in `/var/lib/macdt` (volume `macdt_state`) |
@@ -233,8 +231,8 @@ They live in the `macdt_state` volume and survive restarts.
 
 ## Documentation
 
-- [`README.md`](../../README.md#macdt-loop-and-calibration): MACDT loop and calibration.
-- [`docker-compose.yml`](../../docker-compose.yml): `macdt-loop` service.
-- [`templates/simovilab-infobus.yml`](../../templates/simovilab-infobus.yml): MACDT macros and trapper items.
-- [`infobus_probe.py`](infobus_probe.py): source of N(t) and the latency. See [its README](README-infobus_probe.md).
-- [`gtfsrt_probe.py`](gtfsrt_probe.py) and [`gtfs_window.py`](gtfs_window.py): sources of V_gps, V_trips and the window.
+- [`README.md`](../README.md#macdt-loop-and-calibration): MACDT loop and calibration.
+- [`docker-compose.yml`](../docker-compose.yml): `macdt-loop` service.
+- [`templates/simovilab-infobus.yml`](../templates/simovilab-infobus.yml): MACDT macros and trapper items.
+- [`infobus_probe.py`](../scripts/user_scripts/infobus_probe.py): source of N(t) and the latency. See [its README](README-infobus_probe.md).
+- [`gtfsrt_probe.py`](../scripts/user_scripts/gtfsrt_probe.py) and [`gtfs_window.py`](../scripts/user_scripts/gtfs_window.py): sources of V_gps, V_trips and the window.

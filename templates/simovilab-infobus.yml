@@ -931,4 +931,3 @@ zabbix_export:
           item:
             host: simovilab-infobus
             key: infobus.api.lat_sin_servicio
-

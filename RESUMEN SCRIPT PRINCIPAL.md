@@ -86,7 +86,7 @@ La semilla es opcional y se utiliza para generar un PSK TLS determinista.
    En modo `server` también valida:
 
    - `SCRIPT_POST_INSTALL` dentro de .env.
-   - El script posterior, actualmente `scripts/zabbix-conf-en.sh`.
+   - El script posterior, actualmente `scripts/zabbix-conf.sh`.
 
 10. **Generación del PSK**
     - Crea el directorio `psk`.
@@ -129,6 +129,6 @@ La semilla es opcional y se utiliza para generar un PSK TLS determinista.
 **Resumen por modo**
 
 - `server`: valida toda la infraestructura, genera el PSK, levanta PostgreSQL, Zabbix Server, dashboard, agente local y `zabbix-init`, y ejecuta la configuración posterior.
-- `agent`: valida el entorno, utiliza el PSK existente, levanta únicamente `remote-zabbix-agent2`.
+- `agent`: valida el entorno, utiliza el PSK existente, levanta únicamente `zabbix-agent2`.
 
 La ejecución sin argumentos que aparece en el contexto termina correctamente desde el punto de vista del control del script: muestra la ayuda y sale con código `1` porque falta indicar `agent` o `server`.

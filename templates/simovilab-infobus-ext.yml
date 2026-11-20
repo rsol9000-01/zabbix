@@ -23,76 +23,38 @@ zabbix_export:
           delay: 60s
           history: 1d
           value_type: TEXT
-          description: 'Master item. Same infobus_probe.py, run by the R4 agent against the public domain (Traefik + HTTPS). 30 s timeout, as in the internal probe: with TLS, 10 requests and the hourly GTFS check, a run takes longer than the 3 s default.'
           timeout: 30s
-        - uuid: bd9263c51f55419dbc6f816841670493
-          name: 'External - internal: last hour p95'
-          type: CALCULATED
-          key: infobus.api.ext.delta_p95_1h
-          value_type: FLOAT
-          units: ms
-          params: 'last(//infobus.api.ext.lat_p95_1h) - max(last_foreach(/*/infobus.api.lat_p95_1h))'
-          description: 'What the public path (network, TLS and Traefik) adds to the next-trips p95: external p95 minus internal p95, both over the last hour.'
-        - uuid: a11140b74a9a42dba74d9094a673d2cb
-          name: 'External: other or no responses in the burst'
+          description: 'Master item. Same infobus_probe.py, run by the R4 agent against the public domain (Traefik + HTTPS). 30 s timeout, as in the internal probe: with TLS, 10 requests and the hourly GTFS check, a run takes longer than the 3 s default.'
+        - uuid: eb14d5700b1d4f4283622e8529ca07eb
+          name: 'External: API responds correctly'
           type: DEPENDENT
-          key: infobus.api.ext.errors
-          description: 'Requests with a code other than 200, 204 and 429 (for example 500 or 502), or with no response.'
+          key: infobus.api.ext.ok
+          value_type: UNSIGNED
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.errors
+                - $.ok
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
-        - uuid: 591c9fea37de4d3eb4a772b912d126cb
-          name: 'External: first request (opens the connection)'
+        - uuid: caba8d280bb1438da7b1e2041bd01d7f
+          name: 'External: Too Many Requests (429): requests rejected by the rate limit'
           type: DEPENDENT
-          key: infobus.api.ext.health_cold_ms
-          value_type: FLOAT
-          units: ms
+          key: infobus.api.ext.throttled
+          value_type: UNSIGNED
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.health_cold_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
+                - $.throttled
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
-        - uuid: 1cdfd7748775408dbe6c99cc00d1cf99
-          name: 'External: baseline with an open connection (network + TLS + Traefik + Daphne)'
-          type: DEPENDENT
-          key: infobus.api.ext.health_ms
-          value_type: FLOAT
-          units: ms
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.health_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api.ext
-        - uuid: e09f4b3ebf7442ceae7d2c2785df0c4c
-          name: 'Internal: L_api real p95, 1 h window'
-          type: CALCULATED
-          key: infobus.api.ext.int_p95_1h
-          value_type: FLOAT
-          units: ms
-          params: 'max(last_foreach(/*/infobus.api.lat_p95_1h))'
-          description: 'Copy of the internal probe p95, to compare it in this dashboard. It reads infobus.api.lat_p95_1h from whichever host has it (last_foreach over all hosts), so it works with any infobus host name (Infobus-host, srv-infobus...). Only the infobus host has that item.'
         - uuid: 6683b5d7b7774ea2a2a5b2fdad9dd07d
           name: 'External: L_api cycle p50'
           type: DEPENDENT
           key: infobus.api.ext.lat_p50
-          value_type: FLOAT
           units: ms
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -108,8 +70,8 @@ zabbix_export:
           name: 'External: L_api cycle p90'
           type: DEPENDENT
           key: infobus.api.ext.lat_p90
-          value_type: FLOAT
           units: ms
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -121,68 +83,12 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
-        - uuid: 44c59d68affe4a2aa3882438d8f59459
-          name: 'External: L_api real p95, 1 h window'
-          type: CALCULATED
-          key: infobus.api.ext.lat_p95_1h
-          value_type: FLOAT
-          units: ms
-          params: 'percentile(//infobus.api.ext.lat_p50,1h,95)'
-          description: 'Same calculation as infobus.api.lat_p95_1h of the internal probe, measured from outside (Traefik + HTTPS): p95 of the per-minute p50 values of the last hour.'
-        - uuid: a5649f4313244b9ea0a2acc92c45a1a6
-          name: 'External: burst requests'
-          type: DEPENDENT
-          key: infobus.api.ext.n
-          description: 'Number of next-trips requests per cycle (--repeat).'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.n
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api.ext
-        - uuid: 3ba4a7b180704967b8a57db6240b1f02
-          name: 'External: 200 responses in the burst'
-          type: DEPENDENT
-          key: infobus.api.ext.n_200
-          description: 'Burst requests that returned 200 (with trips).'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.n_ok
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api.ext
-        - uuid: b65ab2fac3b8493f9aa5c00578170c11
-          name: 'External: 204 responses in the burst'
-          type: DEPENDENT
-          key: infobus.api.ext.n_204
-          description: 'Requests that returned 204: a valid response with no service that day. Computed as requests - 200 - 429 - other.'
-          preprocessing:
-            - type: JAVASCRIPT
-              parameters:
-                - |
-                  var d = JSON.parse(value);
-                  return d.n - d.n_ok - d.throttled - d.errors;
-          master_item:
-            key: infobus.api.ext
-        - uuid: eb14d5700b1d4f4283622e8529ca07eb
-          name: 'External: API responds correctly'
-          type: DEPENDENT
-          key: infobus.api.ext.ok
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.ok
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api.ext
         - uuid: a1e8182859114fd98e34463d40225d4e
           name: 'External: query cost'
           type: DEPENDENT
           key: infobus.api.ext.query_p50
-          value_type: FLOAT
           units: ms
+          value_type: FLOAT
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -194,12 +100,46 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
+        - uuid: 1cdfd7748775408dbe6c99cc00d1cf99
+          name: 'External: baseline with an open connection (network + TLS + Traefik + Daphne)'
+          type: DEPENDENT
+          key: infobus.api.ext.health_ms
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 591c9fea37de4d3eb4a772b912d126cb
+          name: 'External: first request (opens the connection)'
+          type: DEPENDENT
+          key: infobus.api.ext.health_cold_ms
+          units: ms
+          value_type: FLOAT
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_cold_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
         - uuid: e2892ef9a94d4ab48175dc8526f5960b
           name: 'External: connection setup cost (TCP + TLS)'
           type: DEPENDENT
           key: infobus.api.ext.setup_ms
-          value_type: FLOAT
           units: ms
+          value_type: FLOAT
           description: 'health_cold_ms - health_ms: TCP handshake and TLS negotiation from R4 to Traefik.'
           preprocessing:
             - type: JSONPATH
@@ -223,26 +163,12 @@ zabbix_export:
                 times its median of the last day, as a 10 min average, and is above
                 {$INFOBUS.EXT.SETUP.MIN_MS} ms. Check public DNS, the network between R4 and the proxy,
                 Traefik (certificate, load) or the site uplink.
-        - uuid: 606f9d42e5324bf0bf85aada3288c244
-          name: 'External: INFOBUS API table (HTML)'
-          type: DEPENDENT
-          key: infobus.api.ext.tabla_html
-          history: 1d
-          value_type: TEXT
-          description: 'Status and latency table built by the probe, for the API-INFOBUS dashboard.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.tabla_html
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api.ext
         - uuid: 8c4d43f61cf248e59d1c8241e167ceb7
           name: 'External: TCP connection from R4 to Traefik (network)'
           type: DEPENDENT
           key: infobus.api.ext.tcp_connect_ms
-          value_type: FLOAT
           units: ms
+          value_type: FLOAT
           description: 'Median of 3 TCP connections to port 443, without DNS. Equivalent to a ping on the API port.'
           preprocessing:
             - type: JSONPATH
@@ -255,14 +181,71 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
-        - uuid: caba8d280bb1438da7b1e2041bd01d7f
-          name: 'External: Too Many Requests (429): requests rejected by the rate limit'
+        - uuid: a5649f4313244b9ea0a2acc92c45a1a6
+          name: 'External: burst requests'
           type: DEPENDENT
-          key: infobus.api.ext.throttled
+          key: infobus.api.ext.n
+          value_type: UNSIGNED
+          description: 'Number of next-trips requests per cycle (--repeat).'
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.throttled
+                - $.n
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 3ba4a7b180704967b8a57db6240b1f02
+          name: 'External: 200 responses in the burst'
+          type: DEPENDENT
+          key: infobus.api.ext.n_200
+          value_type: UNSIGNED
+          description: 'Burst requests that returned 200 (with trips).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.n_ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: b65ab2fac3b8493f9aa5c00578170c11
+          name: 'External: 204 responses in the burst'
+          type: DEPENDENT
+          key: infobus.api.ext.n_204
+          value_type: UNSIGNED
+          description: 'Requests that returned 204: a valid response with no service that day. Computed as requests - 200 - 429 - other.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value);
+                  return d.n - d.n_ok - d.throttled - d.errors;
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: a11140b74a9a42dba74d9094a673d2cb
+          name: 'External: other or no responses in the burst'
+          type: DEPENDENT
+          key: infobus.api.ext.errors
+          value_type: UNSIGNED
+          description: 'Requests with a code other than 200, 204 and 429 (for example 500 or 502), or with no response.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.errors
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 606f9d42e5324bf0bf85aada3288c244
+          name: 'External: INFOBUS API table (HTML)'
+          type: DEPENDENT
+          key: infobus.api.ext.tabla_html
+          history: 1d
+          value_type: TEXT
+          description: 'Status and latency table built by the probe, for the API-INFOBUS dashboard.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tabla_html
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
@@ -304,8 +287,33 @@ zabbix_export:
                   }
                   h += '</table><div style="opacity:.7;font-size:.75em;margin-top:4px">' + d.n + ' next-trips requests · stop ' + d.stop_id + '</div></div>';
                   return h;
+              error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
+        - uuid: 44c59d68affe4a2aa3882438d8f59459
+          name: 'External: L_api real p95, 1 h window'
+          type: CALCULATED
+          key: infobus.api.ext.lat_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'percentile(//infobus.api.ext.lat_p50,1h,95)'
+          description: 'Same calculation as infobus.api.lat_p95_1h of the internal probe, measured from outside (Traefik + HTTPS): p95 of the per-minute p50 values of the last hour.'
+        - uuid: e09f4b3ebf7442ceae7d2c2785df0c4c
+          name: 'Internal: L_api real p95, 1 h window'
+          type: CALCULATED
+          key: infobus.api.ext.int_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'max(last_foreach(/*/infobus.api.lat_p95_1h))'
+          description: 'Copy of the internal probe p95, to compare it in this dashboard. It reads infobus.api.lat_p95_1h from whichever host has it (last_foreach over all hosts), so it works with any infobus host name (Infobus-host, srv-infobus...). Only the infobus host has that item.'
+        - uuid: bd9263c51f55419dbc6f816841670493
+          name: 'External - internal: last hour p95'
+          type: CALCULATED
+          key: infobus.api.ext.delta_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'last(//infobus.api.ext.lat_p95_1h) - max(last_foreach(/*/infobus.api.lat_p95_1h))'
+          description: 'What the public path (network, TLS and Traefik) adds to the next-trips p95: external p95 minus internal p95, both over the last hour.'
       macros:
         - macro: '{$INFOBUS.EXT.SETUP.FACTOR}'
           value: '2'
@@ -326,13 +334,13 @@ zabbix_export:
                   fields:
                     - type: STRING
                       name: bg_color
-                      value: 1F2937
+                      value: '1F2937'
                     - type: INTEGER
                       name: clock_type
                       value: '1'
                     - type: STRING
                       name: date_color
-                      value: FFFFFF
+                      value: 'FFFFFF'
                     - type: INTEGER
                       name: show.0
                       value: '1'
@@ -344,13 +352,88 @@ zabbix_export:
                       value: '1'
                     - type: STRING
                       name: time_color
-                      value: FFFFFF
+                      value: 'FFFFFF'
                     - type: INTEGER
                       name: time_format
                       value: '1'
                 - type: item
+                  name: 'External L_api p95 (last hour)'
+                  x: '18'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: bg_color
+                      value: '1F2937'
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: STRING
+                      name: desc_color
+                      value: 'FFFFFF'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.lat_p95_1h
+                    - type: STRING
+                      name: time_color
+                      value: 'FFFFFF'
+                    - type: STRING
+                      name: units_color
+                      value: 'FFFFFF'
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: value_color
+                      value: 'FFFFFF'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'API responds correctly'
+                  x: '36'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.ok
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'External − internal difference (p95, 1 h)'
+                  x: '54'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.delta_p95_1h
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
                   name: '200 · with trips'
-                  'y': '3'
+                  y: '3'
                   width: '14'
                   height: '3'
                   fields:
@@ -368,9 +451,93 @@ zabbix_export:
                     - type: INTEGER
                       name: value_size
                       value: '35'
+                - type: item
+                  name: '204 · no service'
+                  x: '14'
+                  y: '3'
+                  width: '14'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.n_204
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: item
+                  name: '429 · rate limit exceeded'
+                  x: '28'
+                  y: '3'
+                  width: '14'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.throttled
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: item
+                  name: 'Other or no response'
+                  x: '42'
+                  y: '3'
+                  width: '15'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.errors
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: item
+                  name: 'Burst requests'
+                  x: '57'
+                  y: '3'
+                  width: '15'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.n
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
                 - type: itemhistory
                   name: 'Cycle timings'
-                  'y': '6'
+                  y: '6'
                   width: '36'
                   height: '9'
                   hide_header: 'YES'
@@ -385,7 +552,32 @@ zabbix_export:
                         key: infobus.api.ext.tiempos_html
                     - type: STRING
                       name: columns.0.name
-                      value: Timings
+                      value: 'Timings'
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                - type: itemhistory
+                  name: 'INFOBUS API (external)'
+                  x: '36'
+                  y: '6'
+                  width: '36'
+                  height: '9'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.tabla_html
+                    - type: STRING
+                      name: columns.0.name
+                      value: 'API INFOBUS'
                     - type: INTEGER
                       name: show_column_header
                       value: '0'
@@ -394,13 +586,13 @@ zabbix_export:
                       value: '1'
                 - type: svggraph
                   name: 'External L_api: cycle p50 and p90'
-                  'y': '15'
+                  y: '15'
                   width: '72'
                   height: '7'
                   fields:
                     - type: STRING
                       name: ds.0.color
-                      value: 1E88E5
+                      value: '1E88E5'
                     - type: INTEGER
                       name: ds.0.fill
                       value: '0'
@@ -415,7 +607,7 @@ zabbix_export:
                       value: '2'
                     - type: STRING
                       name: ds.1.color
-                      value: E53935
+                      value: 'E53935'
                     - type: INTEGER
                       name: ds.1.fill
                       value: '0'
@@ -439,19 +631,19 @@ zabbix_export:
                       value: '1'
                     - type: STRING
                       name: reference
-                      value: APIXT
+                      value: 'APIXT'
                     - type: INTEGER
                       name: righty
                       value: '0'
                 - type: svggraph
                   name: 'Last hour L_api p95: external vs internal'
-                  'y': '22'
+                  y: '22'
                   width: '72'
                   height: '7'
                   fields:
                     - type: STRING
                       name: ds.0.color
-                      value: E53935
+                      value: 'E53935'
                     - type: INTEGER
                       name: ds.0.fill
                       value: '0'
@@ -466,7 +658,7 @@ zabbix_export:
                       value: '2'
                     - type: STRING
                       name: ds.1.color
-                      value: 2774A4
+                      value: '2774A4'
                     - type: INTEGER
                       name: ds.1.fill
                       value: '0'
@@ -481,7 +673,7 @@ zabbix_export:
                       value: '2'
                     - type: STRING
                       name: ds.2.color
-                      value: 9E9E9E
+                      value: '9E9E9E'
                     - type: INTEGER
                       name: ds.2.fill
                       value: '3'
@@ -502,192 +694,7 @@ zabbix_export:
                       value: '1'
                     - type: STRING
                       name: reference
-                      value: APIXU
+                      value: 'APIXU'
                     - type: INTEGER
                       name: righty
                       value: '0'
-                - type: item
-                  name: '204 · no service'
-                  x: '14'
-                  'y': '3'
-                  width: '14'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '35'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.n_204
-                    - type: INTEGER
-                      name: units_size
-                      value: '35'
-                    - type: INTEGER
-                      name: value_size
-                      value: '35'
-                - type: item
-                  name: 'External L_api p95 (last hour)'
-                  x: '18'
-                  width: '18'
-                  height: '3'
-                  fields:
-                    - type: STRING
-                      name: bg_color
-                      value: 1F2937
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: STRING
-                      name: desc_color
-                      value: FFFFFF
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.lat_p95_1h
-                    - type: STRING
-                      name: time_color
-                      value: FFFFFF
-                    - type: STRING
-                      name: units_color
-                      value: FFFFFF
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: STRING
-                      name: value_color
-                      value: FFFFFF
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: item
-                  name: '429 · rate limit exceeded'
-                  x: '28'
-                  'y': '3'
-                  width: '14'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '35'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.throttled
-                    - type: INTEGER
-                      name: units_size
-                      value: '35'
-                    - type: INTEGER
-                      name: value_size
-                      value: '35'
-                - type: item
-                  name: 'API responds correctly'
-                  x: '36'
-                  width: '18'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.ok
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: itemhistory
-                  name: 'INFOBUS API (external)'
-                  x: '36'
-                  'y': '6'
-                  width: '36'
-                  height: '9'
-                  hide_header: 'YES'
-                  fields:
-                    - type: INTEGER
-                      name: columns.0.display
-                      value: '4'
-                    - type: ITEM
-                      name: columns.0.itemid
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.tabla_html
-                    - type: STRING
-                      name: columns.0.name
-                      value: 'API INFOBUS'
-                    - type: INTEGER
-                      name: show_column_header
-                      value: '0'
-                    - type: INTEGER
-                      name: show_lines
-                      value: '1'
-                - type: item
-                  name: 'Other or no response'
-                  x: '42'
-                  'y': '3'
-                  width: '15'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '35'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.errors
-                    - type: INTEGER
-                      name: units_size
-                      value: '35'
-                    - type: INTEGER
-                      name: value_size
-                      value: '35'
-                - type: item
-                  name: 'External − internal difference (p95, 1 h)'
-                  x: '54'
-                  width: '18'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.delta_p95_1h
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: item
-                  name: 'Burst requests'
-                  x: '57'
-                  'y': '3'
-                  width: '15'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '35'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-infobus-ext
-                        key: infobus.api.ext.n
-                    - type: INTEGER
-                      name: units_size
-                      value: '35'
-                    - type: INTEGER
-                      name: value_size
-                      value: '35'
-

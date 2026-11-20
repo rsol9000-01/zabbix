@@ -1,6 +1,4 @@
-# `zabbix-conf-en.sh` · initial Zabbix setup through the API
-
-**English** · [Español](README-zabbix-conf-en.es.md)
+# `zabbix-conf.sh` · initial Zabbix setup through the API
 
 ![Static Badge](https://img.shields.io/badge/language-Bash-white?logo=gnubash)
 ![Static Badge](https://img.shields.io/badge/runs_in-zabbix--init-white?logo=docker)
@@ -12,7 +10,7 @@ Post-install script of the Zabbix server. The `zabbix-init` container runs it on
 
 | Item | Value |
 | --- | --- |
-| **Location** | `scripts/zabbix-conf-en.sh` (selected with `SCRIPT_POST_INSTALL` in `.env`) |
+| **Location** | `scripts/zabbix-conf.sh` (selected with `SCRIPT_POST_INSTALL` in `.env`). Spanish version, same code with comments and messages in Spanish: `scripts/zabbix-conf-es.sh` |
 | **Runs on** | The `zabbix-init` container on the server (R4), mounted as `/init.sh` |
 | **Run by** | `docker compose up` (started by [`zabbix-dev.sh`](README-zabbix-dev.md) in `server` mode) |
 | **Talks to** | Zabbix JSON-RPC API at `API_URL` |
@@ -47,11 +45,12 @@ cd /home/zabbix
 sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 ```
 
-To run it again on an existing installation (for example, after changing templates or `.env`):
+To run it again on an existing installation (for example, after changing templates or `.env`), recreate only `zabbix-init`. `DOCKER_GID` is computed by `zabbix-dev.sh` and is not in `.env`:
 
 ```bash
-docker compose -f docker-compose.yml up -d zabbix-init
-docker compose -f docker-compose.yml logs -f zabbix-init
+cd /home/zabbix
+DOCKER_GID=$(getent group docker | cut -d: -f3) \
+  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
 ```
 
 ### How to
@@ -174,6 +173,6 @@ Requiring both conditions keeps the local host (metadata without a role) out of 
 ## Documentation
 
 - [`README.md`](../README.md#4-what-zabbix-init-configures): what `zabbix-init` configures.
-- [`scripts/zabbix-dev.sh`](zabbix-dev.sh): deployment that starts `zabbix-init`. See [its README](README-zabbix-dev.md).
+- [`scripts/zabbix-dev.sh`](../scripts/zabbix-dev.sh): deployment that starts `zabbix-init`. See [its README](README-zabbix-dev.md).
 - [`docker-compose.yml`](../docker-compose.yml): `zabbix-init` service.
 - [`templates/`](../templates/): Zabbix templates.

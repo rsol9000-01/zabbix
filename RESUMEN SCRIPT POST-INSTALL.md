@@ -1,7 +1,7 @@
 
-./scripts/zabbix-conf-en.sh
+./scripts/zabbix-conf.sh
 
-El script zabbix-conf-en.sh es un **script de postinstalación de Zabbix**. Se ejecuta dentro del servicio `zabbix-init` definido en el Compose principal, cuando Zabbix Server y su interfaz web ya están disponibles.
+El script zabbix-conf.sh es un **script de postinstalación de Zabbix**. Se ejecuta dentro del servicio `zabbix-init` definido en el Compose principal, cuando Zabbix Server y su interfaz web ya están disponibles.
 
 Su objetivo es configurar automáticamente:
 

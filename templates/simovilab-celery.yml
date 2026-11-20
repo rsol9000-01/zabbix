@@ -1,825 +1,826 @@
 zabbix_export:
   version: '7.4'
   template_groups:
-    - uuid: 19a51f2ca0864028ba21eb9633248ac3
-      name: Templates/Simovilab
+  - uuid: 19a51f2ca0864028ba21eb9633248ac3
+    name: Templates/Simovilab
   templates:
-    - uuid: 513ee6f4a9164f5e8e23cb2703d7ec91
-      template: simovilab-celery
-      name: simovilab-celery
+  - uuid: 513ee6f4a9164f5e8e23cb2703d7ec91
+    template: simovilab-celery
+    name: simovilab-celery
+    description: |
+      Celery task queues of databus and infobus: are background tasks being processed?
+      One template for both projects. The broker differs (databus: RabbitMQ, infobus: Redis) and is set per server in
+      /etc/zabbix/simovilab-celery.conf (agent2/simovilab-celery.conf, outside git), read by celery_probe.py.
+      Queues are discovered automatically; control channels (.pidbox) and event queues (celeryev.*) are excluded.
+      Running tasks and consumers per queue and workers alive exist only with RabbitMQ.
+      Thresholds: specification document, section 2.4 (Celery queue, MACDT range 30-200 / 60-400); the floor is used for now.
+    groups:
+    - name: Templates/Simovilab
+    items:
+    - uuid: 94e6c3571b8f426aae82e47b5da712cf
+      name: 'Celery: queue probe'
+      type: ZABBIX_ACTIVE
+      key: celery.probe
+      delay: 1m
+      history: 1h
+      value_type: TEXT
+      timeout: 15s
       description: |
-        Celery task queues of databus and infobus: are background tasks being processed?
-        One template for both projects. The broker differs (databus: RabbitMQ, infobus: Redis) and is set per server in
-        /etc/zabbix/simovilab-celery.conf (agent2/simovilab-celery.conf, outside git), read by celery_probe.py.
-        Queues are discovered automatically; control channels (.pidbox) and event queues (celeryev.*) are excluded.
-        Running tasks and consumers per queue and workers alive exist only with RabbitMQ.
-        Thresholds: specification document, section 2.4 (Celery queue, MACDT range 30-200 / 60-400); the floor is used for now.
-      groups:
-        - name: Templates/Simovilab
-      items:
-        - uuid: 04ae1b0723ac42b69b15a756c5e9d0fb
-          name: 'Celery: broker type'
-          type: DEPENDENT
-          key: celery.broker
-          value_type: CHAR
-          description: 'rabbitmq or redis, as configured in simovilab-celery.conf.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.broker
-              error_handler: DISCARD_VALUE
-            - type: DISCARD_UNCHANGED_HEARTBEAT
-              parameters:
-                - 1d
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-        - uuid: ce6b8acea41c4a1b943b348f90df03bd
-          name: 'Celery: probe duration'
-          type: DEPENDENT
-          key: celery.elapsed_ms
-          value_type: FLOAT
-          units: ms
-          description: 'Time the probe took to read the broker.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.elapsed_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-        - uuid: 09fdde2ccffe46cba17f65edb878a7c6
-          name: 'Celery: probe error'
-          type: DEPENDENT
-          key: celery.error
-          value_type: CHAR
-          description: 'Reason of the last failure of the probe. Empty when the broker was read.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.error
-              error_handler: DISCARD_VALUE
-            - type: DISCARD_UNCHANGED_HEARTBEAT
-              parameters:
-                - 1h
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-        - uuid: 471fc7c66f794576ab829c9682a7aa41
-          name: 'Celery: queue table (HTML)'
-          type: DEPENDENT
-          key: celery.html
-          history: 1d
-          value_type: TEXT
-          description: 'Queue table for the CELERY dashboard.'
-          preprocessing:
-            - type: JAVASCRIPT
-              parameters:
-                - |
-                  var d = JSON.parse(value);
-                  function n(v) { v = Number(v); return isNaN(v) ? 0 : v; }
-                  function mac(s, def) { var v = Number(s); return isNaN(v) ? def : v; }
-                  var C = { OK: '#43A047', WARN: '#FB8C00', ERROR: '#E53935', INFO: '#1E88E5' };
-                  function st(s, label) { return '<span style="color:#fff;background:' + C[s] + ';padding:1px 6px;border-radius:3px;font-weight:bold">' + (label || s) + '</span>'; }
-                  var th = 'style="text-align:left;padding:4px 10px;border-bottom:2px solid #8888;white-space:nowrap"';
-                  var td = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap"';
-                  var tdn = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"';
-                  var tdd = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"';
-                  var w = mac('{$CELERY.QUEUE.WARN}', 30), c = mac('{$CELERY.QUEUE.CRIT}', 60);
-                  var broker = d.broker === 'rabbitmq' ? 'RabbitMQ' : (d.broker === 'redis' ? 'Redis' : (d.broker || '?'));
-                  var h = '<div style="font-size:calc(1em + 4px)"><br><div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">CELERY QUEUES · ' + broker.toUpperCase() + '</div><br>';
-                  if (!d.ok) {
-                    h += '<div>' + st('ERROR', 'BROKER NOT REACHABLE') + ' ' + (d.error || '') + '</div></div>';
-                    return h;
-                  }
-                  h += '<table style="border-collapse:collapse"><tr><th ' + th + '>Queue</th><th ' + th + '>Waiting</th><th ' + th + '>Running</th><th ' + th + '>Consumers</th><th ' + th + '>Status</th><th ' + th + '>Meaning</th></tr>';
-                  var q = d.queues || [];
-                  for (var i = 0; i < q.length; i++) {
-                    var r = n(q[i].ready), hasC = q[i].consumers !== null && q[i].consumers !== undefined, cons = n(q[i].consumers);
-                    var s, m;
-                    if (hasC && cons === 0 && r > 0) { s = st('ERROR', 'NO WORKER'); m = 'Tasks are waiting and no worker listens to this queue: they will never run'; }
-                    else if (r > c) { s = st('ERROR', 'BACKLOG'); m = 'More than ' + c + ' tasks waiting: workers do not keep up'; }
-                    else if (r > w) { s = st('WARN', 'BACKLOG'); m = 'More than ' + w + ' tasks waiting'; }
-                    else if (hasC && cons === 0) { s = st('INFO', 'NO WORKER'); m = 'No worker listens, but nothing is waiting'; }
-                    else { s = st('OK'); m = hasC ? 'Workers are taking the tasks' : 'Below the alert threshold'; }
-                    h += '<tr><td ' + td + '>' + q[i].queue + '</td><td ' + tdn + '>' + r + '</td><td ' + tdn + '>' + (q[i].unacked === null ? '-' : n(q[i].unacked)) + '</td><td ' + tdn + '>' + (hasC ? cons : '-') + '</td><td ' + td + '>' + s + '</td><td ' + tdd + '>' + m + '</td></tr>';
-                  }
-                  if (!q.length) { h += '<tr><td ' + td + ' colspan="6">No work queues declared in the broker</td></tr>'; }
-                  h += '</table><div style="opacity:.7;font-size:.75em;margin-top:4px">';
-                  h += 'Waiting = tasks in the queue, not yet taken. Running = taken by a worker and not acknowledged. ';
-                  h += d.workers === null ? 'Workers alive: not available with Redis (see the engine container). ' : ('Workers alive: ' + d.workers + '. ');
-                  if (d.unroutable_rate !== null) { h += 'Unroutable messages: ' + d.unroutable_rate + '/s. '; }
-                  if (d.broker === 'redis') { h += 'Running is reported for all queues together. '; }
-                  h += 'Probe ' + d.elapsed_ms + ' ms.</div></div>';
-                  return h;
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-        - uuid: feedd988051745158289a954f2967155
-          name: 'Celery: broker reachable'
-          type: DEPENDENT
-          key: celery.ok
-          description: '1 = the probe read the broker. 0 = it could not (broker stopped, wrong credentials, missing configuration file). The reason is in "Celery: probe error".'
-          valuemap:
-            name: 'Service state'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.ok
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-          triggers:
-            - uuid: b6fb9b44633d4592a8d1558055b7b243
-              expression: 'max(/simovilab-celery/celery.ok,#2)=0'
-              recovery_mode: RECOVERY_EXPRESSION
-              recovery_expression: last(/simovilab-celery/celery.ok)=1
-              name: 'Celery DOWN: broker not reachable'
-              priority: HIGH
-              description: |
-                Measures: the probe reads the Celery broker every minute.
-                ERROR: two checks in a row without reading it. Background tasks cannot be queued or watched: in databus the realtime feed stops being built.
-                Check: item "Celery: probe error", broker container running (databus: message-broker, infobus: state), /etc/zabbix/simovilab-celery.conf in the agent.
-                Root of the Celery tree: while it is open, the other Celery alerts stay suppressed.
-              dependencies:
-                - name: 'Server DOWN!!!'
-                  expression: 'max(/simovilab servidor y sistema operativo/icmpping[,3],#3)=0'
-                  recovery_expression: 'last(/simovilab servidor y sistema operativo/icmpping[,3])=1'
-              tags:
-                - tag: layer
-                  value: tasks
-        - uuid: 94e6c3571b8f426aae82e47b5da712cf
-          name: 'Celery: queue probe'
-          type: ZABBIX_ACTIVE
-          key: celery.probe
-          history: 1h
-          value_type: TEXT
-          description: 'Master item. celery_probe.py reads the broker that Celery uses (RabbitMQ in databus, Redis in infobus) as configured in /etc/zabbix/simovilab-celery.conf, and returns one JSON object.'
-          timeout: 15s
-          tags:
-            - tag: component
-              value: celery
-        - uuid: eaedcc4510494a1d8673a9030cec49cf
-          name: 'Celery: tasks waiting (all queues)'
-          type: DEPENDENT
-          key: celery.ready_total
-          description: 'Tasks queued and not yet taken by a worker, summed over the work queues.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.ready_total
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-        - uuid: 6ceabc712d1543c0a62b94b46c369dd0
-          name: 'Celery: tasks running (all queues)'
-          type: DEPENDENT
-          key: celery.unacked_total
-          description: 'Tasks taken by a worker and not yet acknowledged, summed over the work queues.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.unacked_total
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-        - uuid: 8954d0f4d87e48feb21b644cf3f936d2
-          name: 'Celery: unroutable messages'
-          type: DEPENDENT
-          key: celery.unroutable_rate
-          value_type: FLOAT
-          units: msg/s
-          description: 'Messages per second published to an exchange with no queue bound, so they were dropped. RabbitMQ only. Information: no alert.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.unroutable_rate
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-        - uuid: 6b56e458c58b44c18b5f473ea1350b46
-          name: 'Celery: workers alive'
-          type: DEPENDENT
-          key: celery.workers
-          description: 'Workers whose control channel (.pidbox) has a consumer. RabbitMQ only: with Redis there is no per-worker channel to count.'
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.workers
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: celery.probe
-          tags:
-            - tag: component
-              value: celery
-          triggers:
-            - uuid: 9c69bd84d2864052ba7ee311bd01c3e7
-              expression: 'max(/simovilab-celery/celery.workers,5m)<{$CELERY.WORKERS.MIN}'
-              name: 'Celery: fewer workers than expected'
-              event_name: 'Celery: fewer workers than expected (under {$CELERY.WORKERS.MIN} for 5 min)'
-              opdata: 'Workers: {ITEM.LASTVALUE1}'
-              priority: HIGH
-              description: |
-                Measures: Celery workers connected to the broker (RabbitMQ only).
-                ERROR: fewer than {$CELERY.WORKERS.MIN} during 5 minutes. A worker container stopped or lost its connection: its queues stop being processed.
-                Check: worker containers (databus: schedule-engine, realtime-engine) and their logs.
-              dependencies:
-                - name: 'Celery DOWN: broker not reachable'
-                  expression: 'max(/simovilab-celery/celery.ok,#2)=0'
-                  recovery_expression: last(/simovilab-celery/celery.ok)=1
-              tags:
-                - tag: layer
-                  value: tasks
-      discovery_rules:
-        - uuid: a305afe587cd4eb58a7e3125dbc60af1
-          name: 'Celery: queue workers (RabbitMQ)'
-          type: DEPENDENT
-          key: celery.queues.detail.discovery
-          description: 'Same queues, only when the broker reports running tasks and consumers per queue (RabbitMQ). Empty with Redis.'
-          item_prototypes:
-            - uuid: 8b0f6109739541aaa1724f0bef46ac0f
-              name: 'Celery: consumers on {#QUEUE}'
-              type: DEPENDENT
-              key: 'celery.queue.consumers[{#QUEUE}]'
-              description: 'Workers listening to {#QUEUE}.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.queues[?(@.queue==''{#QUEUE}'')].consumers.first()'
-                  error_handler: DISCARD_VALUE
-                - type: MATCHES_REGEX
-                  parameters:
-                    - '^-?[0-9]+(\.[0-9]+)?$'
-                  error_handler: DISCARD_VALUE
-              master_item:
-                key: celery.probe
-              tags:
-                - tag: component
-                  value: celery
-                - tag: queue
-                  value: '{#QUEUE}'
-              trigger_prototypes:
-                - uuid: affd410e62eb4584bc0715ef1ecd51f1
-                  expression: 'max(/simovilab-celery/celery.queue.consumers[{#QUEUE}],5m)<{$CELERY.CONSUMERS.MIN:"{#QUEUE}"}'
-                  name: 'Celery: no worker listening on {#QUEUE}'
-                  event_name: 'Celery: no worker listening on {#QUEUE} for 5 min'
-                  priority: HIGH
-                  description: |
-                    Measures: workers connected to the queue.
-                    ERROR: fewer than {$CELERY.CONSUMERS.MIN:"{#QUEUE}"} during 5 minutes. Tasks sent to this queue will never run.
-                    A queue that nobody is supposed to read (databus: the default queue "celery") has {$CELERY.CONSUMERS.MIN:"celery"} = 0 in its role template.
-                  dependencies:
-                    - name: 'Celery: fewer workers than expected'
-                      expression: 'max(/simovilab-celery/celery.workers,5m)<{$CELERY.WORKERS.MIN}'
-                    - name: 'Celery DOWN: broker not reachable'
-                      expression: 'max(/simovilab-celery/celery.ok,#2)=0'
-                      recovery_expression: last(/simovilab-celery/celery.ok)=1
-                  tags:
-                    - tag: layer
-                      value: tasks
-            - uuid: 5876d694e9bd48debcea40cb5137cd33
-              name: 'Celery: tasks running in {#QUEUE}'
-              type: DEPENDENT
-              key: 'celery.queue.unacked[{#QUEUE}]'
-              description: 'Tasks of {#QUEUE} taken by a worker and not yet acknowledged.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.queues[?(@.queue==''{#QUEUE}'')].unacked.first()'
-                  error_handler: DISCARD_VALUE
-                - type: MATCHES_REGEX
-                  parameters:
-                    - '^-?[0-9]+(\.[0-9]+)?$'
-                  error_handler: DISCARD_VALUE
-              master_item:
-                key: celery.probe
-              tags:
-                - tag: component
-                  value: celery
-                - tag: queue
-                  value: '{#QUEUE}'
-          master_item:
-            key: celery.probe
-          lld_macro_paths:
-            - lld_macro: '{#QUEUE}'
-              path: $.queue
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.detail_queues
-              error_handler: DISCARD_VALUE
-        - uuid: 308373a06922473ea7c4815368324f50
-          name: 'Celery: work queues'
-          type: DEPENDENT
-          key: celery.queues.discovery
-          description: 'Work queues reported by the probe (control channels and event queues excluded).'
-          item_prototypes:
-            - uuid: 3a5babd319a14dc5949ae3e271d928ed
-              name: 'Celery: tasks waiting in {#QUEUE}'
-              type: DEPENDENT
-              key: 'celery.queue.ready[{#QUEUE}]'
-              description: 'Tasks queued in {#QUEUE} and not yet taken by a worker.'
-              preprocessing:
-                - type: JSONPATH
-                  parameters:
-                    - '$.queues[?(@.queue==''{#QUEUE}'')].ready.first()'
-                  error_handler: DISCARD_VALUE
-                - type: MATCHES_REGEX
-                  parameters:
-                    - '^-?[0-9]+(\.[0-9]+)?$'
-                  error_handler: DISCARD_VALUE
-              master_item:
-                key: celery.probe
-              tags:
-                - tag: component
-                  value: celery
-                - tag: queue
-                  value: '{#QUEUE}'
-              trigger_prototypes:
-                - uuid: 71afaa8d8fb7454c993c68eeddf804f1
-                  expression: 'min(/simovilab-celery/celery.queue.ready[{#QUEUE}],5m)>{$CELERY.QUEUE.WARN:"{#QUEUE}"}'
-                  name: 'Celery: tasks piling up in {#QUEUE}'
-                  event_name: 'Celery: tasks piling up in {#QUEUE} (over {$CELERY.QUEUE.WARN:"{#QUEUE}"} for 5 min)'
-                  opdata: 'Waiting: {ITEM.LASTVALUE1}'
-                  priority: WARNING
-                  description: |
-                    Measures: tasks waiting in the queue, checked every minute.
-                    ERROR: more than {$CELERY.QUEUE.WARN:"{#QUEUE}"} during 5 minutes. Workers take tasks slower than they arrive: results (feeds, predictions) come late.
-                  dependencies:
-                    - name: 'Celery: tasks piling up in {#QUEUE} critical'
-                      expression: 'min(/simovilab-celery/celery.queue.ready[{#QUEUE}],5m)>{$CELERY.QUEUE.CRIT:"{#QUEUE}"}'
-                    - name: 'Celery DOWN: broker not reachable'
-                      expression: 'max(/simovilab-celery/celery.ok,#2)=0'
-                      recovery_expression: last(/simovilab-celery/celery.ok)=1
-                  tags:
-                    - tag: layer
-                      value: tasks
-                - uuid: 31e8ca77e9f24b9da4491f13846bbdcf
-                  expression: 'min(/simovilab-celery/celery.queue.ready[{#QUEUE}],5m)>{$CELERY.QUEUE.CRIT:"{#QUEUE}"}'
-                  name: 'Celery: tasks piling up in {#QUEUE} critical'
-                  event_name: 'Celery: tasks piling up in {#QUEUE} critical (over {$CELERY.QUEUE.CRIT:"{#QUEUE}"} for 5 min)'
-                  opdata: 'Waiting: {ITEM.LASTVALUE1}'
-                  priority: HIGH
-                  description: |
-                    Measures: tasks waiting in the queue, checked every minute.
-                    ERROR: more than {$CELERY.QUEUE.CRIT:"{#QUEUE}"} during 5 minutes. The backlog keeps growing; tasks may expire before they run.
-                    Check: worker containers, their logs, and "Celery: consumers on {#QUEUE}".
-                  dependencies:
-                    - name: 'Celery DOWN: broker not reachable'
-                      expression: 'max(/simovilab-celery/celery.ok,#2)=0'
-                      recovery_expression: last(/simovilab-celery/celery.ok)=1
-                  tags:
-                    - tag: layer
-                      value: tasks
-          master_item:
-            key: celery.probe
-          lld_macro_paths:
-            - lld_macro: '{#QUEUE}'
-              path: $.queue
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.queue_names
-              error_handler: DISCARD_VALUE
+        Master item. celery_probe.py reads the broker that Celery uses (RabbitMQ in databus, Redis in infobus) as configured in /etc/zabbix/simovilab-celery.conf, and returns one JSON object.
       tags:
+      - tag: component
+        value: celery
+    - uuid: feedd988051745158289a954f2967155
+      name: 'Celery: broker reachable'
+      type: DEPENDENT
+      key: celery.ok
+      description: '1 = the probe read the broker. 0 = it could not (broker stopped, wrong credentials, missing configuration file). The reason is in "Celery: probe error".'
+      valuemap:
+        name: Service state
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.ok
+        error_handler: DISCARD_VALUE
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+      triggers:
+      - uuid: b6fb9b44633d4592a8d1558055b7b243
+        expression: max(/simovilab-celery/celery.ok,#2)=0
+        recovery_mode: RECOVERY_EXPRESSION
+        recovery_expression: last(/simovilab-celery/celery.ok)=1
+        name: 'Celery DOWN: broker not reachable'
+        priority: HIGH
+        description: |
+          Measures: the probe reads the Celery broker every minute.
+          ERROR: two checks in a row without reading it. Background tasks cannot be queued or watched: in databus the realtime feed stops being built.
+          Check: item "Celery: probe error", broker container running (databus: message-broker, infobus: state), /etc/zabbix/simovilab-celery.conf in the agent.
+          Root of the Celery tree: while it is open, the other Celery alerts stay suppressed.
+        dependencies:
+        - name: Server DOWN!!!
+          expression: max(/simovilab servidor y sistema operativo/icmpping[,3],#3)=0
+          recovery_expression: last(/simovilab servidor y sistema operativo/icmpping[,3])=1
+        tags:
         - tag: layer
           value: tasks
-      macros:
-        - macro: '{$CELERY.CONSUMERS.MIN}'
-          value: '1'
-          description: 'Workers that must listen to each work queue. Per queue with context: {$CELERY.CONSUMERS.MIN:"<queue>"}. RabbitMQ only'
-        - macro: '{$CELERY.QUEUE.CRIT}'
-          value: '60'
-          description: '[ESP] 2.4 · tasks waiting per queue, 5 min. Floor of the MACDT range 60-400. Per queue with context'
-        - macro: '{$CELERY.QUEUE.WARN}'
-          value: '30'
-          description: '[ESP] 2.4 · tasks waiting per queue, 5 min. Floor of the MACDT range 30-200. Per queue with context'
-        - macro: '{$CELERY.WORKERS.MIN}'
-          value: '1'
-          description: 'Workers alive expected on the broker. RabbitMQ only'
-      dashboards:
-        - uuid: 55d967daffa54ad6b481d172c7d5c2f7
-          name: CELERY
-          pages:
-            - name: Celery
-              widgets:
-                - type: item
-                  name: Broker
-                  width: '9'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-celery
-                        key: celery.ok
-                    - type: STRING
-                      name: thresholds.0.color
-                      value: E53935
-                    - type: STRING
-                      name: thresholds.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.1.color
-                      value: 43A047
-                    - type: STRING
-                      name: thresholds.1.threshold
-                      value: '1'
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: itemhistory
-                  name: 'Celery queues'
-                  'y': '3'
-                  width: '36'
-                  height: '10'
-                  hide_header: 'YES'
-                  fields:
-                    - type: INTEGER
-                      name: columns.0.display
-                      value: '4'
-                    - type: ITEM
-                      name: columns.0.itemid
-                      value:
-                        host: simovilab-celery
-                        key: celery.html
-                    - type: STRING
-                      name: columns.0.name
-                      value: Queues
-                    - type: INTEGER
-                      name: show_column_header
-                      value: '0'
-                    - type: INTEGER
-                      name: show_lines
-                      value: '1'
-                - type: svggraph
-                  name: 'Tasks running · workers alive'
-                  'y': '13'
-                  width: '36'
-                  height: '7'
-                  fields:
-                    - type: STRING
-                      name: ds.0.color
-                      value: FB8C00
-                    - type: INTEGER
-                      name: ds.0.fill
-                      value: '0'
-                    - type: STRING
-                      name: ds.0.items.0
-                      value: 'Celery: tasks running (all queues)'
-                    - type: INTEGER
-                      name: ds.0.transparency
-                      value: '0'
-                    - type: INTEGER
-                      name: ds.0.width
-                      value: '2'
-                    - type: INTEGER
-                      name: ds.1.axisy
-                      value: '1'
-                    - type: STRING
-                      name: ds.1.color
-                      value: 43A047
-                    - type: INTEGER
-                      name: ds.1.fill
-                      value: '0'
-                    - type: STRING
-                      name: ds.1.items.0
-                      value: 'Celery: workers alive'
-                    - type: INTEGER
-                      name: ds.1.transparency
-                      value: '0'
-                    - type: INTEGER
-                      name: ds.1.width
-                      value: '2'
-                    - type: STRING
-                      name: lefty_min
-                      value: '0'
-                    - type: INTEGER
-                      name: legend_lines
-                      value: '2'
-                    - type: INTEGER
-                      name: legend_statistic
-                      value: '1'
-                    - type: STRING
-                      name: reference
-                      value: CLRUN
-                    - type: INTEGER
-                      name: righty
-                      value: '1'
-                    - type: STRING
-                      name: righty_min
-                      value: '0'
-                - type: item
-                  name: 'Broker type'
-                  x: '9'
-                  width: '9'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-celery
-                        key: celery.broker
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: item
-                  name: 'Tasks waiting'
-                  x: '18'
-                  width: '9'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-celery
-                        key: celery.ready_total
-                    - type: STRING
-                      name: thresholds.0.color
-                      value: 43A047
-                    - type: STRING
-                      name: thresholds.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.1.color
-                      value: FB8C00
-                    - type: STRING
-                      name: thresholds.1.threshold
-                      value: '31'
-                    - type: STRING
-                      name: thresholds.2.color
-                      value: E53935
-                    - type: STRING
-                      name: thresholds.2.threshold
-                      value: '61'
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: item
-                  name: 'Tasks running'
-                  x: '27'
-                  width: '9'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-celery
-                        key: celery.unacked_total
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: item
-                  name: 'Workers alive'
-                  x: '36'
-                  width: '9'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-celery
-                        key: celery.workers
-                    - type: STRING
-                      name: thresholds.0.color
-                      value: E53935
-                    - type: STRING
-                      name: thresholds.0.threshold
-                      value: '0'
-                    - type: STRING
-                      name: thresholds.1.color
-                      value: 43A047
-                    - type: STRING
-                      name: thresholds.1.threshold
-                      value: '1'
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: svggraph
-                  name: 'Tasks waiting per queue'
-                  x: '36'
-                  'y': '3'
-                  width: '36'
-                  height: '10'
-                  fields:
-                    - type: STRING
-                      name: ds.0.color
-                      value: 1E88E5
-                    - type: INTEGER
-                      name: ds.0.fill
-                      value: '0'
-                    - type: STRING
-                      name: ds.0.items.0
-                      value: 'Celery: tasks waiting in *'
-                    - type: INTEGER
-                      name: ds.0.transparency
-                      value: '0'
-                    - type: INTEGER
-                      name: ds.0.width
-                      value: '2'
-                    - type: STRING
-                      name: lefty_min
-                      value: '0'
-                    - type: INTEGER
-                      name: legend_lines
-                      value: '1'
-                    - type: INTEGER
-                      name: legend_statistic
-                      value: '1'
-                    - type: STRING
-                      name: reference
-                      value: CLQRD
-                    - type: INTEGER
-                      name: righty
-                      value: '0'
-                    - type: INTEGER
-                      name: simple_triggers
-                      value: '1'
-                - type: svggraph
-                  name: 'Unroutable messages · probe duration'
-                  x: '36'
-                  'y': '13'
-                  width: '36'
-                  height: '7'
-                  fields:
-                    - type: STRING
-                      name: ds.0.color
-                      value: E53935
-                    - type: INTEGER
-                      name: ds.0.fill
-                      value: '0'
-                    - type: STRING
-                      name: ds.0.items.0
-                      value: 'Celery: unroutable messages'
-                    - type: INTEGER
-                      name: ds.0.transparency
-                      value: '0'
-                    - type: INTEGER
-                      name: ds.0.width
-                      value: '2'
-                    - type: INTEGER
-                      name: ds.1.axisy
-                      value: '1'
-                    - type: STRING
-                      name: ds.1.color
-                      value: 9E9E9E
-                    - type: INTEGER
-                      name: ds.1.fill
-                      value: '0'
-                    - type: STRING
-                      name: ds.1.items.0
-                      value: 'Celery: probe duration'
-                    - type: INTEGER
-                      name: ds.1.transparency
-                      value: '0'
-                    - type: INTEGER
-                      name: ds.1.width
-                      value: '2'
-                    - type: STRING
-                      name: lefty_min
-                      value: '0'
-                    - type: INTEGER
-                      name: legend_lines
-                      value: '2'
-                    - type: INTEGER
-                      name: legend_statistic
-                      value: '1'
-                    - type: STRING
-                      name: reference
-                      value: CLUNR
-                    - type: INTEGER
-                      name: righty
-                      value: '1'
-                    - type: STRING
-                      name: righty_min
-                      value: '0'
-                - type: item
-                  name: 'Unroutable messages'
-                  x: '45'
-                  width: '9'
-                  height: '3'
-                  fields:
-                    - type: INTEGER
-                      name: decimal_size
-                      value: '25'
-                    - type: ITEM
-                      name: itemid.0
-                      value:
-                        host: simovilab-celery
-                        key: celery.unroutable_rate
-                    - type: INTEGER
-                      name: units_size
-                      value: '25'
-                    - type: INTEGER
-                      name: value_size
-                      value: '25'
-                - type: clock
-                  name: 'Local time'
-                  x: '54'
-                  width: '18'
-                  height: '3'
-                  fields:
-                    - type: STRING
-                      name: bg_color
-                      value: 1F2937
-                    - type: INTEGER
-                      name: clock_type
-                      value: '1'
-                    - type: STRING
-                      name: date_color
-                      value: FFFFFF
-                    - type: INTEGER
-                      name: show.0
-                      value: '1'
-                    - type: INTEGER
-                      name: show.1
-                      value: '2'
-                    - type: INTEGER
-                      name: time_bold
-                      value: '1'
-                    - type: STRING
-                      name: time_color
-                      value: FFFFFF
-                    - type: INTEGER
-                      name: time_format
-                      value: '1'
-      valuemaps:
-        - uuid: 58c6a4bda0574cf5b8ca85bad039c97a
-          name: 'Service state'
-          mappings:
-            - value: '0'
-              newvalue: Down
-            - value: '1'
-              newvalue: Up
-
+    - uuid: 09fdde2ccffe46cba17f65edb878a7c6
+      name: 'Celery: probe error'
+      type: DEPENDENT
+      key: celery.error
+      value_type: CHAR
+      description: Reason of the last failure of the probe. Empty when the broker was read.
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.error
+        error_handler: DISCARD_VALUE
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1h
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+    - uuid: 04ae1b0723ac42b69b15a756c5e9d0fb
+      name: 'Celery: broker type'
+      type: DEPENDENT
+      key: celery.broker
+      value_type: CHAR
+      description: rabbitmq or redis, as configured in simovilab-celery.conf.
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.broker
+        error_handler: DISCARD_VALUE
+      - type: DISCARD_UNCHANGED_HEARTBEAT
+        parameters:
+        - 1d
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+    - uuid: eaedcc4510494a1d8673a9030cec49cf
+      name: 'Celery: tasks waiting (all queues)'
+      type: DEPENDENT
+      key: celery.ready_total
+      description: Tasks queued and not yet taken by a worker, summed over the work queues.
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.ready_total
+        error_handler: DISCARD_VALUE
+      - type: MATCHES_REGEX
+        parameters:
+        - ^-?[0-9]+(\.[0-9]+)?$
+        error_handler: DISCARD_VALUE
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+    - uuid: 6ceabc712d1543c0a62b94b46c369dd0
+      name: 'Celery: tasks running (all queues)'
+      type: DEPENDENT
+      key: celery.unacked_total
+      description: Tasks taken by a worker and not yet acknowledged, summed over the work queues.
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.unacked_total
+        error_handler: DISCARD_VALUE
+      - type: MATCHES_REGEX
+        parameters:
+        - ^-?[0-9]+(\.[0-9]+)?$
+        error_handler: DISCARD_VALUE
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+    - uuid: 6b56e458c58b44c18b5f473ea1350b46
+      name: 'Celery: workers alive'
+      type: DEPENDENT
+      key: celery.workers
+      description: 'Workers whose control channel (.pidbox) has a consumer. RabbitMQ only: with Redis there is no per-worker channel to count.'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.workers
+        error_handler: DISCARD_VALUE
+      - type: MATCHES_REGEX
+        parameters:
+        - ^-?[0-9]+(\.[0-9]+)?$
+        error_handler: DISCARD_VALUE
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+      triggers:
+      - uuid: 9c69bd84d2864052ba7ee311bd01c3e7
+        expression: max(/simovilab-celery/celery.workers,5m)<{$CELERY.WORKERS.MIN}
+        name: 'Celery: fewer workers than expected'
+        event_name: 'Celery: fewer workers than expected (under {$CELERY.WORKERS.MIN} for 5 min)'
+        opdata: 'Workers: {ITEM.LASTVALUE1}'
+        priority: HIGH
+        description: |
+          Measures: Celery workers connected to the broker (RabbitMQ only).
+          ERROR: fewer than {$CELERY.WORKERS.MIN} during 5 minutes. A worker container stopped or lost its connection: its queues stop being processed.
+          Check: worker containers (databus: schedule-engine, realtime-engine) and their logs.
+        dependencies:
+        - name: 'Celery DOWN: broker not reachable'
+          expression: max(/simovilab-celery/celery.ok,#2)=0
+          recovery_expression: last(/simovilab-celery/celery.ok)=1
+        tags:
+        - tag: layer
+          value: tasks
+    - uuid: 8954d0f4d87e48feb21b644cf3f936d2
+      name: 'Celery: unroutable messages'
+      type: DEPENDENT
+      key: celery.unroutable_rate
+      value_type: FLOAT
+      units: msg/s
+      description: 'Messages per second published to an exchange with no queue bound, so they were dropped. RabbitMQ only. Information: no alert.'
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.unroutable_rate
+        error_handler: DISCARD_VALUE
+      - type: MATCHES_REGEX
+        parameters:
+        - ^-?[0-9]+(\.[0-9]+)?$
+        error_handler: DISCARD_VALUE
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+    - uuid: ce6b8acea41c4a1b943b348f90df03bd
+      name: 'Celery: probe duration'
+      type: DEPENDENT
+      key: celery.elapsed_ms
+      value_type: FLOAT
+      units: ms
+      description: Time the probe took to read the broker.
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.elapsed_ms
+        error_handler: DISCARD_VALUE
+      - type: MATCHES_REGEX
+        parameters:
+        - ^-?[0-9]+(\.[0-9]+)?$
+        error_handler: DISCARD_VALUE
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+    - uuid: 471fc7c66f794576ab829c9682a7aa41
+      name: 'Celery: queue table (HTML)'
+      type: DEPENDENT
+      key: celery.html
+      history: 1d
+      value_type: TEXT
+      description: Queue table for the CELERY dashboard.
+      preprocessing:
+      - type: JAVASCRIPT
+        parameters:
+        - |
+          var d = JSON.parse(value);
+          function n(v) { v = Number(v); return isNaN(v) ? 0 : v; }
+          function mac(s, def) { var v = Number(s); return isNaN(v) ? def : v; }
+          var C = { OK: '#43A047', WARN: '#FB8C00', ERROR: '#E53935', INFO: '#1E88E5' };
+          function st(s, label) { return '<span style="color:#fff;background:' + C[s] + ';padding:1px 6px;border-radius:3px;font-weight:bold">' + (label || s) + '</span>'; }
+          var th = 'style="text-align:left;padding:4px 10px;border-bottom:2px solid #8888;white-space:nowrap"';
+          var td = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap"';
+          var tdn = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"';
+          var tdd = 'style="padding:4px 10px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"';
+          var w = mac('{$CELERY.QUEUE.WARN}', 30), c = mac('{$CELERY.QUEUE.CRIT}', 60);
+          var broker = d.broker === 'rabbitmq' ? 'RabbitMQ' : (d.broker === 'redis' ? 'Redis' : (d.broker || '?'));
+          var h = '<div style="font-size:calc(1em + 4px)"><br><div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">CELERY QUEUES · ' + broker.toUpperCase() + '</div><br>';
+          if (!d.ok) {
+            h += '<div>' + st('ERROR', 'BROKER NOT REACHABLE') + ' ' + (d.error || '') + '</div></div>';
+            return h;
+          }
+          h += '<table style="border-collapse:collapse"><tr><th ' + th + '>Queue</th><th ' + th + '>Waiting</th><th ' + th + '>Running</th><th ' + th + '>Consumers</th><th ' + th + '>Status</th><th ' + th + '>Meaning</th></tr>';
+          var q = d.queues || [];
+          for (var i = 0; i < q.length; i++) {
+            var r = n(q[i].ready), hasC = q[i].consumers !== null && q[i].consumers !== undefined, cons = n(q[i].consumers);
+            var s, m;
+            if (hasC && cons === 0 && r > 0) { s = st('ERROR', 'NO WORKER'); m = 'Tasks are waiting and no worker listens to this queue: they will never run'; }
+            else if (r > c) { s = st('ERROR', 'BACKLOG'); m = 'More than ' + c + ' tasks waiting: workers do not keep up'; }
+            else if (r > w) { s = st('WARN', 'BACKLOG'); m = 'More than ' + w + ' tasks waiting'; }
+            else if (hasC && cons === 0) { s = st('INFO', 'NO WORKER'); m = 'No worker listens, but nothing is waiting'; }
+            else { s = st('OK'); m = hasC ? 'Workers are taking the tasks' : 'Below the alert threshold'; }
+            h += '<tr><td ' + td + '>' + q[i].queue + '</td><td ' + tdn + '>' + r + '</td><td ' + tdn + '>' + (q[i].unacked === null ? '-' : n(q[i].unacked)) + '</td><td ' + tdn + '>' + (hasC ? cons : '-') + '</td><td ' + td + '>' + s + '</td><td ' + tdd + '>' + m + '</td></tr>';
+          }
+          if (!q.length) { h += '<tr><td ' + td + ' colspan="6">No work queues declared in the broker</td></tr>'; }
+          h += '</table><div style="opacity:.7;font-size:.75em;margin-top:4px">';
+          h += 'Waiting = tasks in the queue, not yet taken. Running = taken by a worker and not acknowledged. ';
+          h += d.workers === null ? 'Workers alive: not available with Redis (see the engine container). ' : ('Workers alive: ' + d.workers + '. ');
+          if (d.unroutable_rate !== null) { h += 'Unroutable messages: ' + d.unroutable_rate + '/s. '; }
+          if (d.broker === 'redis') { h += 'Running is reported for all queues together. '; }
+          h += 'Probe ' + d.elapsed_ms + ' ms.</div></div>';
+          return h;
+      master_item:
+        key: celery.probe
+      tags:
+      - tag: component
+        value: celery
+    discovery_rules:
+    - uuid: 308373a06922473ea7c4815368324f50
+      name: 'Celery: work queues'
+      type: DEPENDENT
+      key: celery.queues.discovery
+      description: Work queues reported by the probe (control channels and event queues excluded).
+      item_prototypes:
+      - uuid: 3a5babd319a14dc5949ae3e271d928ed
+        name: 'Celery: tasks waiting in {#QUEUE}'
+        type: DEPENDENT
+        key: celery.queue.ready[{#QUEUE}]
+        description: Tasks queued in {#QUEUE} and not yet taken by a worker.
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.queues[?(@.queue=='{#QUEUE}')].ready.first()
+          error_handler: DISCARD_VALUE
+        - type: MATCHES_REGEX
+          parameters:
+          - ^-?[0-9]+(\.[0-9]+)?$
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: celery.probe
+        tags:
+        - tag: component
+          value: celery
+        - tag: queue
+          value: '{#QUEUE}'
+        trigger_prototypes:
+        - uuid: 71afaa8d8fb7454c993c68eeddf804f1
+          expression: min(/simovilab-celery/celery.queue.ready[{#QUEUE}],5m)>{$CELERY.QUEUE.WARN:"{#QUEUE}"}
+          name: 'Celery: tasks piling up in {#QUEUE}'
+          event_name: 'Celery: tasks piling up in {#QUEUE} (over {$CELERY.QUEUE.WARN:"{#QUEUE}"} for 5 min)'
+          opdata: 'Waiting: {ITEM.LASTVALUE1}'
+          priority: WARNING
+          description: |
+            Measures: tasks waiting in the queue, checked every minute.
+            ERROR: more than {$CELERY.QUEUE.WARN:"{#QUEUE}"} during 5 minutes. Workers take tasks slower than they arrive: results (feeds, predictions) come late.
+          dependencies:
+          - name: 'Celery DOWN: broker not reachable'
+            expression: max(/simovilab-celery/celery.ok,#2)=0
+            recovery_expression: last(/simovilab-celery/celery.ok)=1
+          - name: 'Celery: tasks piling up in {#QUEUE} critical'
+            expression: min(/simovilab-celery/celery.queue.ready[{#QUEUE}],5m)>{$CELERY.QUEUE.CRIT:"{#QUEUE}"}
+          tags:
+          - tag: layer
+            value: tasks
+        - uuid: 31e8ca77e9f24b9da4491f13846bbdcf
+          expression: min(/simovilab-celery/celery.queue.ready[{#QUEUE}],5m)>{$CELERY.QUEUE.CRIT:"{#QUEUE}"}
+          name: 'Celery: tasks piling up in {#QUEUE} critical'
+          event_name: 'Celery: tasks piling up in {#QUEUE} critical (over {$CELERY.QUEUE.CRIT:"{#QUEUE}"} for 5 min)'
+          opdata: 'Waiting: {ITEM.LASTVALUE1}'
+          priority: HIGH
+          description: |
+            Measures: tasks waiting in the queue, checked every minute.
+            ERROR: more than {$CELERY.QUEUE.CRIT:"{#QUEUE}"} during 5 minutes. The backlog keeps growing; tasks may expire before they run.
+            Check: worker containers, their logs, and "Celery: consumers on {#QUEUE}".
+          dependencies:
+          - name: 'Celery DOWN: broker not reachable'
+            expression: max(/simovilab-celery/celery.ok,#2)=0
+            recovery_expression: last(/simovilab-celery/celery.ok)=1
+          tags:
+          - tag: layer
+            value: tasks
+      master_item:
+        key: celery.probe
+      lld_macro_paths:
+      - lld_macro: '{#QUEUE}'
+        path: $.queue
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.queue_names
+        error_handler: DISCARD_VALUE
+    - uuid: a305afe587cd4eb58a7e3125dbc60af1
+      name: 'Celery: queue workers (RabbitMQ)'
+      type: DEPENDENT
+      key: celery.queues.detail.discovery
+      description: Same queues, only when the broker reports running tasks and consumers per queue (RabbitMQ). Empty with Redis.
+      item_prototypes:
+      - uuid: 5876d694e9bd48debcea40cb5137cd33
+        name: 'Celery: tasks running in {#QUEUE}'
+        type: DEPENDENT
+        key: celery.queue.unacked[{#QUEUE}]
+        description: Tasks of {#QUEUE} taken by a worker and not yet acknowledged.
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.queues[?(@.queue=='{#QUEUE}')].unacked.first()
+          error_handler: DISCARD_VALUE
+        - type: MATCHES_REGEX
+          parameters:
+          - ^-?[0-9]+(\.[0-9]+)?$
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: celery.probe
+        tags:
+        - tag: component
+          value: celery
+        - tag: queue
+          value: '{#QUEUE}'
+      - uuid: 8b0f6109739541aaa1724f0bef46ac0f
+        name: 'Celery: consumers on {#QUEUE}'
+        type: DEPENDENT
+        key: celery.queue.consumers[{#QUEUE}]
+        description: Workers listening to {#QUEUE}.
+        preprocessing:
+        - type: JSONPATH
+          parameters:
+          - $.queues[?(@.queue=='{#QUEUE}')].consumers.first()
+          error_handler: DISCARD_VALUE
+        - type: MATCHES_REGEX
+          parameters:
+          - ^-?[0-9]+(\.[0-9]+)?$
+          error_handler: DISCARD_VALUE
+        master_item:
+          key: celery.probe
+        tags:
+        - tag: component
+          value: celery
+        - tag: queue
+          value: '{#QUEUE}'
+        trigger_prototypes:
+        - uuid: affd410e62eb4584bc0715ef1ecd51f1
+          expression: max(/simovilab-celery/celery.queue.consumers[{#QUEUE}],5m)<{$CELERY.CONSUMERS.MIN:"{#QUEUE}"}
+          name: 'Celery: no worker listening on {#QUEUE}'
+          event_name: 'Celery: no worker listening on {#QUEUE} for 5 min'
+          priority: HIGH
+          description: |
+            Measures: workers connected to the queue.
+            ERROR: fewer than {$CELERY.CONSUMERS.MIN:"{#QUEUE}"} during 5 minutes. Tasks sent to this queue will never run.
+            A queue that nobody is supposed to read (databus: the default queue "celery") has {$CELERY.CONSUMERS.MIN:"celery"} = 0 in its role template.
+          dependencies:
+          - name: 'Celery DOWN: broker not reachable'
+            expression: max(/simovilab-celery/celery.ok,#2)=0
+            recovery_expression: last(/simovilab-celery/celery.ok)=1
+          - name: 'Celery: fewer workers than expected'
+            expression: max(/simovilab-celery/celery.workers,5m)<{$CELERY.WORKERS.MIN}
+          tags:
+          - tag: layer
+            value: tasks
+      master_item:
+        key: celery.probe
+      lld_macro_paths:
+      - lld_macro: '{#QUEUE}'
+        path: $.queue
+      preprocessing:
+      - type: JSONPATH
+        parameters:
+        - $.detail_queues
+        error_handler: DISCARD_VALUE
+    tags:
+    - tag: layer
+      value: tasks
+    macros:
+    - macro: '{$CELERY.CONSUMERS.MIN}'
+      value: '1'
+      description: 'Workers that must listen to each work queue. Per queue with context: {$CELERY.CONSUMERS.MIN:"<queue>"}. RabbitMQ only'
+    - macro: '{$CELERY.QUEUE.CRIT}'
+      value: '60'
+      description: '[ESP] 2.4 · tasks waiting per queue, 5 min. Floor of the MACDT range 60-400. Per queue with context'
+    - macro: '{$CELERY.QUEUE.WARN}'
+      value: '30'
+      description: '[ESP] 2.4 · tasks waiting per queue, 5 min. Floor of the MACDT range 30-200. Per queue with context'
+    - macro: '{$CELERY.WORKERS.MIN}'
+      value: '1'
+      description: Workers alive expected on the broker. RabbitMQ only
+    dashboards:
+    - uuid: 55d967daffa54ad6b481d172c7d5c2f7
+      name: CELERY
+      pages:
+      - name: Celery
+        widgets:
+        - type: item
+          name: Broker
+          width: '9'
+          height: '3'
+          fields:
+          - type: INTEGER
+            name: decimal_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: simovilab-celery
+              key: celery.ok
+          - type: STRING
+            name: thresholds.0.color
+            value: E53935
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 43A047
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: units_size
+            value: '25'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: item
+          name: Broker type
+          x: '9'
+          width: '9'
+          height: '3'
+          fields:
+          - type: INTEGER
+            name: decimal_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: simovilab-celery
+              key: celery.broker
+          - type: INTEGER
+            name: units_size
+            value: '25'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: item
+          name: Tasks waiting
+          x: '18'
+          width: '9'
+          height: '3'
+          fields:
+          - type: INTEGER
+            name: decimal_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: simovilab-celery
+              key: celery.ready_total
+          - type: STRING
+            name: thresholds.0.color
+            value: 43A047
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: FB8C00
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '31'
+          - type: STRING
+            name: thresholds.2.color
+            value: E53935
+          - type: STRING
+            name: thresholds.2.threshold
+            value: '61'
+          - type: INTEGER
+            name: units_size
+            value: '25'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: item
+          name: Tasks running
+          x: '27'
+          width: '9'
+          height: '3'
+          fields:
+          - type: INTEGER
+            name: decimal_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: simovilab-celery
+              key: celery.unacked_total
+          - type: INTEGER
+            name: units_size
+            value: '25'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: item
+          name: Workers alive
+          x: '36'
+          width: '9'
+          height: '3'
+          fields:
+          - type: INTEGER
+            name: decimal_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: simovilab-celery
+              key: celery.workers
+          - type: STRING
+            name: thresholds.0.color
+            value: E53935
+          - type: STRING
+            name: thresholds.0.threshold
+            value: '0'
+          - type: STRING
+            name: thresholds.1.color
+            value: 43A047
+          - type: STRING
+            name: thresholds.1.threshold
+            value: '1'
+          - type: INTEGER
+            name: units_size
+            value: '25'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: item
+          name: Unroutable messages
+          x: '45'
+          width: '9'
+          height: '3'
+          fields:
+          - type: INTEGER
+            name: decimal_size
+            value: '25'
+          - type: ITEM
+            name: itemid.0
+            value:
+              host: simovilab-celery
+              key: celery.unroutable_rate
+          - type: INTEGER
+            name: units_size
+            value: '25'
+          - type: INTEGER
+            name: value_size
+            value: '25'
+        - type: clock
+          name: Local time
+          x: '54'
+          width: '18'
+          height: '3'
+          fields:
+          - type: STRING
+            name: bg_color
+            value: 1F2937
+          - type: INTEGER
+            name: clock_type
+            value: '1'
+          - type: STRING
+            name: date_color
+            value: FFFFFF
+          - type: INTEGER
+            name: show.0
+            value: '1'
+          - type: INTEGER
+            name: show.1
+            value: '2'
+          - type: INTEGER
+            name: time_bold
+            value: '1'
+          - type: STRING
+            name: time_color
+            value: FFFFFF
+          - type: INTEGER
+            name: time_format
+            value: '1'
+        - type: itemhistory
+          name: Celery queues
+          'y': '3'
+          width: '36'
+          height: '10'
+          hide_header: 'YES'
+          fields:
+          - type: INTEGER
+            name: columns.0.display
+            value: '4'
+          - type: ITEM
+            name: columns.0.itemid
+            value:
+              host: simovilab-celery
+              key: celery.html
+          - type: STRING
+            name: columns.0.name
+            value: Queues
+          - type: INTEGER
+            name: show_column_header
+            value: '0'
+          - type: INTEGER
+            name: show_lines
+            value: '1'
+        - type: svggraph
+          name: Tasks waiting per queue
+          x: '36'
+          'y': '3'
+          width: '36'
+          height: '10'
+          fields:
+          - type: STRING
+            name: ds.0.color
+            value: 1E88E5
+          - type: INTEGER
+            name: ds.0.fill
+            value: '0'
+          - type: STRING
+            name: ds.0.items.0
+            value: 'Celery: tasks waiting in *'
+          - type: INTEGER
+            name: ds.0.transparency
+            value: '0'
+          - type: INTEGER
+            name: ds.0.width
+            value: '2'
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: INTEGER
+            name: legend_lines
+            value: '1'
+          - type: INTEGER
+            name: legend_statistic
+            value: '1'
+          - type: STRING
+            name: reference
+            value: CLQRD
+          - type: INTEGER
+            name: righty
+            value: '0'
+          - type: INTEGER
+            name: simple_triggers
+            value: '1'
+        - type: svggraph
+          name: Tasks running · workers alive
+          'y': '13'
+          width: '36'
+          height: '7'
+          fields:
+          - type: STRING
+            name: ds.0.color
+            value: FB8C00
+          - type: INTEGER
+            name: ds.0.fill
+            value: '0'
+          - type: STRING
+            name: ds.0.items.0
+            value: 'Celery: tasks running (all queues)'
+          - type: INTEGER
+            name: ds.0.transparency
+            value: '0'
+          - type: INTEGER
+            name: ds.0.width
+            value: '2'
+          - type: INTEGER
+            name: ds.1.axisy
+            value: '1'
+          - type: STRING
+            name: ds.1.color
+            value: 43A047
+          - type: INTEGER
+            name: ds.1.fill
+            value: '0'
+          - type: STRING
+            name: ds.1.items.0
+            value: 'Celery: workers alive'
+          - type: INTEGER
+            name: ds.1.transparency
+            value: '0'
+          - type: INTEGER
+            name: ds.1.width
+            value: '2'
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: INTEGER
+            name: legend_lines
+            value: '2'
+          - type: INTEGER
+            name: legend_statistic
+            value: '1'
+          - type: STRING
+            name: reference
+            value: CLRUN
+          - type: INTEGER
+            name: righty
+            value: '1'
+          - type: STRING
+            name: righty_min
+            value: '0'
+        - type: svggraph
+          name: Unroutable messages · probe duration
+          x: '36'
+          'y': '13'
+          width: '36'
+          height: '7'
+          fields:
+          - type: STRING
+            name: ds.0.color
+            value: E53935
+          - type: INTEGER
+            name: ds.0.fill
+            value: '0'
+          - type: STRING
+            name: ds.0.items.0
+            value: 'Celery: unroutable messages'
+          - type: INTEGER
+            name: ds.0.transparency
+            value: '0'
+          - type: INTEGER
+            name: ds.0.width
+            value: '2'
+          - type: INTEGER
+            name: ds.1.axisy
+            value: '1'
+          - type: STRING
+            name: ds.1.color
+            value: 9E9E9E
+          - type: INTEGER
+            name: ds.1.fill
+            value: '0'
+          - type: STRING
+            name: ds.1.items.0
+            value: 'Celery: probe duration'
+          - type: INTEGER
+            name: ds.1.transparency
+            value: '0'
+          - type: INTEGER
+            name: ds.1.width
+            value: '2'
+          - type: STRING
+            name: lefty_min
+            value: '0'
+          - type: INTEGER
+            name: legend_lines
+            value: '2'
+          - type: INTEGER
+            name: legend_statistic
+            value: '1'
+          - type: STRING
+            name: reference
+            value: CLUNR
+          - type: INTEGER
+            name: righty
+            value: '1'
+          - type: STRING
+            name: righty_min
+            value: '0'
+    valuemaps:
+    - uuid: 58c6a4bda0574cf5b8ca85bad039c97a
+      name: Service state
+      mappings:
+      - value: '0'
+        newvalue: Down
+      - value: '1'
+        newvalue: Up
