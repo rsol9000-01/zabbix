@@ -352,7 +352,7 @@ CREATE ROLE zabbix_ro LOGIN PASSWORD '<your own password>';
 GRANT pg_monitor TO zabbix_ro;
 ```
 
-On srv-databus only, also allow `zabbix_ro` to read the table of the current static GTFS version (item `databus.static.age_s`, query `agent2/pgsql-queries/databus_static.sql`). Run it once, with the owner of the database:
+On srv-databus only, also allow `zabbix_ro` to read the table of the current static GTFS version (items `databus.static.lm`, `databus.static.age_s` and `databus.static.version_texto`, query `agent2/pgsql-queries/databus_static.sql`). Run it once, with the owner of the database:
 
 ```bash
 DB=$(docker ps --format '{{.Names}}' | grep -m1 'databus.*database')
@@ -572,7 +572,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 </details>
 
 <details>
-<summary><code>simovilab-databus</code> — 39 items</summary>
+<summary><code>simovilab-databus</code> — 43 items</summary>
 
 | Name | Key | Type |
 | --- | --- | --- |
@@ -580,6 +580,8 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 | databus: versión vigente del estático (raw) | `pgsql.custom.query["{$DB.SESSION}",,,,databus_static]` | Agent (active) |
 | databus: antigüedad del estático | `databus.static.age_s` | Dependent |
 | databus: desfase del estático frente a la fuente | `databus.static.desfase_s` | Calculated |
+| databus: fecha de la versión vigente del estático | `databus.static.lm` | Dependent |
+| databus: versión vigente del estático (texto) | `databus.static.version_texto` | Dependent |
 | databus: código HTTP del estático | `databus.static.http` | Dependent |
 | databus: lectura del estático correcta | `databus.static.ok` | Dependent |
 | V_completeness de predicciones | `gtfs.completeness_tu_pct` | Dependent |
@@ -609,6 +611,8 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 | Huecos sin buses programados (texto) | `macdt.huecos_texto` | Dependent |
 | scheduled slot | `macdt.hueco_programado` | Dependent |
 | static_zip_age | `macdt.static_zip_age_s` | Dependent |
+| SIMOVI: fecha de la versión del GTFS estático | `macdt.static_zip_lm` | Dependent |
+| SIMOVI: versión del GTFS estático (texto) | `macdt.static_zip_version_texto` | Dependent |
 | SIMOVI: código HTTP del GTFS estático | `macdt.static_zip_http` | Dependent |
 | Scheduled trips | `macdt.s_t` | Dependent |
 | Max trips | `macdt.v_trips_max` | Dependent |
@@ -797,7 +801,7 @@ To change a macro without losing the change on the next template import, overrid
 | `{$MACDT.CAL.DIAS.WARN}` | `7` | `simovilab-databus` | Days in advance to warn that the GTFS calendar expires. |
 | `{$MACDT.COMPL.CRIT}` | `80` | `simovilab-databus` | Minimum trip-updates completeness (critical level, %). |
 | `{$MACDT.COMPL.WARN}` | `90` | `simovilab-databus` | Minimum trip-updates completeness before warning (%). |
-| `{$MACDT.ZIP.DESFASE.WARN}` | `600` | `simovilab-databus` | Maximum gap (s) between the databus GTFS and the source GTFS. |
+| `{$MACDT.ZIP.DESFASE.WARN}` | `0` | `simovilab-databus` | Allowed gap (s) between the version date of SIMOVI and the one of databus. The same version gives exactly 0. |
 | `{$T_LATENCY_WARN.SOSTENIDO}` | `30m` | `simovilab-infobus` | Time the p95 must stay above T_warn for the "sostenido" high alert. |
 | `{$INFOBUS.SETUP.FACTOR}` | `2` | `simovilab-infobus` | Times the daily median connection-setup cost that fires the alert. |
 | `{$INFOBUS.SETUP.MIN_MS}` | `5` | `simovilab-infobus` | Minimum (ms) to alert on connection-setup cost. |
@@ -966,7 +970,7 @@ The three per-queue macros accept context: `{$CELERY.QUEUE.WARN:"realtime_engine
 
 | Alert | Template | Fires when |
 | --- | --- | --- |
-| El GTFS que publica databus está desactualizado | `simovilab-databus` | Gap between the databus GTFS and the source GTFS above {$MACDT.ZIP.DESFASE.WARN} s for 15 min. |
+| El GTFS que publica databus está desactualizado | `simovilab-databus` | SIMOVI publishes a newer static GTFS version than the one databus holds, during {$MACDT.ZIP.DESFASE.TIEMPO}. |
 
 
 ## Security notes

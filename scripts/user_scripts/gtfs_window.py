@@ -193,7 +193,7 @@ def analizar(spans, trips, cal):
 # Download the GTFS file and get its HTTP status and age
 # ---------------------------------------------------------------------------
 def _bajar(url, timeout, host_header=None):
-    """Download static GTFS. Return (body, HTTP status, file age in seconds)."""
+    """Download static GTFS. Return (body, HTTP status, file age in s, Last-Modified as epoch)."""
     import email.utils
     import urllib.request
     # -----------------------------------------------------------------------
@@ -209,13 +209,27 @@ def _bajar(url, timeout, host_header=None):
         cuerpo = r.read()
         codigo = r.status
         lm = r.headers.get("Last-Modified")
-    edad = None
+    edad, lm_epoch = None, None
     if lm:
         try:
-            edad = round(time.time() - email.utils.parsedate_to_datetime(lm).timestamp(), 1)
+            lm_epoch = int(email.utils.parsedate_to_datetime(lm).timestamp())
+            edad = round(time.time() - lm_epoch, 1)
         except Exception:
-            edad = None
-    return cuerpo, codigo, edad
+            edad, lm_epoch = None, None
+    return cuerpo, codigo, edad, lm_epoch
+
+
+# ---------------------------------------------------------------------------
+# Show the static GTFS version as a date plus its age in days (dashboard)
+# ---------------------------------------------------------------------------
+def _version_texto(lm_epoch):
+    """Return 'YYYY-MM-DD HH:MM UTC · N días', or None without Last-Modified."""
+    if lm_epoch is None:
+        return None
+    import datetime
+    fecha = datetime.datetime.fromtimestamp(lm_epoch, datetime.timezone.utc)
+    dias = int((time.time() - lm_epoch) // 86400)
+    return "%s UTC · %d días" % (fecha.strftime("%Y-%m-%d %H:%M"), dias)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +251,8 @@ def _now_degradado(error, http_estado):
         "hueco_cero_programado": 0,
         "dias_a_fin_vigencia": None,
         "static_zip_age_s": None,
+        "static_zip_lm_epoch": None,
+        "static_zip_version_texto": None,
     }
 
 
@@ -260,10 +276,10 @@ def main():
     ap.add_argument("--servicio", help="service_id to use for the macros")
     a = ap.parse_args()
 
-    http_estado, zip_age_s = None, None
+    http_estado, zip_age_s, zip_lm_epoch = None, None, None
     try:
         if a.url:
-            cuerpo, http_estado, zip_age_s = _bajar(a.url, a.timeout, a.host_header)
+            cuerpo, http_estado, zip_age_s, zip_lm_epoch = _bajar(a.url, a.timeout, a.host_header)
             import tempfile
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as fh:
                 fh.write(cuerpo)
@@ -307,6 +323,8 @@ def main():
             "window_ok": 1,
             "static_zip_http": http_estado,
             "static_zip_age_s": zip_age_s,
+            "static_zip_lm_epoch": zip_lm_epoch,
+            "static_zip_version_texto": _version_texto(zip_lm_epoch),
             "minuto": "%02d:%02d" % (ahora.hour, ahora.minute),
             "service_id": sid,
             "horario_texto": _horario_texto(dias_sv, s["ventana"]["inicio_min"], s["ventana"]["fin_min"]),

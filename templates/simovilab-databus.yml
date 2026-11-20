@@ -24,7 +24,7 @@ zabbix_export:
           delay: 5m
           history: 1d
           value_type: TEXT
-          description: 'Master item. Custom query agent2/pgsql-queries/databus_static.sql: feed_id and age of the static GTFS version that databus holds as current (is_current), measured from the Last-Modified of the source saved at import time. Needs GRANT SELECT ON feed_feed TO zabbix_ro.'
+          description: 'Master item. Custom query agent2/pgsql-queries/databus_static.sql: feed_id, version date (lm_epoch), age (age_s) and display text (version_texto) of the static GTFS version that databus holds as current (is_current). The version date is the Last-Modified of the source saved at import time. Needs GRANT SELECT ON feed_feed TO zabbix_ro.'
         - uuid: 3d045ed757e3448383fd38c38131a93f
           name: 'databus: antigüedad del estático'
           type: DEPENDENT
@@ -50,8 +50,8 @@ zabbix_export:
           delay: 5m
           value_type: FLOAT
           units: s
-          description: 'Source version held by databus minus source version published by SIMOVI, both measured from the Last-Modified of SIMOVI. Same version: close to 0. Positive: databus did not import the newer version.'
-          params: 'last(//databus.static.age_s) - last(//macdt.static_zip_age_s)'
+          description: 'Version date published by SIMOVI minus version date held by databus. Both are the Last-Modified of SIMOVI: databus saves it at import time and the probe reads it from SIMOVI. Same version: exactly 0. Positive: SIMOVI published a newer version that databus has not imported; the value is how many seconds newer it is.'
+          params: 'last(//macdt.static_zip_lm) - last(//databus.static.lm)'
           triggers:
             - uuid: 5cbbc7f23c704a9d9eba788d67a7de4e
               expression: 'min(/simovilab-databus/databus.static.desfase_s,{$MACDT.ZIP.DESFASE.TIEMPO})>{$MACDT.ZIP.DESFASE.WARN}'
@@ -61,6 +61,40 @@ zabbix_export:
                   expression: last(/simovilab-databus/databus.static.http)<>200
                 - name: 'SIMOVI no sirve el GTFS estático'
                   expression: last(/simovilab-databus/macdt.static_zip_http)<>200
+        - uuid: 216d864c249b49729ccbd169556400cb
+          name: 'databus: fecha de la versión vigente del estático'
+          type: DEPENDENT
+          key: databus.static.lm
+          units: unixtime
+          description: 'Version date of the static GTFS that databus holds as current: feed_feed.http_last_modified, the Last-Modified of SIMOVI saved at import time.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$..lm_epoch.first()'
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^[0-9]+$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: 'pgsql.custom.query["{$DB.SESSION}",,,,databus_static]'
+        - uuid: 16c0ed60f2fa4e17b0fabd9db06da841
+          name: 'databus: versión vigente del estático (texto)'
+          type: DEPENDENT
+          key: databus.static.version_texto
+          history: 7d
+          value_type: CHAR
+          description: 'Version date and age in days of the static GTFS that databus holds as current, for example 2026-08-21 01:36 UTC · 91 días. Only for the dashboard.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$..version_texto.first()'
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: 'pgsql.custom.query["{$DB.SESSION}",,,,databus_static]'
         - uuid: 5cd27a5a2ccd4781bae8e48cd15921db
           name: 'databus: código HTTP del estático'
           type: DEPENDENT
@@ -515,6 +549,40 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: macdt.window
+        - uuid: 9ca1f4de8d2b4dbdb306a452295beb33
+          name: 'SIMOVI: fecha de la versión del GTFS estático'
+          type: DEPENDENT
+          key: macdt.static_zip_lm
+          units: unixtime
+          description: 'Version date of the static GTFS that SIMOVI publishes: Last-Modified header of gtfs.zip.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.static_zip_lm_epoch
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^[0-9]+$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: macdt.window
+        - uuid: 6976f57d91d14624a6ebfed1523d7992
+          name: 'SIMOVI: versión del GTFS estático (texto)'
+          type: DEPENDENT
+          key: macdt.static_zip_version_texto
+          history: 7d
+          value_type: CHAR
+          description: 'Version date and age in days of the static GTFS that SIMOVI publishes, for example 2026-08-21 01:36 UTC · 91 días. Only for the dashboard.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.static_zip_version_texto
+              error_handler: DISCARD_VALUE
+            - type: DISCARD_UNCHANGED_HEARTBEAT
+              parameters:
+                - 1h
+          master_item:
+            key: macdt.window
         - uuid: 4e9dedd5b10645929bae7342618dc21d
           name: 'SIMOVI: código HTTP del GTFS estático'
           type: DEPENDENT
@@ -628,8 +696,8 @@ zabbix_export:
           value: 25h
           description: 'Tiempo máximo que databus puede servir una versión del GTFS estático más vieja que la de SIMOVI: 1 h para detectar el cambio (revisión horaria a los :30) + 24 h hasta la siguiente exportación diaria'
         - macro: '{$MACDT.ZIP.DESFASE.WARN}'
-          value: '600'
-          description: 'Margen de ruido del desfase (s). Con la misma versión el desfase no es 0 exacto sino la diferencia entre los momentos de consulta a SIMOVI (cada 1 min) y a databus (cada 5 min)'
+          value: '0'
+          description: 'Desfase permitido (s) entre la fecha de versión de SIMOVI y la de databus. Las dos fechas son el mismo Last-Modified de SIMOVI, así que con la misma versión el desfase es 0 exacto: cualquier valor mayor es una versión nueva sin importar'
       dashboards:
         - uuid: 5ac291617b3e41ff8ae2312552c02852
           name: 'Operación databus'
@@ -936,7 +1004,7 @@ zabbix_export:
                       name: reference
                       value: AGEGR
                 - type: item
-                  name: 'Desfase del GTFS estático (databus vs SIMOVI)'
+                  name: 'Desfase del GTFS estático (SIMOVI − databus)'
                   x: '30'
                   'y': '14'
                   width: '10'
@@ -1175,6 +1243,35 @@ zabbix_export:
                     - type: INTEGER
                       name: value_size
                       value: '25'
+                - type: item
+                  name: 'GTFS estático publicado por SIMOVI (versión · días)'
+                  'y': '29'
+                  width: '36'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: macdt.static_zip_version_texto
+                    - type: INTEGER
+                      name: value_size
+                      value: '30'
+                - type: item
+                  name: 'GTFS estático vigente en databus (versión · días)'
+                  x: '36'
+                  'y': '29'
+                  width: '36'
+                  height: '3'
+                  fields:
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-databus
+                        key: databus.static.version_texto
+                    - type: INTEGER
+                      name: value_size
+                      value: '30'
       valuemaps:
         - uuid: 8fc61aefa69140aabc20f59cc5bf0025
           name: 'Estado feed GTFS-RT'

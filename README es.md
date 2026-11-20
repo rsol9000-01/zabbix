@@ -352,7 +352,7 @@ CREATE ROLE zabbix_ro LOGIN PASSWORD '<una clave propia>';
 GRANT pg_monitor TO zabbix_ro;
 ```
 
-Solo en srv-databus, además, permitir que `zabbix_ro` lea la tabla de la versión vigente del GTFS estático (ítem `databus.static.age_s`, consulta `agent2/pgsql-queries/databus_static.sql`). Se ejecuta una sola vez, con el dueño de la base:
+Solo en srv-databus, además, permitir que `zabbix_ro` lea la tabla de la versión vigente del GTFS estático (ítems `databus.static.lm`, `databus.static.age_s` y `databus.static.version_texto`, consulta `agent2/pgsql-queries/databus_static.sql`). Se ejecuta una sola vez, con el dueño de la base:
 
 ```bash
 DB=$(docker ps --format '{{.Names}}' | grep -m1 'databus.*database')
@@ -572,7 +572,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 </details>
 
 <details>
-<summary><code>simovilab-databus</code> — 39 ítems</summary>
+<summary><code>simovilab-databus</code> — 43 ítems</summary>
 
 | Nombre | Clave | Tipo |
 | --- | --- | --- |
@@ -580,6 +580,8 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 | databus: versión vigente del estático (raw) | `pgsql.custom.query["{$DB.SESSION}",,,,databus_static]` | Agente (activo) |
 | databus: antigüedad del estático | `databus.static.age_s` | Dependiente |
 | databus: desfase del estático frente a la fuente | `databus.static.desfase_s` | Calculado |
+| databus: fecha de la versión vigente del estático | `databus.static.lm` | Dependiente |
+| databus: versión vigente del estático (texto) | `databus.static.version_texto` | Dependiente |
 | databus: código HTTP del estático | `databus.static.http` | Dependiente |
 | databus: lectura del estático correcta | `databus.static.ok` | Dependiente |
 | V_completeness de predicciones | `gtfs.completeness_tu_pct` | Dependiente |
@@ -609,6 +611,8 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 | Huecos sin buses programados (texto) | `macdt.huecos_texto` | Dependiente |
 | scheduled slot | `macdt.hueco_programado` | Dependiente |
 | static_zip_age | `macdt.static_zip_age_s` | Dependiente |
+| SIMOVI: fecha de la versión del GTFS estático | `macdt.static_zip_lm` | Dependiente |
+| SIMOVI: versión del GTFS estático (texto) | `macdt.static_zip_version_texto` | Dependiente |
 | SIMOVI: código HTTP del GTFS estático | `macdt.static_zip_http` | Dependiente |
 | Scheduled trips | `macdt.s_t` | Dependiente |
 | Max trips | `macdt.v_trips_max` | Dependiente |
@@ -797,7 +801,7 @@ Para cambiar una macro sin perder el cambio en la siguiente importación de plan
 | `{$MACDT.CAL.DIAS.WARN}` | `7` | `simovilab-databus` | Días de anticipación para avisar que vence el calendario del GTFS. |
 | `{$MACDT.COMPL.CRIT}` | `80` | `simovilab-databus` | Completitud mínima de predicciones (nivel crítico, %). |
 | `{$MACDT.COMPL.WARN}` | `90` | `simovilab-databus` | Completitud mínima de predicciones antes de avisar (%). |
-| `{$MACDT.ZIP.DESFASE.WARN}` | `600` | `simovilab-databus` | Desfase máximo (s) entre el GTFS de databus y el de la fuente. |
+| `{$MACDT.ZIP.DESFASE.WARN}` | `0` | `simovilab-databus` | Desfase permitido (s) entre la fecha de versión de SIMOVI y la de databus. Con la misma versión es 0 exacto. |
 | `{$T_LATENCY_WARN.SOSTENIDO}` | `30m` | `simovilab-infobus` | Tiempo que el p95 debe mantenerse sobre T_warn para la alerta alta "sostenido". |
 | `{$INFOBUS.SETUP.FACTOR}` | `2` | `simovilab-infobus` | Veces la mediana diaria del costo de abrir la conexión que dispara la alerta. |
 | `{$INFOBUS.SETUP.MIN_MS}` | `5` | `simovilab-infobus` | Mínimo (ms) para alertar el costo de abrir la conexión. |
@@ -966,7 +970,7 @@ Las tres macros por cola aceptan contexto: `{$CELERY.QUEUE.WARN:"realtime_engine
 
 | Alerta | Plantilla | Se dispara cuando |
 | --- | --- | --- |
-| El GTFS que publica databus está desactualizado | `simovilab-databus` | Desfase entre el GTFS de databus y el de la fuente mayor a {$MACDT.ZIP.DESFASE.WARN} s durante 15 min. |
+| El GTFS que publica databus está desactualizado | `simovilab-databus` | SIMOVI publica una versión del GTFS estático más nueva que la que tiene databus, durante {$MACDT.ZIP.DESFASE.TIEMPO}. |
 
 
 ## Notas de seguridad

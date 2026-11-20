@@ -111,6 +111,8 @@ docker run --rm --network databus_internal -v "$PWD/scripts/user_scripts":/s:ro 
 | `error` | — | Error text (only when `window_ok = 0`) |
 | `static_zip_http` | `macdt.static_zip_http` | HTTP code of the download |
 | `static_zip_age_s` | `macdt.static_zip_age_s` | ZIP age from its `Last-Modified` header (s) |
+| `static_zip_lm_epoch` | `macdt.static_zip_lm` | Version date: the `Last-Modified` header as Unix time (s). `null` without that header |
+| `static_zip_version_texto` | `macdt.static_zip_version_texto` | Version date and age in days, readable: `2026-08-21 01:36 UTC · 91 días` |
 | `minuto` | — | Current minute (`HH:MM`, agent time zone) |
 | `service_id` | — | Service used |
 | `horario_texto` | `macdt.horario_texto` | Service days and hours, readable |
@@ -121,7 +123,7 @@ docker run --rm --network databus_internal -v "$PWD/scripts/user_scripts":/s:ro 
 | `hueco_cero_programado` | `macdt.hueco_programado` | `1` inside the window in a minute with no scheduled trips |
 | `dias_a_fin_vigencia` | `macdt.cal_dias_vigencia` | Days until the GTFS calendar `end_date` |
 
-`databus.static` uses `window_ok` and `static_zip_http` (items `databus.static.ok` and `databus.static.http`). Its `static_zip_age_s` is always `null`: the `feed.zip` of databus has no `Last-Modified` header. `databus.static.age_s` is read from PostgreSQL instead (`agent2/pgsql-queries/databus_static.sql`).
+`databus.static` uses `window_ok` and `static_zip_http` (items `databus.static.ok` and `databus.static.http`). Its `static_zip_age_s`, `static_zip_lm_epoch` and `static_zip_version_texto` are always `null`: the `feed.zip` of databus has no `Last-Modified` header. The version that databus holds is read from PostgreSQL instead (`agent2/pgsql-queries/databus_static.sql`, items `databus.static.lm`, `databus.static.age_s` and `databus.static.version_texto`).
 
 If the download or the analysis fails, `--now` still prints a JSON with the same keys, `window_ok = 0` and the HTTP code when there is one, so Zabbix can alert. Without `--now`, the error stops the script.
 

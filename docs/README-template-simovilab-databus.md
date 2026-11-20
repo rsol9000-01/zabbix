@@ -11,7 +11,7 @@ Domain layer of databus. It measures whether the realtime transit data that data
 | **File** | [`templates/simovilab-databus.yml`](../templates/simovilab-databus.yml) |
 | **Template** | `simovilab-databus` |
 | **Linked to** | `srv-databus`, through `ROLE_DATABUS_TEMPLATE_*` (autoregistration metadata `docker-autoreg databus`). It also defines `{$DB.SESSION} = databus`, used by `simovilab-database` on the same host. |
-| **Contents** | 39 items, 18 alerts, 14 macros |
+| **Contents** | 43 items, 18 alerts, 14 macros |
 
 ## Requirements
 
@@ -19,7 +19,7 @@ Domain layer of databus. It measures whether the realtime transit data that data
 | --- | --- | --- |
 | `gtfsrt_probe.py` (`gtfs.probe[{$MACDT.STALE_S}]`) | Master of all `gtfs.*` items | [README](README-gtfsrt_probe.md) |
 | `gtfs_window.py` (`macdt.window`, `databus.static`) | Service window and scheduled trips from the SIMOVI GTFS; static GTFS published by databus | [README](README-gtfs_window.md) |
-| Custom query `databus_static.sql` and `GRANT SELECT ON feed_feed TO zabbix_ro` | `databus.static.age_s`: the `feed.zip` of databus has no `Last-Modified` header, so the age of its version is read from `feed_feed.http_last_modified` | `agent2/pgsql-queries/`, [database guide](README-template-simovilab-database.md) |
+| Custom query `databus_static.sql` and `GRANT SELECT ON feed_feed TO zabbix_ro` | `databus.static.lm`, `databus.static.age_s` and `databus.static.version_texto`: the `feed.zip` of databus has no `Last-Modified` header, so the version of its version is read from `feed_feed.http_last_modified` | `agent2/pgsql-queries/`, [database guide](README-template-simovilab-database.md) |
 | Agent on the databus Docker network | The probes call `http://orchestrator:8000` | `AGENT_DOCKER_NETWORK` in the agent `.env` |
 | NTP on the databus server | The probe compares vehicle timestamps against the current time | Host |
 | `simovilab servidor y sistema operativo` on the same host | **Capa D: sonda sin datos** depends on **Server DOWN!!!** | Role templates in `.env` |
@@ -95,7 +95,7 @@ flowchart TD
 | Más viajes que el máximo programado | Warning | More trips in the feed than the schedule maximum for 5 min (ghost trips). | Capa D: feed GTFS-RT no alcanzable, Capa D: sonda sin datos |
 | Sin viajes activos | Warning | During service hours, with scheduled trips, 3 min without trips in the feed. | Capa D: feed GTFS-RT no alcanzable, Capa D: sonda sin datos, Sin viajes activos sostenido |
 | Sospecha de relleno de timestamps | Warning | Dependent | Capa D: feed GTFS-RT no alcanzable, Capa D: sonda sin datos |
-| El GTFS que publica databus está desactualizado | Not classified | Gap between the databus GTFS and the source GTFS above {$MACDT.ZIP.DESFASE.WARN} s for 15 min. | databus no publica el GTFS estático, SIMOVI no sirve el GTFS estático |
+| El GTFS que publica databus está desactualizado | Not classified | SIMOVI publishes a newer static GTFS version than the one databus holds (gap above {$MACDT.ZIP.DESFASE.WARN} s) during {$MACDT.ZIP.DESFASE.TIEMPO}. | databus no publica el GTFS estático, SIMOVI no sirve el GTFS estático |
 
 ## Macros
 
@@ -116,16 +116,16 @@ Override a macro on the host to keep the change after the next import: *Data col
 | `{$MACDT.V_GPS.CRIT}` | `70` | % of fresh GPS below which F_crit (3 cycles) and the high alert activate. |
 | `{$MACDT.V_GPS.WARN}` | `85` | % of fresh GPS below which a warning fires. F_crit is released above it. |
 | `{$MACDT.ZIP.DESFASE.TIEMPO}` | `25h` | Tiempo máximo que databus puede servir una versión del GTFS estático más vieja que la de SIMOVI: 1 h para detectar el cambio (revisión horaria a los :30) + 24 h hasta la siguiente exportación diaria |
-| `{$MACDT.ZIP.DESFASE.WARN}` | `600` | Maximum gap (s) between the databus GTFS and the source GTFS. |
+| `{$MACDT.ZIP.DESFASE.WARN}` | `0` | Allowed gap (s) between the version date of SIMOVI and the one of databus. Both dates are the same `Last-Modified` of SIMOVI, so the same version gives exactly 0. |
 
 ## Dashboard
 
-- **Operación databus → Operación** (27 widgets): *Horario de servicio*, *Huecos sin buses programados*, *Vehículos del feed: edad de la posición GPS (ahora − timestamp)*, *Horario de operación*, *Viajes en el feed (V_trips)*, *Viajes máximos programados*, *Viajes programados ahora*, *Carga de transporte (ρ)*, *Viajes sin paradas por delante*, *Vehículos en el feed*, *Con GPS fresco*, *Con GPS viejo*, *Sin timestamp*, *Cobertura GPS % (V_gps)*, *Umbral de GPS fresco*, *Edad máxima del GPS*, *Edad p95 del GPS*, *Edad del feed (V_age)*, *Desfase del GTFS estático (databus vs SIMOVI)*, *Completitud predicciones %*, *Completitud posiciones %*, *Días de vigencia del GTFS*, *Viajes en el feed vs programados y máximo*, *Vehículos del feed por estado del GPS*, *Carga de transporte (ρ)*, *Edad de la posición GPS*, *Edad del feed GTFS-RT*
+- **Operación databus → Operación** (29 widgets): *Horario de servicio*, *Huecos sin buses programados*, *Vehículos del feed: edad de la posición GPS (ahora − timestamp)*, *Horario de operación*, *Viajes en el feed (V_trips)*, *Viajes máximos programados*, *Viajes programados ahora*, *Carga de transporte (ρ)*, *Viajes sin paradas por delante*, *Vehículos en el feed*, *Con GPS fresco*, *Con GPS viejo*, *Sin timestamp*, *Cobertura GPS % (V_gps)*, *Umbral de GPS fresco*, *Edad máxima del GPS*, *Edad p95 del GPS*, *Edad del feed (V_age)*, *Desfase del GTFS estático (SIMOVI − databus)*, *Completitud predicciones %*, *Completitud posiciones %*, *Días de vigencia del GTFS*, *Viajes en el feed vs programados y máximo*, *Vehículos del feed por estado del GPS*, *Carga de transporte (ρ)*, *Edad de la posición GPS*, *Edad del feed GTFS-RT*, *GTFS estático publicado por SIMOVI (versión · días)*, *GTFS estático vigente en databus (versión · días)*
 
 ## Items
 
 <details>
-<summary>39 items</summary>
+<summary>43 items</summary>
 
 | Name | Key | Type | Units |
 | --- | --- | --- | --- |
@@ -133,6 +133,8 @@ Override a macro on the host to keep the change after the next import: *Data col
 | databus: versión vigente del estático (raw) | `pgsql.custom.query["{$DB.SESSION}",,,,databus_static]` | Agent (active) | — |
 | databus: antigüedad del estático | `databus.static.age_s` | Dependent | s |
 | databus: desfase del estático frente a la fuente | `databus.static.desfase_s` | Calculated | s |
+| databus: fecha de la versión vigente del estático | `databus.static.lm` | Dependent | unixtime |
+| databus: versión vigente del estático (texto) | `databus.static.version_texto` | Dependent | — |
 | databus: código HTTP del estático | `databus.static.http` | Dependent | — |
 | databus: lectura del estático correcta | `databus.static.ok` | Dependent | — |
 | V_completeness de predicciones | `gtfs.completeness_tu_pct` | Dependent | — |
@@ -162,6 +164,8 @@ Override a macro on the host to keep the change after the next import: *Data col
 | Huecos sin buses programados (texto) | `macdt.huecos_texto` | Dependent | — |
 | scheduled slot | `macdt.hueco_programado` | Dependent | — |
 | static_zip_age | `macdt.static_zip_age_s` | Dependent | — |
+| SIMOVI: fecha de la versión del GTFS estático | `macdt.static_zip_lm` | Dependent | unixtime |
+| SIMOVI: versión del GTFS estático (texto) | `macdt.static_zip_version_texto` | Dependent | — |
 | SIMOVI: código HTTP del GTFS estático | `macdt.static_zip_http` | Dependent | — |
 | Scheduled trips | `macdt.s_t` | Dependent | — |
 | Max trips | `macdt.v_trips_max` | Dependent | — |
