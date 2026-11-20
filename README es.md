@@ -532,7 +532,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 
 | Plantilla | Se aplica a | Ítems |
 | --- | --- | --- |
-| `simovilab servidor y sistema operativo` | los 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 17 + 1 descubrimiento con 5 prototipos por contenedor |
+| `simovilab servidor y sistema operativo` | los 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 17 + 1 descubrimiento con 6 prototipos por contenedor |
 | `simovilab-databus` | Databus-host (srv-databus) | 38 |
 | `simovilab-infobus` | Infobus-host (srv-infobus) | 31 |
 | `simovilab-infobus-ext` | Zabbix-server (srv-gestion) | 19 |
@@ -568,6 +568,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 | ↳ Contenedor {#NAME}: reinicios automáticos | `simovilab.contenedor.restart_count["{#NAME}"]` | Prototipo |
 | ↳ Contenedor {#NAME}: corriendo | `simovilab.contenedor.running["{#NAME}"]` | Prototipo |
 | ↳ Contenedor {#NAME}: hora de inicio | `simovilab.contenedor.started["{#NAME}"]` | Prototipo |
+| ↳ Contenedor {#NAME}: arranques en 7 días | `simovilab.contenedor.arranques_7d["{#NAME}"]` | Prototipo |
 
 </details>
 

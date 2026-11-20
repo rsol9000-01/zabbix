@@ -371,6 +371,10 @@ zabbix_export:
               name: 'Contenedor {#NAME}: reinicios automáticos'
               type: DEPENDENT
               key: 'simovilab.contenedor.restart_count["{#NAME}"]'
+              description: |
+                RestartCount de Docker: veces que Docker levantó el contenedor por su cuenta (política restart)
+                después de que el proceso se cayó. No cuenta docker restart, docker compose up ni recrear el
+                contenedor; un contenedor recreado empieza en 0. Valor 0 = el contenedor no se ha caído.
               preprocessing:
                 - type: JSONPATH
                   parameters:
@@ -418,6 +422,19 @@ zabbix_export:
                     - $.State.StartedAt
               master_item:
                 key: 'docker.container_info["{#NAME}",short]'
+              tags:
+                - tag: contenedor
+                  value: '{#NAME}'
+            - uuid: 3160ebb242804c08b513f1675835c9f6
+              name: 'Contenedor {#NAME}: arranques en 7 días'
+              type: CALCULATED
+              key: 'simovilab.contenedor.arranques_7d["{#NAME}"]'
+              delay: 5m
+              params: 'changecount(//simovilab.contenedor.started["{#NAME}"],7d)'
+              description: |
+                Veces que cambió la hora de inicio del contenedor en los últimos 7 días: cuenta todos los
+                arranques, manuales (docker restart, docker compose up, recrear el contenedor), automáticos
+                (caídas) y por reinicio del servidor. Para separar las caídas, ver "reinicios automáticos".
               tags:
                 - tag: contenedor
                   value: '{#NAME}'
@@ -773,7 +790,7 @@ zabbix_export:
                       name: thresholds.1.threshold
                       value: '1'
                 - type: honeycomb
-                  name: 'Cantidad de reinicios'
+                  name: 'Caídas (reinicios automáticos de Docker)'
                   x: '36'
                   width: '36'
                   height: '5'
@@ -802,6 +819,42 @@ zabbix_export:
                     - type: STRING
                       name: thresholds.1.threshold
                       value: '1'
+                - type: honeycomb
+                  name: 'Arranques en los últimos 7 días (manuales, caídas y reinicios del servidor)'
+                  'y': '9'
+                  width: '72'
+                  height: '4'
+                  fields:
+                    - type: STRING
+                      name: items.0
+                      value: 'Contenedor *: arranques en 7 días'
+                    - type: STRING
+                      name: primary_label
+                      value: '{{ITEM.NAME}.regsub("Contenedor .([^:]+)", "\1")}'
+                    - type: STRING
+                      name: reference
+                      value: DKARR
+                    - type: INTEGER
+                      name: secondary_label_decimal_places
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.0.color
+                      value: 0EC9AC
+                    - type: STRING
+                      name: thresholds.0.threshold
+                      value: '0'
+                    - type: STRING
+                      name: thresholds.1.color
+                      value: FFD54F
+                    - type: STRING
+                      name: thresholds.1.threshold
+                      value: '1'
+                    - type: STRING
+                      name: thresholds.2.color
+                      value: FF465C
+                    - type: STRING
+                      name: thresholds.2.threshold
+                      value: '5'
       valuemaps:
         - uuid: 92eaba63ea4e4c33b55b9b6b548d1a6d
           name: 'Contenedor corriendo'

@@ -13,7 +13,7 @@ Capa base de los tres hosts. Mide lo que necesita cualquier servidor, corra lo q
 | **Archivo** | [`templates/simovilab-templates.yml`](../templates/simovilab-templates.yml) |
 | **Plantilla** | `simovilab servidor y sistema operativo` |
 | **Se vincula a** | Los tres hosts: `Zabbix-server` (srv-gestion, por `LOCAL_TEMPLATE_*`), `srv-databus` y `srv-infobus` (por `ROLE_DATABUS_TEMPLATE_*` y `ROLE_INFOBUS_TEMPLATE_*`). |
-| **Contenido** | 17 ítems, 1 regla de descubrimiento (5 prototipos), 17 alertas, 6 macros |
+| **Contenido** | 17 ítems, 1 regla de descubrimiento (6 prototipos), 17 alertas, 6 macros |
 
 ## Requisitos
 
@@ -71,12 +71,14 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro 
 ## Dashboard
 
 - **Servidor → Operación** (10 widgets): *CPU en uso*, *Memoria: usada + libre = total*, *Memoria RAM en uso*, *Presión de CPU (1 min)*, *Espacio libre en disco (/)*, *Tiempo encendido*, *Conexiones TCP establecidas*, *Presión de disco (1 min)*, *CPU y memoria*, *Presión de CPU y disco*
-- **Servidor → Contenedores** (3 widgets): *Contenedores arriba (verde) o detenidos (rojo)*, *Último arranque o reinicio*, *Cantidad de reinicios*
+- **Servidor → Contenedores** (4 widgets): *Contenedores arriba (verde) o detenidos (rojo)*, *Último arranque o reinicio*, *Caídas (reinicios automáticos de Docker)*, *Arranques en los últimos 7 días (manuales, caídas y reinicios del servidor)*
+  - *Caídas* muestra el `RestartCount` de Docker: solo las veces que Docker levantó el contenedor por su cuenta después de que el proceso se cayó. `docker restart`, `docker compose up` o recrear el contenedor no cuentan, y un contenedor recreado empieza en 0. **0 = no hubo caídas.**
+  - *Arranques en los últimos 7 días* cuenta cada cambio de la hora de inicio: reinicios manuales, caídas y reinicios del servidor.
 
 ## Ítems
 
 <details>
-<summary>17 ítems y 5 prototipos</summary>
+<summary>17 ítems y 6 prototipos</summary>
 
 | Nombre | Clave | Tipo | Unidades |
 | --- | --- | --- | --- |
@@ -103,6 +105,7 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro 
 | ↳ Contenedor {#NAME}: reinicios automáticos | `simovilab.contenedor.restart_count["{#NAME}"]` | Prototipo | — |
 | ↳ Contenedor {#NAME}: corriendo | `simovilab.contenedor.running["{#NAME}"]` | Prototipo | — |
 | ↳ Contenedor {#NAME}: hora de inicio | `simovilab.contenedor.started["{#NAME}"]` | Prototipo | unixtime |
+| ↳ Contenedor {#NAME}: arranques en 7 días | `simovilab.contenedor.arranques_7d["{#NAME}"]` | Prototipo | — |
 
 </details>
 

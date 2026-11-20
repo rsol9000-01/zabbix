@@ -11,7 +11,7 @@ Base layer of the three hosts. It measures what any server needs, whatever runs 
 | **File** | [`templates/simovilab-templates.yml`](../templates/simovilab-templates.yml) |
 | **Template** | `simovilab servidor y sistema operativo` |
 | **Linked to** | All three hosts: `Zabbix-server` (srv-gestion, through `LOCAL_TEMPLATE_*`), `srv-databus` and `srv-infobus` (through `ROLE_DATABUS_TEMPLATE_*` and `ROLE_INFOBUS_TEMPLATE_*`). |
-| **Contents** | 17 items, 1 discovery rule (5 prototypes), 17 alerts, 6 macros |
+| **Contents** | 17 items, 1 discovery rule (6 prototypes), 17 alerts, 6 macros |
 
 ## Requirements
 
@@ -67,12 +67,14 @@ Override a macro on the host to keep the change after the next import: *Data col
 ## Dashboard
 
 - **Servidor → Operación** (10 widgets): *CPU en uso*, *Memoria: usada + libre = total*, *Memoria RAM en uso*, *Presión de CPU (1 min)*, *Espacio libre en disco (/)*, *Tiempo encendido*, *Conexiones TCP establecidas*, *Presión de disco (1 min)*, *CPU y memoria*, *Presión de CPU y disco*
-- **Servidor → Contenedores** (3 widgets): *Contenedores arriba (verde) o detenidos (rojo)*, *Último arranque o reinicio*, *Cantidad de reinicios*
+- **Servidor → Contenedores** (4 widgets): *Contenedores arriba (verde) o detenidos (rojo)*, *Último arranque o reinicio*, *Caídas (reinicios automáticos de Docker)*, *Arranques en los últimos 7 días (manuales, caídas y reinicios del servidor)*
+  - *Caídas* shows Docker's `RestartCount`: only the times Docker brought the container back by itself after the process crashed. `docker restart`, `docker compose up` or recreating the container do not count, and a recreated container starts at 0. **0 = no crashes.**
+  - *Arranques en los últimos 7 días* counts every change of the start time: manual restarts, crashes and server reboots.
 
 ## Items
 
 <details>
-<summary>17 items and 5 prototypes</summary>
+<summary>17 items and 6 prototypes</summary>
 
 | Name | Key | Type | Units |
 | --- | --- | --- | --- |
@@ -99,6 +101,7 @@ Override a macro on the host to keep the change after the next import: *Data col
 | ↳ Contenedor {#NAME}: reinicios automáticos | `simovilab.contenedor.restart_count["{#NAME}"]` | Prototype | — |
 | ↳ Contenedor {#NAME}: corriendo | `simovilab.contenedor.running["{#NAME}"]` | Prototype | — |
 | ↳ Contenedor {#NAME}: hora de inicio | `simovilab.contenedor.started["{#NAME}"]` | Prototype | unixtime |
+| ↳ Contenedor {#NAME}: arranques en 7 días | `simovilab.contenedor.arranques_7d["{#NAME}"]` | Prototype | — |
 
 </details>
 

@@ -532,7 +532,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 
 | Template | Applied to | Items |
 | --- | --- | --- |
-| `simovilab servidor y sistema operativo` | all 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 17 + 1 discovery rule with 5 prototypes per container |
+| `simovilab servidor y sistema operativo` | all 3 hosts (Zabbix-server, Databus-host, Infobus-host) | 17 + 1 discovery rule with 6 prototypes per container |
 | `simovilab-databus` | Databus-host (srv-databus) | 38 |
 | `simovilab-infobus` | Infobus-host (srv-infobus) | 31 |
 | `simovilab-infobus-ext` | Zabbix-server (srv-gestion) | 19 |
@@ -568,6 +568,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 | ↳ Contenedor {#NAME}: reinicios automáticos | `simovilab.contenedor.restart_count["{#NAME}"]` | Prototype |
 | ↳ Contenedor {#NAME}: corriendo | `simovilab.contenedor.running["{#NAME}"]` | Prototype |
 | ↳ Contenedor {#NAME}: hora de inicio | `simovilab.contenedor.started["{#NAME}"]` | Prototype |
+| ↳ Contenedor {#NAME}: arranques en 7 días | `simovilab.contenedor.arranques_7d["{#NAME}"]` | Prototype |
 
 </details>
 
