@@ -344,6 +344,16 @@ CREATE ROLE zabbix_ro LOGIN PASSWORD '<your own password>';
 GRANT pg_monitor TO zabbix_ro;
 ```
 
+On srv-databus only, also allow `zabbix_ro` to read the table of the current static GTFS version (item `databus.static.age_s`, query `agent2/pgsql-queries/databus_static.sql`). Run it once, with the owner of the database:
+
+```bash
+DB=$(docker ps --format '{{.Names}}' | grep -m1 'databus.*database')
+echo "$DB"     # must show the PostgreSQL container of databus
+docker exec -it "$DB" psql -U postgres -d databus -c "GRANT SELECT ON feed_feed TO zabbix_ro;"
+```
+
+If `DB_USER` in the databus `.env` is not `postgres`, replace `-U postgres` with that user. The answer must be `GRANT`.
+
 After editing it, restart the agent:
 
 ```bash

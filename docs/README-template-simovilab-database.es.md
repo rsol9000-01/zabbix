@@ -41,6 +41,14 @@ docker exec -e PGPASSWORD="$ZRO" infobus-prod-database-1 psql -h localhost -U za
 
 `pg_monitor` es un rol predefinido de PostgreSQL. Lee las vistas de estadísticas y las funciones de tamaño; no lee los datos de las tablas. La contraseña va solo en `simovilab-plugins.conf`, que no está en git.
 
+**Solo srv-databus: lectura de `feed_feed`** (una vez, con el dueño de la base). La plantilla `simovilab-databus` lee de ahí la antigüedad de la versión vigente del GTFS estático (`agent2/pgsql-queries/databus_static.sql`). Es la única tabla que lee `zabbix_ro`:
+
+```bash
+DB=$(docker ps --format '{{.Names}}' | grep -m1 'databus.*database')
+echo "$DB"     # debe mostrar el contenedor de PostgreSQL de databus
+docker exec -it "$DB" psql -U postgres -d databus -c "GRANT SELECT ON feed_feed TO zabbix_ro;"
+```
+
 **Probar las claves desde el agente** (`databus` en srv-databus, `infobus` en srv-infobus):
 
 ```bash
