@@ -532,6 +532,9 @@ zabbix_export:
               parameters:
                 - 'return ''<span style="font-size:16px">'' + value + ''</span>'';'
       macros:
+        - macro: '{$DB.SESSION}'
+          value: infobus
+          description: 'Agent 2 session (simovilab-plugins.conf) and PostgreSQL database name used by the simovilab-database template linked to the same host.'
         - macro: '{$INFOBUS.SETUP.FACTOR}'
           value: '2'
           description: 'Veces la mediana diaria del costo de abrir la conexión que dispara la alerta.'
@@ -635,7 +638,7 @@ zabbix_export:
                       name: value_size
                       value: '35'
                 - type: itemhistory
-                  name: 'Ecuación de T_warn (último ciclo)'
+                  name: 'T_warn = clamp((b + m·N(t) + δ)·(1 + β·ρ)·F_crit,  {T_FLOOR, T_RNF})'
                   'y': '7'
                   width: '24'
                   height: '3'
@@ -928,3 +931,4 @@ zabbix_export:
           item:
             host: simovilab-infobus
             key: infobus.api.lat_sin_servicio
+

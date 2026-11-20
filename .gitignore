@@ -5,6 +5,10 @@ psk/*
 .idea/
 # Contraseñas de los plugins
 agent2/simovilab-plugins.conf
+agent2/simovilab-celery.conf
 # Backups
 backups/
 pruebas/
+# Caché de Python
+__pycache__/
+*.pyc

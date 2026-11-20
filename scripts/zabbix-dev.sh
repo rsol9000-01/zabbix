@@ -271,6 +271,42 @@ fi
 echo "✅  Docker Compose file found: $COMPOSE_FILE"
 
 # ---------------------------------------------------------------------------
+# Set the server time zone and check clock synchronization
+# ---------------------------------------------------------------------------
+# Containers take their time zone from TZ in .env. The server uses the same zone
+# so system logs, cron and the containers that mount /etc/localtime show the same
+# time. The time itself comes from the server clock, which must be synchronized
+# by NTP to match the remote agents. Server mode only: agent hosts are not ours.
+# ---------------------------------------------------------------------------
+if [ "$FLAG_SERVER" = "true" ]; then
+  HOST_TZ=$(grep '^TZ[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//' || true)
+  if [ -z "$HOST_TZ" ]; then
+    echo "❌  Error: TZ is not set in .env (example: TZ=America/Costa_Rica)"
+    exit 1
+  fi
+  if [ ! -e "/usr/share/zoneinfo/$HOST_TZ" ]; then
+    echo "❌  Error: invalid time zone in .env: TZ=$HOST_TZ"
+    exit 1
+  fi
+  if command -v timedatectl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+    if [ "$(timedatectl show -p Timezone --value)" != "$HOST_TZ" ]; then
+      timedatectl set-timezone "$HOST_TZ"
+    fi
+    timedatectl set-ntp true 2>/dev/null || true
+  else
+    ln -sf "/usr/share/zoneinfo/$HOST_TZ" /etc/localtime
+  fi
+  echo "$HOST_TZ" > /etc/timezone
+  echo "✅  Server time zone: $HOST_TZ ($(date '+%Y-%m-%d %H:%M %Z'))"
+  if [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = "yes" ]; then
+    echo "✅  Server clock synchronized by NTP"
+  else
+    echo "⚠️  The server clock does not show as synchronized by NTP."
+    echo "    Check: timedatectl. Inside an LXC the clock is the Proxmox host's: synchronize it on the host."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Verify the server post-installation script configuration
 # ---------------------------------------------------------------------------
 if [ "$FLAG_SERVER" = "true" ]; then
@@ -410,31 +446,33 @@ fi
 echo "✅  Zabbix agent config file found: $ZBX_AGENT_CONFIG_FILE_ROUTE"
 
 # ---------------------------------------------------------------------------
-# Create the local plugins file from its example in agent mode only
+# Create the local plugins and Celery files from their examples in agent mode only
 # ---------------------------------------------------------------------------
 # The actual file is excluded from the repository; each server keeps its own copy.
 # Creating the file prevents Docker from mounting a directory and skipping the configuration.
 # ---------------------------------------------------------------------------
 
 if [ "$FLAG_SERVER" = "false" ]; then
-  AGENT_PLUGINS_FILE_ROUTE=$REPO_ROOT/agent2/simovilab-plugins.conf
+  for AGENT_LOCAL_FILE in simovilab-plugins.conf simovilab-celery.conf; do
+    AGENT_PLUGINS_FILE_ROUTE=$REPO_ROOT/agent2/$AGENT_LOCAL_FILE
 
-  if [ -d "$AGENT_PLUGINS_FILE_ROUTE" ]; then
-      echo "❌  Error: $AGENT_PLUGINS_FILE_ROUTE is a directory (created by Docker during a previous deployment)."
-      echo "    Remove it with: rmdir $AGENT_PLUGINS_FILE_ROUTE, then run the script again."
-      exit 1
-  fi
-
-  if [ ! -f "$AGENT_PLUGINS_FILE_ROUTE" ]; then
-      echo "⚠️  Plugins file not found. Creating from example: $AGENT_PLUGINS_FILE_ROUTE"
-      if ! cp "$AGENT_PLUGINS_FILE_ROUTE.example" "$AGENT_PLUGINS_FILE_ROUTE"; then
-        echo "❌  Error: could not create $AGENT_PLUGINS_FILE_ROUTE"
+    if [ -d "$AGENT_PLUGINS_FILE_ROUTE" ]; then
+        echo "❌  Error: $AGENT_PLUGINS_FILE_ROUTE is a directory (created by Docker during a previous deployment)."
+        echo "    Remove it with: rmdir $AGENT_PLUGINS_FILE_ROUTE, then run the script again."
         exit 1
-      fi
-      echo -e "   - ${YELLOW}This file contains sample passwords. Edit it if this server uses different ones.${NC}"
-  fi
-  echo "✅  Plugins file found: $AGENT_PLUGINS_FILE_ROUTE"
-  chmod 644 "$AGENT_PLUGINS_FILE_ROUTE"
+    fi
+
+    if [ ! -f "$AGENT_PLUGINS_FILE_ROUTE" ]; then
+        echo "⚠️  Local file not found. Creating from example: $AGENT_PLUGINS_FILE_ROUTE"
+        if ! cp "$AGENT_PLUGINS_FILE_ROUTE.example" "$AGENT_PLUGINS_FILE_ROUTE"; then
+          echo "❌  Error: could not create $AGENT_PLUGINS_FILE_ROUTE"
+          exit 1
+        fi
+        echo -e "   - ${YELLOW}This file contains sample passwords. Edit it if this server uses different ones.${NC}"
+    fi
+    echo "✅  Local file found: $AGENT_PLUGINS_FILE_ROUTE"
+    chmod 644 "$AGENT_PLUGINS_FILE_ROUTE"
+  done
 fi
 
 # ---------------------------------------------------------------------------
@@ -514,6 +552,36 @@ else
 fi
 
 chmod 644 psk/zabbix_agentd.psk
+
+# ---------------------------------------------------------------------------
+# Install the timer that copies the server's memory and CPU to /hostfs
+# ---------------------------------------------------------------------------
+# The agent runs in Docker. Inside an LXC it reads the memory of its own
+# container and the CPU and load of the Proxmox host. Every minute the timer
+# writes the server's memory, CPU usage (cgroup) and pressure (PSI) to
+# /srv/zabbix-disco, so the template reads the same correct values on bare metal,
+# VM, cloud VM or LXC. Runs in server and agent mode: both deploy an agent.
+# ---------------------------------------------------------------------------
+HOST_STATS_DIR="$REPO_ROOT/scripts/host_stats"
+install -m 755 "$HOST_STATS_DIR/simovilab-host-stats.sh" /usr/local/sbin/simovilab-host-stats.sh
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+  install -m 644 "$HOST_STATS_DIR/simovilab-host-stats.service" /etc/systemd/system/simovilab-host-stats.service
+  install -m 644 "$HOST_STATS_DIR/simovilab-host-stats.timer" /etc/systemd/system/simovilab-host-stats.timer
+  systemctl daemon-reload
+  systemctl enable --now simovilab-host-stats.timer >/dev/null
+  systemctl start simovilab-host-stats.service
+  if [ -s /srv/zabbix-disco/meminfo ]; then
+    echo "✅  Host stats timer installed: /srv/zabbix-disco/meminfo is updated every minute"
+  else
+    echo "❌  Error: simovilab-host-stats did not write /srv/zabbix-disco/meminfo"
+    echo "    Check: systemctl status simovilab-host-stats.service"
+    exit 1
+  fi
+else
+  echo -e "⚠️  ${YELLOW}systemd not found: the host stats timer was not installed.${NC}"
+  echo "    Add this line to root's crontab (crontab -e) so memory and CPU items get data:"
+  echo "    * * * * * /usr/local/sbin/simovilab-host-stats.sh /srv/zabbix-disco"
+fi
 
 # ---------------------------------------------------------------------------
 # Checking required networks before running Compose

@@ -1,0 +1,40 @@
+# ==============================================================
+# BROKER DE CELERY PARA LA SONDA celery_probe.py (plantilla simovilab-celery)
+# ==============================================================
+# ARCHIVO DE EJEMPLO. zabbix-dev.sh (modo agent) lo copia como
+# simovilab-celery.conf si ese archivo no existe. La copia no se sube al
+# repositorio (.gitignore). Se monta en el agente como /etc/zabbix/simovilab-celery.conf.
+#
+# Cada servidor deja activo SOLO el bloque de su proyecto y borra o comenta el otro.
+# Formato LLAVE=VALOR. Las líneas que empiezan con # se ignoran.
+
+#-------- srv-databus: Celery usa RabbitMQ --------
+BROKER=rabbitmq
+RABBITMQ_URL=http://message-broker:15672
+RABBITMQ_USER=zabbix_mon
+RABBITMQ_PASSWORD=<clave de zabbix_mon en el broker de databus>
+
+#-------- srv-infobus: Celery usa Redis (base 0 del servicio state) --------
+# La contraseña de Redis NO va aquí: la sonda la toma de la sesión
+# Plugins.Redis.Sessions.<REDIS_SESSION> de simovilab-plugins.conf.
+#BROKER=redis
+#REDIS_SESSION=infobus
+#REDIS_DB=0
+
+#-------- Opcional, para los dos --------
+# Colas que no se reportan: canales de control de cada worker (.pidbox) y
+# colas de eventos de Flower (celeryev.*), cuyo nombre cambia en cada reinicio.
+#QUEUE_EXCLUDE=\.pidbox$|^celeryev\.
+
+# ────────────────────────────────────────────────────────────────────────────
+#  USUARIO DE RABBITMQ (solo databus)
+# ────────────────────────────────────────────────────────────────────────────
+#  Solo lectura de la API de gestión: etiqueta "monitoring" y permisos vacíos
+#  ('^$'), que dan acceso al vhost sin poder configurar, escribir ni leer mensajes.
+#
+#      read -rs RMQ && export RMQ
+#      docker exec -e RMQ databus-prod-message-broker-1 sh -c 'rabbitmqctl add_user zabbix_mon "$RMQ"'
+#      docker exec databus-prod-message-broker-1 rabbitmqctl set_user_tags zabbix_mon monitoring
+#      docker exec databus-prod-message-broker-1 rabbitmqctl set_permissions -p / zabbix_mon '^$' '^$' '^$'
+#
+#  Procedimiento completo y prueba: docs/README-celery_probe.md

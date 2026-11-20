@@ -8,52 +8,91 @@ zabbix_export:
       template: simovilab-infobus-ext
       name: simovilab-infobus-ext
       description: |
-        Capa I de MACDT, lado externo. Se vincula al host del servidor Zabbix (R4) con LOCAL_TEMPLATE_*.
-        El agente de R4 mide la API de InfoBus por Traefik y HTTPS, con el mismo infobus_probe.py.
-        La resta contra la medicion interna (red, TLS + Traefik) esta en simovilab-infobus,
-        que referencia este host por su nombre fijo, Zabbix-server.
-        Solo produce datos cuando la API este detras de Traefik.
+        MACDT layer I, external side. Linked to the Zabbix server host (R4) through LOCAL_TEMPLATE_*.
+        The R4 agent measures the InfoBus API through Traefik and HTTPS, with the same infobus_probe.py.
+        The difference against the internal measurement (network, TLS + Traefik) is in simovilab-infobus,
+        which references this host by its fixed name, Zabbix-server.
+        It only produces data when the API is behind Traefik.
       groups:
         - name: Templates/Simovilab
       items:
         - uuid: e7db2f710b0a4ba1bfca68365d4816f0
-          name: 'Sonda externa de la API de InfoBus'
+          name: 'External InfoBus API probe'
           type: ZABBIX_ACTIVE
           key: infobus.api.ext
           delay: 60s
           history: 1d
           value_type: TEXT
-          description: 'Maestro. Mismo infobus_probe.py, ejecutado por el agente de R4 contra el dominio publico (Traefik + HTTPS).'
-        - uuid: eb14d5700b1d4f4283622e8529ca07eb
-          name: 'Externo: API responde correctamente'
+          description: 'Master item. Same infobus_probe.py, run by the R4 agent against the public domain (Traefik + HTTPS). 30 s timeout, as in the internal probe: with TLS, 10 requests and the hourly GTFS check, a run takes longer than the 3 s default.'
+          timeout: 30s
+        - uuid: bd9263c51f55419dbc6f816841670493
+          name: 'External - internal: last hour p95'
+          type: CALCULATED
+          key: infobus.api.ext.delta_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'last(//infobus.api.ext.lat_p95_1h) - max(last_foreach(/*/infobus.api.lat_p95_1h))'
+          description: 'What the public path (network, TLS and Traefik) adds to the next-trips p95: external p95 minus internal p95, both over the last hour.'
+        - uuid: a11140b74a9a42dba74d9094a673d2cb
+          name: 'External: other or no responses in the burst'
           type: DEPENDENT
-          key: infobus.api.ext.ok
-          value_type: UNSIGNED
+          key: infobus.api.ext.errors
+          description: 'Requests with a code other than 200, 204 and 429 (for example 500 or 502), or with no response.'
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.ok
+                - $.errors
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
-        - uuid: caba8d280bb1438da7b1e2041bd01d7f
-          name: 'Externo: Too Many Requests (429): peticiones rechazadas por la cuota'
+        - uuid: 591c9fea37de4d3eb4a772b912d126cb
+          name: 'External: first request (opens the connection)'
           type: DEPENDENT
-          key: infobus.api.ext.throttled
-          value_type: UNSIGNED
+          key: infobus.api.ext.health_cold_ms
+          value_type: FLOAT
+          units: ms
           preprocessing:
             - type: JSONPATH
               parameters:
-                - $.throttled
+                - $.health_cold_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
+        - uuid: 1cdfd7748775408dbe6c99cc00d1cf99
+          name: 'External: baseline with an open connection (network + TLS + Traefik + Daphne)'
+          type: DEPENDENT
+          key: infobus.api.ext.health_ms
+          value_type: FLOAT
+          units: ms
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.health_ms
+              error_handler: DISCARD_VALUE
+            - type: MATCHES_REGEX
+              parameters:
+                - '^-?[0-9]+(\.[0-9]+)?$'
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: e09f4b3ebf7442ceae7d2c2785df0c4c
+          name: 'Internal: L_api real p95, 1 h window'
+          type: CALCULATED
+          key: infobus.api.ext.int_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'max(last_foreach(/*/infobus.api.lat_p95_1h))'
+          description: 'Copy of the internal probe p95, to compare it in this dashboard. It reads infobus.api.lat_p95_1h from whichever host has it (last_foreach over all hosts), so it works with any infobus host name (Infobus-host, srv-infobus...). Only the infobus host has that item.'
         - uuid: 6683b5d7b7774ea2a2a5b2fdad9dd07d
-          name: 'Externo: L_api p50 del ciclo'
+          name: 'External: L_api cycle p50'
           type: DEPENDENT
           key: infobus.api.ext.lat_p50
-          units: ms
           value_type: FLOAT
+          units: ms
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -66,11 +105,11 @@ zabbix_export:
           master_item:
             key: infobus.api.ext
         - uuid: 48eb4a2c0f03493a84b863e532acbafc
-          name: 'Externo: L_api p90 del ciclo'
+          name: 'External: L_api cycle p90'
           type: DEPENDENT
           key: infobus.api.ext.lat_p90
-          units: ms
           value_type: FLOAT
+          units: ms
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -82,12 +121,68 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
+        - uuid: 44c59d68affe4a2aa3882438d8f59459
+          name: 'External: L_api real p95, 1 h window'
+          type: CALCULATED
+          key: infobus.api.ext.lat_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'percentile(//infobus.api.ext.lat_p50,1h,95)'
+          description: 'Same calculation as infobus.api.lat_p95_1h of the internal probe, measured from outside (Traefik + HTTPS): p95 of the per-minute p50 values of the last hour.'
+        - uuid: a5649f4313244b9ea0a2acc92c45a1a6
+          name: 'External: burst requests'
+          type: DEPENDENT
+          key: infobus.api.ext.n
+          description: 'Number of next-trips requests per cycle (--repeat).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.n
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 3ba4a7b180704967b8a57db6240b1f02
+          name: 'External: 200 responses in the burst'
+          type: DEPENDENT
+          key: infobus.api.ext.n_200
+          description: 'Burst requests that returned 200 (with trips).'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.n_ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: b65ab2fac3b8493f9aa5c00578170c11
+          name: 'External: 204 responses in the burst'
+          type: DEPENDENT
+          key: infobus.api.ext.n_204
+          description: 'Requests that returned 204: a valid response with no service that day. Computed as requests - 200 - 429 - other.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value);
+                  return d.n - d.n_ok - d.throttled - d.errors;
+          master_item:
+            key: infobus.api.ext
+        - uuid: eb14d5700b1d4f4283622e8529ca07eb
+          name: 'External: API responds correctly'
+          type: DEPENDENT
+          key: infobus.api.ext.ok
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.ok
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
         - uuid: a1e8182859114fd98e34463d40225d4e
-          name: 'Externo: costo de la consulta'
+          name: 'External: query cost'
           type: DEPENDENT
           key: infobus.api.ext.query_p50
-          units: ms
           value_type: FLOAT
+          units: ms
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -99,47 +194,13 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
-        - uuid: 1cdfd7748775408dbe6c99cc00d1cf99
-          name: 'Externo: piso con conexion abierta (red + TLS + Traefik + Daphne)'
-          type: DEPENDENT
-          key: infobus.api.ext.health_ms
-          units: ms
-          value_type: FLOAT
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.health_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api.ext
-        - uuid: 591c9fea37de4d3eb4a772b912d126cb
-          name: 'Externo: primera peticion (abre la conexion)'
-          type: DEPENDENT
-          key: infobus.api.ext.health_cold_ms
-          units: ms
-          value_type: FLOAT
-          preprocessing:
-            - type: JSONPATH
-              parameters:
-                - $.health_cold_ms
-              error_handler: DISCARD_VALUE
-            - type: MATCHES_REGEX
-              parameters:
-                - '^-?[0-9]+(\.[0-9]+)?$'
-              error_handler: DISCARD_VALUE
-          master_item:
-            key: infobus.api.ext
         - uuid: e2892ef9a94d4ab48175dc8526f5960b
-          name: 'Externo: costo de abrir la conexion (TCP + TLS)'
+          name: 'External: connection setup cost (TCP + TLS)'
           type: DEPENDENT
           key: infobus.api.ext.setup_ms
-          units: ms
           value_type: FLOAT
-          description: 'health_cold_ms - health_ms: saludo TCP y negociacion TLS de R4 a Traefik.'
+          units: ms
+          description: 'health_cold_ms - health_ms: TCP handshake and TLS negotiation from R4 to Traefik.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -154,21 +215,35 @@ zabbix_export:
           triggers:
             - uuid: 2f3668dbd0ed47e3a225374811151e31
               expression: 'avg(/simovilab-infobus-ext/infobus.api.ext.setup_ms,10m)>{$INFOBUS.EXT.SETUP.FACTOR}*percentile(/simovilab-infobus-ext/infobus.api.ext.setup_ms,1d,50) and avg(/simovilab-infobus-ext/infobus.api.ext.setup_ms,10m)>{$INFOBUS.EXT.SETUP.MIN_MS}'
-              name: 'Externo: costo de abrir la conexión fuera de lo normal'
+              name: 'External: connection setup cost out of the ordinary'
               priority: WARNING
               description: |
-                Lo que paga un usuario al abrir la conexión con https://infobus.ucr.ac.cr (DNS,
-                saludo TCP y negociación TLS con Traefik) subió más de {$INFOBUS.EXT.SETUP.FACTOR}
-                veces su mediana del último día, en promedio de 10 min, y pasa de
-                {$INFOBUS.EXT.SETUP.MIN_MS} ms. Revisar DNS público, red entre R4 y el proxy,
-                Traefik (certificado, carga) o el enlace de la sede.
+                What a user pays to open the connection to the public InfoBus API (DNS,
+                TCP handshake and TLS negotiation with Traefik) rose above {$INFOBUS.EXT.SETUP.FACTOR}
+                times its median of the last day, as a 10 min average, and is above
+                {$INFOBUS.EXT.SETUP.MIN_MS} ms. Check public DNS, the network between R4 and the proxy,
+                Traefik (certificate, load) or the site uplink.
+        - uuid: 606f9d42e5324bf0bf85aada3288c244
+          name: 'External: INFOBUS API table (HTML)'
+          type: DEPENDENT
+          key: infobus.api.ext.tabla_html
+          history: 1d
+          value_type: TEXT
+          description: 'Status and latency table built by the probe, for the API-INFOBUS dashboard.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.tabla_html
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
         - uuid: 8c4d43f61cf248e59d1c8241e167ceb7
-          name: 'Externo: conexion TCP de R4 a Traefik (red)'
+          name: 'External: TCP connection from R4 to Traefik (network)'
           type: DEPENDENT
           key: infobus.api.ext.tcp_connect_ms
-          units: ms
           value_type: FLOAT
-          description: 'Mediana de 3 conexiones TCP al 443, sin DNS. Equivale a un ping por el puerto de la API.'
+          units: ms
+          description: 'Median of 3 TCP connections to port 443, without DNS. Equivalent to a ping on the API port.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -180,10 +255,439 @@ zabbix_export:
               error_handler: DISCARD_VALUE
           master_item:
             key: infobus.api.ext
+        - uuid: caba8d280bb1438da7b1e2041bd01d7f
+          name: 'External: Too Many Requests (429): requests rejected by the rate limit'
+          type: DEPENDENT
+          key: infobus.api.ext.throttled
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.throttled
+              error_handler: DISCARD_VALUE
+          master_item:
+            key: infobus.api.ext
+        - uuid: 37ec6ea39ced428480ba80727b4cbdc4
+          name: 'External: cycle timings (HTML)'
+          type: DEPENDENT
+          key: infobus.api.ext.tiempos_html
+          history: 1d
+          value_type: TEXT
+          description: 'Table with every timing of the cycle (network, TLS, baseline and next-trips), for the API-INFOBUS dashboard.'
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var d = JSON.parse(value);
+                  var th = 'style="text-align:left;padding:4px 12px;border-bottom:2px solid #8888;white-space:nowrap"';
+                  var td = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap"';
+                  var tdn = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:nowrap;text-align:right;font-weight:bold"';
+                  var tdd = 'style="padding:4px 12px;border-bottom:1px solid #8884;white-space:normal;opacity:.85"';
+                  function ms(v) { return (v === null || v === undefined) ? '-' : (Math.round(v * 10) / 10) + ' ms'; }
+                  var rows = [
+                    ['TCP connection (network)', d.tcp_connect_ms, 'Network only, from srv-gestion to Traefik (port 443)'],
+                    ['Connection setup (TCP + TLS)', d.setup_ms, 'What a user pays the first time: TCP handshake and TLS negotiation'],
+                    ['First request to /health/', d.health_cold_ms, 'Includes opening the connection'],
+                    ['Baseline /health/', d.health_ms, 'Network + TLS + Traefik + web server, with the connection open'],
+                    ['Query cost', d.query_p50_ms, 'next-trips p50 minus the baseline: API and database'],
+                    ['next-trips minimum', d.lat_min_ms, ''],
+                    ['next-trips p50', d.lat_p50_ms, 'Half of the requests took less than this'],
+                    ['next-trips p90', d.lat_p90_ms, '9 out of 10 requests took less than this'],
+                    ['next-trips maximum', d.lat_max_ms, ''],
+                    ['next-trips mean', d.lat_mean_ms, ''],
+                    ['next-trips standard deviation', d.lat_stdev_ms, 'How much the requests of the cycle vary from each other'],
+                    ['next-trips with no service (204), p50', d.lat_sin_servicio_p50_ms, 'Only on days with no service']
+                  ];
+                  var h = '<div style="font-size:calc(1em + 6px)"><br><div style="font-weight:bold;font-size:1.1em;color:#4169E1;text-decoration:underline">CYCLE TIMINGS</div><br>';
+                  h += '<table style="border-collapse:collapse"><tr><th ' + th + '>Measurement</th><th ' + th + '>Value</th><th ' + th + '>Meaning</th></tr>';
+                  for (var i = 0; i < rows.length; i++) {
+                    h += '<tr><td ' + td + '>' + rows[i][0] + '</td><td ' + tdn + '>' + ms(rows[i][1]) + '</td><td ' + tdd + '>' + rows[i][2] + '</td></tr>';
+                  }
+                  h += '</table><div style="opacity:.7;font-size:.75em;margin-top:4px">' + d.n + ' next-trips requests · stop ' + d.stop_id + '</div></div>';
+                  return h;
+          master_item:
+            key: infobus.api.ext
       macros:
         - macro: '{$INFOBUS.EXT.SETUP.FACTOR}'
           value: '2'
-          description: 'Veces la mediana diaria del costo de abrir la conexión pública (DNS + TCP + TLS) que dispara la alerta.'
+          description: 'Times the daily median of the public connection setup cost (DNS + TCP + TLS) that raises the alert.'
         - macro: '{$INFOBUS.EXT.SETUP.MIN_MS}'
           value: '5'
-          description: 'Mínimo en ms para alertar el costo de abrir la conexión pública (piso por si la mediana diaria es muy baja).'
+          description: 'Minimum in ms to alert on the public connection setup cost (floor in case the daily median is very low).'
+      dashboards:
+        - uuid: d89b40682b8b433e8e8b99bb020ff028
+          name: API-INFOBUS
+          pages:
+            - name: API-INFOBUS
+              widgets:
+                - type: clock
+                  name: 'Local time'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: bg_color
+                      value: 1F2937
+                    - type: INTEGER
+                      name: clock_type
+                      value: '1'
+                    - type: STRING
+                      name: date_color
+                      value: FFFFFF
+                    - type: INTEGER
+                      name: show.0
+                      value: '1'
+                    - type: INTEGER
+                      name: show.1
+                      value: '2'
+                    - type: INTEGER
+                      name: time_bold
+                      value: '1'
+                    - type: STRING
+                      name: time_color
+                      value: FFFFFF
+                    - type: INTEGER
+                      name: time_format
+                      value: '1'
+                - type: item
+                  name: '200 · with trips'
+                  'y': '3'
+                  width: '14'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.n_200
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: itemhistory
+                  name: 'Cycle timings'
+                  'y': '6'
+                  width: '36'
+                  height: '9'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.tiempos_html
+                    - type: STRING
+                      name: columns.0.name
+                      value: Timings
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                - type: svggraph
+                  name: 'External L_api: cycle p50 and p90'
+                  'y': '15'
+                  width: '72'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: 1E88E5
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'External: L_api cycle p50'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: E53935
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'External: L_api cycle p90'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '2'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: APIXT
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: svggraph
+                  name: 'Last hour L_api p95: external vs internal'
+                  'y': '22'
+                  width: '72'
+                  height: '7'
+                  fields:
+                    - type: STRING
+                      name: ds.0.color
+                      value: E53935
+                    - type: INTEGER
+                      name: ds.0.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.0.items.0
+                      value: 'External: L_api real p95, 1 h window'
+                    - type: INTEGER
+                      name: ds.0.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.0.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.1.color
+                      value: 2774A4
+                    - type: INTEGER
+                      name: ds.1.fill
+                      value: '0'
+                    - type: STRING
+                      name: ds.1.items.0
+                      value: 'Internal: L_api real p95, 1 h window'
+                    - type: INTEGER
+                      name: ds.1.transparency
+                      value: '0'
+                    - type: INTEGER
+                      name: ds.1.width
+                      value: '2'
+                    - type: STRING
+                      name: ds.2.color
+                      value: 9E9E9E
+                    - type: INTEGER
+                      name: ds.2.fill
+                      value: '3'
+                    - type: STRING
+                      name: ds.2.items.0
+                      value: 'External - internal: last hour p95'
+                    - type: INTEGER
+                      name: ds.2.transparency
+                      value: '3'
+                    - type: STRING
+                      name: lefty_min
+                      value: '0'
+                    - type: INTEGER
+                      name: legend_lines
+                      value: '3'
+                    - type: INTEGER
+                      name: legend_statistic
+                      value: '1'
+                    - type: STRING
+                      name: reference
+                      value: APIXU
+                    - type: INTEGER
+                      name: righty
+                      value: '0'
+                - type: item
+                  name: '204 · no service'
+                  x: '14'
+                  'y': '3'
+                  width: '14'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.n_204
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: item
+                  name: 'External L_api p95 (last hour)'
+                  x: '18'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: STRING
+                      name: bg_color
+                      value: 1F2937
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: STRING
+                      name: desc_color
+                      value: FFFFFF
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.lat_p95_1h
+                    - type: STRING
+                      name: time_color
+                      value: FFFFFF
+                    - type: STRING
+                      name: units_color
+                      value: FFFFFF
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: STRING
+                      name: value_color
+                      value: FFFFFF
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: '429 · rate limit exceeded'
+                  x: '28'
+                  'y': '3'
+                  width: '14'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.throttled
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: item
+                  name: 'API responds correctly'
+                  x: '36'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.ok
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: itemhistory
+                  name: 'INFOBUS API (external)'
+                  x: '36'
+                  'y': '6'
+                  width: '36'
+                  height: '9'
+                  hide_header: 'YES'
+                  fields:
+                    - type: INTEGER
+                      name: columns.0.display
+                      value: '4'
+                    - type: ITEM
+                      name: columns.0.itemid
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.tabla_html
+                    - type: STRING
+                      name: columns.0.name
+                      value: 'API INFOBUS'
+                    - type: INTEGER
+                      name: show_column_header
+                      value: '0'
+                    - type: INTEGER
+                      name: show_lines
+                      value: '1'
+                - type: item
+                  name: 'Other or no response'
+                  x: '42'
+                  'y': '3'
+                  width: '15'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.errors
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+                - type: item
+                  name: 'External − internal difference (p95, 1 h)'
+                  x: '54'
+                  width: '18'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '25'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.delta_p95_1h
+                    - type: INTEGER
+                      name: units_size
+                      value: '25'
+                    - type: INTEGER
+                      name: value_size
+                      value: '25'
+                - type: item
+                  name: 'Burst requests'
+                  x: '57'
+                  'y': '3'
+                  width: '15'
+                  height: '3'
+                  fields:
+                    - type: INTEGER
+                      name: decimal_size
+                      value: '35'
+                    - type: ITEM
+                      name: itemid.0
+                      value:
+                        host: simovilab-infobus-ext
+                        key: infobus.api.ext.n
+                    - type: INTEGER
+                      name: units_size
+                      value: '35'
+                    - type: INTEGER
+                      name: value_size
+                      value: '35'
+
