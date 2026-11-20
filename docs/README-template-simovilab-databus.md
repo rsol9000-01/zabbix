@@ -11,7 +11,7 @@ Domain layer of databus. It measures whether the realtime transit data that data
 | **File** | [`templates/simovilab-databus.yml`](../templates/simovilab-databus.yml) |
 | **Template** | `simovilab-databus` |
 | **Linked to** | `srv-databus`, through `ROLE_DATABUS_TEMPLATE_*` (autoregistration metadata `docker-autoreg databus`). It also defines `{$DB.SESSION} = databus`, used by `simovilab-database` on the same host. |
-| **Contents** | 39 items, 18 alerts, 13 macros |
+| **Contents** | 39 items, 18 alerts, 14 macros |
 
 ## Requirements
 
@@ -103,6 +103,7 @@ Override a macro on the host to keep the change after the next import: *Data col
 
 | Macro | Default | What it controls |
 | --- | --- | --- |
+| `{$CELERY.CONSUMERS.MIN:"celery"}` | `0` | Default Celery queue `celery`: no databus worker reads it. Keeps the `simovilab-celery` alert *no worker listening* closed for this queue only. |
 | `{$DB.SESSION}` | `databus` | Agent 2 session (simovilab-plugins.conf) and PostgreSQL database name used by the simovilab-database template linked to the same host. |
 | `{$MACDT.CAL.DIAS.WARN}` | `7` | Days in advance to warn that the GTFS calendar expires. |
 | `{$MACDT.COMPL.CRIT}` | `80` | Minimum trip-updates completeness (critical level, %). |

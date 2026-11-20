@@ -86,7 +86,7 @@ La semilla es opcional y se utiliza para generar un PSK TLS determinista.
    En modo `server` también valida:
 
    - `SCRIPT_POST_INSTALL` dentro de .env.
-   - El script posterior, actualmente `scripts/zabbix-conf-en.sh`.
+   - El script posterior, actualmente `scripts/zabbix-conf.sh`.
 
 10. **Generación del PSK**
     - Crea el directorio `psk`.

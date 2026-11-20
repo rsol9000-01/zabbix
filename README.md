@@ -89,6 +89,7 @@ flowchart LR
 | `infobus.api` | `infobus_probe.py` | srv-infobus | Internal `next-trips` latency (no Traefik), N(t) and query cost |
 | `infobus.api.ext` | `infobus_probe.py` | srv-gestion | External `next-trips` latency (network + TLS + Traefik) |
 | `host.tcp.established` | `zabbix-host-tcp-established.sh` | all | Established TCP connections on the host |
+| `celery.probe` | `celery_probe.py` | srv-databus, srv-infobus | Celery task queues: tasks waiting and running, workers alive (broker: RabbitMQ in databus, Redis in infobus) |
 
 The `UserParameter` lines live in [`agent2/zabbix_agent2.conf`](agent2/zabbix_agent2.conf).
 
@@ -187,7 +188,7 @@ When `zabbix-init` finishes without errors, the script prints `zabbix-init compl
 
 #### 4. What `zabbix-init` configures
 
-`zabbix-init` runs [`scripts/zabbix-conf-en.sh`](scripts/zabbix-conf-en.sh) against the API:
+`zabbix-init` runs [`scripts/zabbix-conf.sh`](scripts/zabbix-conf.sh) against the API:
 
 1. Waits for the API to respond.
 2. **First run:** logs in with the initial account (`Admin`), creates `API_WEB_USER`, transfers `Admin`'s maps and dashboards to it and deletes `Admin`. **Later runs:** logs in directly with `API_WEB_USER`.
@@ -409,6 +410,7 @@ The addresses the probes query are in [`agent2/zabbix_agent2.conf`](agent2/zabbi
 | `databus.static` | `--url` | Static GTFS published by databus (`http://orchestrator:8000/feed/schedule/feed.zip`) |
 | `infobus.api` | `--base`, `--host-header`, `--transit-system` | infobus orchestrator inside the network, a value from its `ALLOWED_HOSTS`, and the `TransitSystem` id (see [step 6](#6-srv-infobus-only-check-the-infobus-transitsystem-id)) |
 | `infobus.api.ext` | `--base` | infobus public URL, behind Traefik |
+| `celery.probe` | — | Broker of the server in `agent2/simovilab-celery.conf` (not in this file). See the [probe guide](docs/README-celery_probe.md) |
 
 Scripts are mounted read-only from `scripts/user_scripts/` and the agent reads them on every run: if you change a script, nothing needs restarting. If you change `zabbix_agent2.conf`, restart the agent.
 
@@ -503,6 +505,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 | [`templates/simovilab-infobus.yml`](templates/simovilab-infobus.yml) | `simovilab-infobus` | Role `infobus`: API latency, N(t), MACDT loop and calibration. Includes the *Operación infobus* dashboard | [guide](docs/README-template-simovilab-infobus.md) |
 | [`templates/simovilab-infobus-ext.yml`](templates/simovilab-infobus-ext.yml) | `simovilab-infobus-ext` | Server local host: external infobus measurement through Traefik | [guide](docs/README-template-simovilab-infobus-ext.md) |
 | [`templates/simovilab-database.yml`](templates/simovilab-database.yml) | `simovilab-database` | Roles `databus` and `infobus`: PostgreSQL and Redis of each project. Includes the *DATABASE* dashboard | [guide](docs/README-template-simovilab-database.md) |
+| [`templates/simovilab-celery.yml`](templates/simovilab-celery.yml) | `simovilab-celery` | Roles `databus` and `infobus`: Celery task queues of each project. Includes the *CELERY* dashboard | [guide](docs/README-template-simovilab-celery.md) |
 | *(official Zabbix)* | `Docker by Zabbix agent 2` | All 3 hosts | — |
 
 ### Items
@@ -516,6 +519,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 | `simovilab-infobus` | Infobus-host (srv-infobus) | 31 |
 | `simovilab-infobus-ext` | Zabbix-server (srv-gestion) | 19 |
 | `simovilab-database` | srv-databus and srv-infobus | 40 |
+| `simovilab-celery` | srv-databus and srv-infobus | 10 + 2 discovery rules with 3 prototypes per queue |
 | `Docker by Zabbix agent 2` | all 3 hosts | Official Zabbix template, unchanged |
 
 <details>
@@ -709,6 +713,29 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 
 </details>
 
+<details>
+<summary><code>simovilab-celery</code> — 10 items</summary>
+
+| Name | Key | Type |
+| --- | --- | --- |
+| Celery: queue probe | `celery.probe` | Agent (active) |
+| Celery: broker reachable | `celery.ok` | Dependent |
+| Celery: probe error | `celery.error` | Dependent |
+| Celery: broker type | `celery.broker` | Dependent |
+| Celery: tasks waiting (all queues) | `celery.ready_total` | Dependent |
+| Celery: tasks running (all queues) | `celery.unacked_total` | Dependent |
+| Celery: workers alive | `celery.workers` | Dependent |
+| Celery: unroutable messages | `celery.unroutable_rate` | Dependent |
+| Celery: probe duration | `celery.elapsed_ms` | Dependent |
+| Celery: queue table (HTML) | `celery.html` | Dependent |
+| *Celery: work queues* | `celery.queues.discovery` | Discovery |
+| ↳ Celery: tasks waiting in {#QUEUE} | `celery.queue.ready[{#QUEUE}]` | Prototype |
+| *Celery: queue workers (RabbitMQ)* | `celery.queues.detail.discovery` | Discovery |
+| ↳ Celery: tasks running in {#QUEUE} | `celery.queue.unacked[{#QUEUE}]` | Prototype |
+| ↳ Celery: consumers on {#QUEUE} | `celery.queue.consumers[{#QUEUE}]` | Prototype |
+
+</details>
+
 ### Macros
 
 To change a macro without losing the change on the next template import, override it on the host: Data collection → Hosts → *host* → **Macros** tab → **Inherited and host macros** → **Change**. To change the default value, edit the template YAML and import it.
@@ -779,6 +806,18 @@ To change a macro without losing the change on the next template import, overrid
 | `{$REDIS.MEM.PCT.CRIT}` | `90` | `simovilab-database` | [ESP] 2.3 · memory used of maxmemory, %, 5 min |
 | `{$REDIS.MEM.PCT.WARN}` | `75` | `simovilab-database` | [ESP] 2.3 · memory used of maxmemory, %, 5 min |
 
+**Celery thresholds (specification document, section 2.4)**
+
+The three per-queue macros accept context: `{$CELERY.QUEUE.WARN:"realtime_engine"}` applies only to that queue.
+
+| Macro | Default | Template | What it controls |
+| --- | --- | --- | --- |
+| `{$CELERY.QUEUE.WARN}` | `30` | `simovilab-celery` | [ESP] 2.4 · tasks waiting per queue, 5 min. Floor of the MACDT range 30–200 |
+| `{$CELERY.QUEUE.CRIT}` | `60` | `simovilab-celery` | [ESP] 2.4 · tasks waiting per queue, 5 min. Floor of the MACDT range 60–400 |
+| `{$CELERY.WORKERS.MIN}` | `1` | `simovilab-celery` | Workers alive expected on the broker. RabbitMQ only |
+| `{$CELERY.CONSUMERS.MIN}` | `1` | `simovilab-celery` | Workers that must listen to each work queue. RabbitMQ only |
+| `{$CELERY.CONSUMERS.MIN:"celery"}` | `0` | `simovilab-databus` | Default queue `celery`: no databus worker reads it, so its "no worker listening" alert stays closed |
+
 **Almost fixed: change only if the requirement or the design changes**
 
 | Macro | Default | Template | What it controls |
@@ -838,6 +877,10 @@ To change a macro without losing the change on the next template import, overrid
 | Redis DOWN: state store not reachable | `simovilab-database` | Two checks in a row without answer. The project loses its live state (runs in progress, positions, WebSocket channels). |
 | Redis: too many clients critical | `simovilab-database` | More than {$REDIS.CLIENTS.CRIT} during 5 minutes. Close to rejecting new connections. |
 | Redis: memory usage critical | `simovilab-database` | Above {$REDIS.MEM.PCT.CRIT} % for 5 minutes. Writes of live state are about to fail or keys to be evicted. |
+| Celery DOWN: broker not reachable | `simovilab-celery` | Two checks in a row without reading the broker. Tasks cannot be queued or watched: in databus the realtime feed stops being built. |
+| Celery: fewer workers than expected | `simovilab-celery` | Fewer than {$CELERY.WORKERS.MIN} workers during 5 min (RabbitMQ only). A worker container stopped or lost its connection. |
+| Celery: no worker listening on {#QUEUE} | `simovilab-celery` | Per queue. Fewer than {$CELERY.CONSUMERS.MIN:"{#QUEUE}"} consumers during 5 min (RabbitMQ only). Tasks sent to that queue never run. |
+| Celery: tasks piling up in {#QUEUE} critical | `simovilab-celery` | Per queue. More than {$CELERY.QUEUE.CRIT:"{#QUEUE}"} tasks waiting during 5 min. The backlog keeps growing. |
 
 **Average**
 
@@ -890,6 +933,7 @@ To change a macro without losing the change on the next template import, overrid
 | Redis: too many clients | `simovilab-database` | More than {$REDIS.CLIENTS.WARN} during 5 minutes. Usually a connection leak in the application or too many WebSocket subscribers. |
 | Redis: memory usage high | `simovilab-database` | Above {$REDIS.MEM.PCT.WARN} % for 5 minutes. When it reaches 100 %, Redis evicts keys or rejects writes. |
 | Redis: snapshot to disk failed | `simovilab-database` | The last save failed (disk full or no write permission). If Redis restarts now, the state since the last good snapshot is lost. |
+| Celery: tasks piling up in {#QUEUE} | `simovilab-celery` | Per queue. More than {$CELERY.QUEUE.WARN:"{#QUEUE}"} tasks waiting during 5 min. Feeds and predictions come late. |
 
 **Information**
 
@@ -909,9 +953,10 @@ To change a macro without losing the change on the next template import, overrid
 
 ## Security notes
 
-- **Credentials:** they go only in `.env`, `agent2/simovilab-plugins.conf` and `psk/`, which are in `.gitignore`. Change every sample value before deploying.
+- **Credentials:** they go only in `.env`, `agent2/simovilab-plugins.conf`, `agent2/simovilab-celery.conf` and `psk/`, which are in `.gitignore`. Change every sample value before deploying.
 - **Docker socket:** agents mount it read-only to discover containers. That grants significant host access, so deploy agents only on trusted servers and watch that access with Wazuh.
 - **PostgreSQL user:** use a read-only one with `pg_monitor`, not `postgres`.
+- **RabbitMQ user (databus):** use `zabbix_mon` with the `monitoring` tag and empty permissions, not the Celery user. Steps in the [probe guide](docs/README-celery_probe.md).
 - **Web frontend:** it is reachable only through Traefik, with a valid certificate and an IP allowlist (`ZBX_ALLOWED_IPS`). `zabbix-dashboard` does not publish any port on the host.
 - **Firewall:** on the server open only `10051/tcp` to the agents and `443/tcp` to the management network; on agents open `10050/tcp` only if you use passive checks.
 - **Pinned versions:** Zabbix images are pinned to `7.4.3` and PostgreSQL to `17.6`. Change them on purpose and test before.
@@ -922,7 +967,7 @@ To change a macro without losing the change on the next template import, overrid
 - [`agent2/docker-compose-agent2.yml`](agent2/docker-compose-agent2.yml): remote agent.
 - [`agent2/zabbix_agent2.conf`](agent2/zabbix_agent2.conf): probe `UserParameter`s.
 - [`scripts/zabbix-dev.sh`](scripts/zabbix-dev.sh) · [`-es`](scripts/zabbix-dev-es.sh): server and agent deployment, including the network check.
-- [`scripts/zabbix-conf-en.sh`](scripts/zabbix-conf-en.sh): initial setup run by `zabbix-init`.
+- [`scripts/zabbix-conf.sh`](scripts/zabbix-conf.sh): initial setup run by `zabbix-init`.
 - [`scripts/user_scripts/`](scripts/user_scripts/): probes and MACDT loop, each one in English and Spanish (`-es`).
 - [`templates/`](templates/): Zabbix templates.
 - [`docs/`](docs/): detailed documentation of each script, and one guide per template (`docs/README-template-*.md`): what it measures, requirements, alert tree, macros and dashboard.

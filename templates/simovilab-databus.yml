@@ -588,6 +588,9 @@ zabbix_export:
           value_type: FLOAT
           params: 'min(last(//gtfs.v_trips) / last(//macdt.v_trips_max), {$MACDT.RHO_CAP})'
       macros:
+        - macro: '{$CELERY.CONSUMERS.MIN:"celery"}'
+          value: '0'
+          description: 'Used by simovilab-celery: in databus no worker listens to the default queue celery (tasks go to schedule_engine and realtime_engine), so it must not alert for having no consumer. It still alerts if tasks pile up in it.'
         - macro: '{$DB.SESSION}'
           value: databus
           description: 'Agent 2 session (simovilab-plugins.conf) and PostgreSQL database name used by the simovilab-database template linked to the same host.'

@@ -13,7 +13,7 @@ Capa de dominio de databus. Mide si los datos de transporte en tiempo real que p
 | **Archivo** | [`templates/simovilab-databus.yml`](../templates/simovilab-databus.yml) |
 | **Plantilla** | `simovilab-databus` |
 | **Se vincula a** | `srv-databus`, por `ROLE_DATABUS_TEMPLATE_*` (metadata de autoregistro `docker-autoreg databus`). También define `{$DB.SESSION} = databus`, que usa `simovilab-database` en el mismo host. |
-| **Contenido** | 39 ítems, 18 alertas, 13 macros |
+| **Contenido** | 39 ítems, 18 alertas, 14 macros |
 
 ## Requisitos
 
@@ -107,6 +107,7 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro 
 
 | Macro | Valor por defecto | Qué controla |
 | --- | --- | --- |
+| `{$CELERY.CONSUMERS.MIN:"celery"}` | `0` | Cola por defecto de Celery `celery`: ningún worker de databus la lee. Mantiene cerrada la alerta *no worker listening* de `simovilab-celery` solo para esa cola. |
 | `{$DB.SESSION}` | `databus` | Sesión del Agent 2 (simovilab-plugins.conf) y nombre de la base PostgreSQL que usa simovilab-database en el mismo host. |
 | `{$MACDT.CAL.DIAS.WARN}` | `7` | Días de anticipación para avisar que vence el calendario del GTFS. |
 | `{$MACDT.COMPL.CRIT}` | `80` | Completitud mínima de predicciones (nivel crítico, %). |

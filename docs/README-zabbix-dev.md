@@ -63,7 +63,7 @@ sudo ./scripts/zabbix-dev.sh agent 'MySeed.2026'   # on R2 and R3, with the SAME
 
 | Variable | Mode | Use in the script |
 | --- | --- | --- |
-| `SCRIPT_POST_INSTALL` | server | Initial setup script run by `zabbix-init`. The file must exist (default `scripts/zabbix-conf-en.sh`) |
+| `SCRIPT_POST_INSTALL` | server | Initial setup script run by `zabbix-init`. The file must exist (default `scripts/zabbix-conf.sh`) |
 | `AGENT_SUDOERS_FILE` | both | Name of the sudoers file inside `agent2/` (default `simovilab-sudoers`) |
 | `ZBX_AGENT_CONFIG_FILE` | both | Name of the agent configuration file inside `agent2/` (default `zabbix_agent2.conf`) |
 | `AGENT_PARAMS_<suffix>` | both | `key:script` pairs added as `UserParameter` lines. Example: `AGENT_PARAMS_00=host.tcp.established:zabbix-host-tcp-established.sh` |
@@ -173,5 +173,5 @@ sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 - [`README.md`](../README.md): full deployment guide.
 - [`docker-compose.yml`](../docker-compose.yml): server stack.
 - [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml): remote agent.
-- [`scripts/zabbix-conf-en.sh`](../scripts/zabbix-conf-en.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf-en.md).
+- [`scripts/zabbix-conf.sh`](../scripts/zabbix-conf.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf.md).
 - [`scripts/user_scripts/`](../scripts/user_scripts/): probes and MACDT loop.
