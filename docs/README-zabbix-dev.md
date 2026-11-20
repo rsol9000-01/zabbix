@@ -118,7 +118,11 @@ In `server` mode, the last lines must show `zabbix-init completed successfully`.
 #### Common operations
 
 ```bash
-# Redeploy after changing templates or .env (same seed)
+# Update templates or apply .env changes: run only zabbix-init
+DOCKER_GID=$(getent group docker | cut -d: -f3) \
+  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
+
+# Redeploy after changing docker-compose.yml or the PSK (same seed)
 sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 
 # Print the usage

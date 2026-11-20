@@ -252,11 +252,19 @@ docker compose up -d --no-deps --force-recreate macdt-loop
 
 #### Actualizar plantillas en una instalación existente
 
-Volver a correr el despliegue con la misma semilla. `zabbix-init` vuelve a importar las plantillas y actualiza lo que cambió:
+Volver a correr solo `zabbix-init`. Importa las plantillas de `templates/` y actualiza lo que cambió; los demás contenedores no se tocan:
 
 ```bash
-sudo ./scripts/zabbix-dev.sh server 'MiSemilla.2026'
+cd /home/zabbix
+DOCKER_GID=$(getent group docker | cut -d: -f3) \
+  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
 ```
+
+- `DOCKER_GID` no está en el `.env`: lo calcula `zabbix-dev.sh` cada vez que corre, y `docker-compose.yml` lo necesita aunque solo arranque `zabbix-init`.
+- `--force-recreate` hace que `zabbix-init` lea el `.env` actual. `--no-deps` deja los demás contenedores como están.
+- La salida debe terminar con `User configuration completed` o `No new user required`.
+
+Correr el despliegue completo (`zabbix-dev.sh server`) solo cuando cambia `docker-compose.yml` o la PSK, o en una instalación nueva.
 
 Las macros cambiadas **en el host** se conservan. Las cambiadas **en la plantilla** desde la web vuelven al valor del YAML.
 

@@ -45,11 +45,12 @@ cd /home/zabbix
 sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 ```
 
-To run it again on an existing installation (for example, after changing templates or `.env`):
+To run it again on an existing installation (for example, after changing templates or `.env`), recreate only `zabbix-init`. `DOCKER_GID` is computed by `zabbix-dev.sh` and is not in `.env`:
 
 ```bash
-docker compose -f docker-compose.yml up -d zabbix-init
-docker compose -f docker-compose.yml logs -f zabbix-init
+cd /home/zabbix
+DOCKER_GID=$(getent group docker | cut -d: -f3) \
+  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
 ```
 
 ### How to

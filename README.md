@@ -252,11 +252,19 @@ docker compose up -d --no-deps --force-recreate macdt-loop
 
 #### Update templates on an existing installation
 
-Run the deployment again with the same seed. `zabbix-init` imports the templates again and updates what changed:
+Run only `zabbix-init` again. It imports the templates in `templates/` and updates what changed; the other containers are not touched:
 
 ```bash
-sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
+cd /home/zabbix
+DOCKER_GID=$(getent group docker | cut -d: -f3) \
+  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
 ```
+
+- `DOCKER_GID` is not in `.env`: `zabbix-dev.sh` computes it on every run, and `docker-compose.yml` needs it even when only `zabbix-init` starts.
+- `--force-recreate` makes `zabbix-init` read the current `.env`. `--no-deps` leaves the other containers as they are.
+- The output must end with `User configuration completed` or `No new user required`.
+
+Run the full deployment (`zabbix-dev.sh server`) only when `docker-compose.yml` or the PSK changes, or on a new installation.
 
 Macros you changed **on the host** are kept. Macros you changed **on the template** from the frontend go back to the YAML value.
 

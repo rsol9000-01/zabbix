@@ -1,0 +1,92 @@
+diff --git a/README es.md b/README es.md
+index acddb0d..77e3bf2 100644
+--- a/README es.md	
++++ b/README es.md	
+@@ -252,12 +252,20 @@ docker compose up -d --no-deps --force-recreate macdt-loop
+ 
+ #### Actualizar plantillas en una instalación existente
+ 
+-Volver a correr el despliegue con la misma semilla. `zabbix-init` vuelve a importar las plantillas y actualiza lo que cambió:
++Volver a correr solo `zabbix-init`. Importa las plantillas de `templates/` y actualiza lo que cambió; los demás contenedores no se tocan:
+ 
+ ```bash
+-sudo ./scripts/zabbix-dev.sh server 'MiSemilla.2026'
++cd /home/zabbix
++DOCKER_GID=$(getent group docker | cut -d: -f3) \
++  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
+ ```
+ 
++- `DOCKER_GID` no está en el `.env`: lo calcula `zabbix-dev.sh` cada vez que corre, y `docker-compose.yml` lo necesita aunque solo arranque `zabbix-init`.
++- `--force-recreate` hace que `zabbix-init` lea el `.env` actual. `--no-deps` deja los demás contenedores como están.
++- La salida debe terminar con `User configuration completed` o `No new user required`.
++
++Correr el despliegue completo (`zabbix-dev.sh server`) solo cuando cambia `docker-compose.yml` o la PSK, o en una instalación nueva.
++
+ Las macros cambiadas **en el host** se conservan. Las cambiadas **en la plantilla** desde la web vuelven al valor del YAML.
+ 
+ #### Operaciones comunes
+diff --git a/README.md b/README.md
+index 4a02c0f..41ff2eb 100644
+--- a/README.md
++++ b/README.md
+@@ -252,12 +252,20 @@ docker compose up -d --no-deps --force-recreate macdt-loop
+ 
+ #### Update templates on an existing installation
+ 
+-Run the deployment again with the same seed. `zabbix-init` imports the templates again and updates what changed:
++Run only `zabbix-init` again. It imports the templates in `templates/` and updates what changed; the other containers are not touched:
+ 
+ ```bash
+-sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
++cd /home/zabbix
++DOCKER_GID=$(getent group docker | cut -d: -f3) \
++  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
+ ```
+ 
++- `DOCKER_GID` is not in `.env`: `zabbix-dev.sh` computes it on every run, and `docker-compose.yml` needs it even when only `zabbix-init` starts.
++- `--force-recreate` makes `zabbix-init` read the current `.env`. `--no-deps` leaves the other containers as they are.
++- The output must end with `User configuration completed` or `No new user required`.
++
++Run the full deployment (`zabbix-dev.sh server`) only when `docker-compose.yml` or the PSK changes, or on a new installation.
++
+ Macros you changed **on the host** are kept. Macros you changed **on the template** from the frontend go back to the YAML value.
+ 
+ #### Common operations
+diff --git a/docs/README-zabbix-conf.md b/docs/README-zabbix-conf.md
+index a526fb3..03362a4 100644
+--- a/docs/README-zabbix-conf.md
++++ b/docs/README-zabbix-conf.md
+@@ -45,11 +45,12 @@ cd /home/zabbix
+ sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
+ ```
+ 
+-To run it again on an existing installation (for example, after changing templates or `.env`):
++To run it again on an existing installation (for example, after changing templates or `.env`), recreate only `zabbix-init`. `DOCKER_GID` is computed by `zabbix-dev.sh` and is not in `.env`:
+ 
+ ```bash
+-docker compose -f docker-compose.yml up -d zabbix-init
+-docker compose -f docker-compose.yml logs -f zabbix-init
++cd /home/zabbix
++DOCKER_GID=$(getent group docker | cut -d: -f3) \
++  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
+ ```
+ 
+ ### How to
+diff --git a/docs/README-zabbix-dev.md b/docs/README-zabbix-dev.md
+index 956bf6e..1f8c809 100644
+--- a/docs/README-zabbix-dev.md
++++ b/docs/README-zabbix-dev.md
+@@ -118,7 +118,11 @@ In `server` mode, the last lines must show `zabbix-init completed successfully`.
+ #### Common operations
+ 
+ ```bash
+-# Redeploy after changing templates or .env (same seed)
++# Update templates or apply .env changes: run only zabbix-init
++DOCKER_GID=$(getent group docker | cut -d: -f3) \
++  docker compose --env-file .env up --force-recreate --no-deps zabbix-init
++
++# Redeploy after changing docker-compose.yml or the PSK (same seed)
+ sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
+ 
+ # Print the usage
+ 
