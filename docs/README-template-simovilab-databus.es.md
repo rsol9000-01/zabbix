@@ -13,7 +13,7 @@ Capa de dominio de databus. Mide si los datos de transporte en tiempo real que p
 | **Archivo** | [`templates/simovilab-databus.yml`](../templates/simovilab-databus.yml) |
 | **Plantilla** | `simovilab-databus` |
 | **Se vincula a** | `srv-databus`, por `ROLE_DATABUS_TEMPLATE_*` (metadata de autoregistro `docker-autoreg databus`). También define `{$DB.SESSION} = databus`, que usa `simovilab-database` en el mismo host. |
-| **Contenido** | 38 ítems, 18 alertas, 13 macros |
+| **Contenido** | 39 ítems, 18 alertas, 13 macros |
 
 ## Requisitos
 
@@ -21,6 +21,7 @@ Capa de dominio de databus. Mide si los datos de transporte en tiempo real que p
 | --- | --- | --- |
 | `gtfsrt_probe.py` (`gtfs.probe[{$MACDT.STALE_S}]`) | Maestro de todos los ítems `gtfs.*` | [README](README-gtfsrt_probe.md) |
 | `gtfs_window.py` (`macdt.window`, `databus.static`) | Ventana de servicio y viajes programados según el GTFS de SIMOVI; GTFS estático que publica databus | [README](README-gtfs_window.md) |
+| Consulta propia `databus_static.sql` y `GRANT SELECT ON feed_feed TO zabbix_ro` | `databus.static.age_s`: el `feed.zip` de databus no trae el encabezado `Last-Modified`, así que la antigüedad de su versión se lee de `feed_feed.http_last_modified` | `agent2/pgsql-queries/`, [guía de base de datos](README-template-simovilab-database.es.md) |
 | Agente en la red Docker de databus | Las sondas llaman a `http://orchestrator:8000` | `AGENT_DOCKER_NETWORK` en el `.env` del agente |
 | NTP en el servidor de databus | La sonda compara los timestamps de los vehículos con la hora actual | Host |
 | `simovilab servidor y sistema operativo` en el mismo host | **Capa D: sonda sin datos** depende de **Server DOWN!!!** | Plantillas del rol en `.env` |
@@ -127,11 +128,12 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro 
 ## Ítems
 
 <details>
-<summary>38 ítems</summary>
+<summary>39 ítems</summary>
 
 | Nombre | Clave | Tipo | Unidades |
 | --- | --- | --- | --- |
 | GTFS estático publicado por databus | `databus.static` | Agente (activo) | — |
+| databus: versión vigente del estático (raw) | `pgsql.custom.query["{$DB.SESSION}",,,,databus_static]` | Agente (activo) | — |
 | databus: antigüedad del estático | `databus.static.age_s` | Dependiente | s |
 | databus: desfase del estático frente a la fuente | `databus.static.desfase_s` | Calculado | s |
 | databus: código HTTP del estático | `databus.static.http` | Dependiente | — |

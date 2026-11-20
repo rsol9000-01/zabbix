@@ -33,6 +33,8 @@ Plugins.PostgreSQL.Sessions.infobus.Password=<clave de zabbix_ro en srv-infobus>
 #-------- POSTGRESQL: consultas propias --------
 # Carpeta montada por agent2/docker-compose-agent2.yml desde agent2/pgsql-queries/.
 # simovilab_tables.sql alimenta los dead tuples por tabla de simovilab-database.
+# databus_static.sql alimenta la antigüedad del estático de simovilab-databus
+# (solo srv-databus; necesita GRANT SELECT ON feed_feed TO zabbix_ro).
 # El plugin lee la carpeta al arrancar: después de agregar un .sql, reiniciar el agente.
 Plugins.PostgreSQL.CustomQueriesPath=/etc/zabbix/pgsql-queries
 Plugins.PostgreSQL.CustomQueriesEnabled=true
@@ -64,5 +66,9 @@ Plugins.Redis.Sessions.infobus.Password=<REDIS_PASSWORD del .env de infobus>
 #  pg_monitor es un rol predefinido de PostgreSQL y alcanza para todas las
 #  vistas de estadísticas que usa el plugin y para simovilab_tables.sql.
 #  No da lectura de los datos de las tablas.
+#
+#  Excepción, solo en la base databus (para databus_static.sql):
+#
+#      GRANT SELECT ON feed_feed TO zabbix_ro;
 #
 #  Procedimiento completo y prueba: docs/README-template-simovilab-database.md

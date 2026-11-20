@@ -550,11 +550,12 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 </details>
 
 <details>
-<summary><code>simovilab-databus</code> — 38 ítems</summary>
+<summary><code>simovilab-databus</code> — 39 ítems</summary>
 
 | Nombre | Clave | Tipo |
 | --- | --- | --- |
 | GTFS estático publicado por databus | `databus.static` | Agente (activo) |
+| databus: versión vigente del estático (raw) | `pgsql.custom.query["{$DB.SESSION}",,,,databus_static]` | Agente (activo) |
 | databus: antigüedad del estático | `databus.static.age_s` | Dependiente |
 | databus: desfase del estático frente a la fuente | `databus.static.desfase_s` | Calculado |
 | databus: código HTTP del estático | `databus.static.http` | Dependiente |

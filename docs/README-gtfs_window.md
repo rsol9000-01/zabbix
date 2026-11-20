@@ -121,7 +121,7 @@ docker run --rm --network databus_internal -v "$PWD/scripts/user_scripts":/s:ro 
 | `hueco_cero_programado` | `macdt.hueco_programado` | `1` inside the window in a minute with no scheduled trips |
 | `dias_a_fin_vigencia` | `macdt.cal_dias_vigencia` | Days until the GTFS calendar `end_date` |
 
-`databus.static` uses `window_ok`, `static_zip_http` and `static_zip_age_s` (items `databus.static.ok`, `databus.static.http` and `databus.static.age_s`).
+`databus.static` uses `window_ok` and `static_zip_http` (items `databus.static.ok` and `databus.static.http`). Its `static_zip_age_s` is always `null`: the `feed.zip` of databus has no `Last-Modified` header. `databus.static.age_s` is read from PostgreSQL instead (`agent2/pgsql-queries/databus_static.sql`).
 
 If the download or the analysis fails, `--now` still prints a JSON with the same keys, `window_ok = 0` and the HTTP code when there is one, so Zabbix can alert. Without `--now`, the error stops the script.
 

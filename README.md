@@ -550,11 +550,12 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 </details>
 
 <details>
-<summary><code>simovilab-databus</code> — 38 items</summary>
+<summary><code>simovilab-databus</code> — 39 items</summary>
 
 | Name | Key | Type |
 | --- | --- | --- |
 | GTFS estático publicado por databus | `databus.static` | Agent (active) |
+| databus: versión vigente del estático (raw) | `pgsql.custom.query["{$DB.SESSION}",,,,databus_static]` | Agent (active) |
 | databus: antigüedad del estático | `databus.static.age_s` | Dependent |
 | databus: desfase del estático frente a la fuente | `databus.static.desfase_s` | Calculated |
 | databus: código HTTP del estático | `databus.static.http` | Dependent |

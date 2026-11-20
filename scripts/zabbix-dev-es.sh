@@ -425,31 +425,33 @@ fi
 echo "✅  Zabbix agent config file found: $ZBX_AGENT_CONFIG_FILE_ROUTE"
 
 # ---------------------------------------------------------------------------
-# Crear desde el ejemplo el archivo local de plugins, solo para el modo agente
+# Crear desde sus ejemplos los archivos locales de plugins y de Celery, solo en modo agente
 # ---------------------------------------------------------------------------
 # El archivo real se excluye del repositorio y cada servidor mantiene su copia.
 # Crear el archivo evita que Docker monte una carpeta y omita la configuración.
 # ---------------------------------------------------------------------------
 
 if [ "$FLAG_SERVER" = "false" ]; then
-  AGENT_PLUGINS_FILE_ROUTE=$REPO_ROOT/agent2/simovilab-plugins.conf
+  for AGENT_LOCAL_FILE in simovilab-plugins.conf simovilab-celery.conf; do
+    AGENT_PLUGINS_FILE_ROUTE=$REPO_ROOT/agent2/$AGENT_LOCAL_FILE
 
-  if [ -d "$AGENT_PLUGINS_FILE_ROUTE" ]; then
-      echo "❌  Error: $AGENT_PLUGINS_FILE_ROUTE es una carpeta (la creó Docker en un despliegue anterior)."
-      echo "    Bórrela con: rmdir $AGENT_PLUGINS_FILE_ROUTE  y vuelva a ejecutar."
-      exit 1
-  fi
-
-  if [ ! -f "$AGENT_PLUGINS_FILE_ROUTE" ]; then
-      echo "⚠️  Plugins file not found. Creating from example: $AGENT_PLUGINS_FILE_ROUTE"
-      if ! cp "$AGENT_PLUGINS_FILE_ROUTE.example" "$AGENT_PLUGINS_FILE_ROUTE"; then
-        echo "❌  Error: could not create $AGENT_PLUGINS_FILE_ROUTE"
+    if [ -d "$AGENT_PLUGINS_FILE_ROUTE" ]; then
+        echo "❌  Error: $AGENT_PLUGINS_FILE_ROUTE es una carpeta (la creó Docker en un despliegue anterior)."
+        echo "    Bórrela con: rmdir $AGENT_PLUGINS_FILE_ROUTE  y vuelva a ejecutar."
         exit 1
-      fi
-      echo -e "   - ${YELLOW}Contiene contraseñas de muestra. Edítelo si este servidor usa otras.${NC}"
-  fi
-  echo "✅  Plugins file found: $AGENT_PLUGINS_FILE_ROUTE"
-  chmod 644 "$AGENT_PLUGINS_FILE_ROUTE"
+    fi
+
+    if [ ! -f "$AGENT_PLUGINS_FILE_ROUTE" ]; then
+        echo "⚠️  No existe el archivo local. Se crea desde el ejemplo: $AGENT_PLUGINS_FILE_ROUTE"
+        if ! cp "$AGENT_PLUGINS_FILE_ROUTE.example" "$AGENT_PLUGINS_FILE_ROUTE"; then
+          echo "❌  Error: could not create $AGENT_PLUGINS_FILE_ROUTE"
+          exit 1
+        fi
+        echo -e "   - ${YELLOW}Contiene contraseñas de muestra. Edítelo si este servidor usa otras.${NC}"
+    fi
+    echo "✅  Archivo local encontrado: $AGENT_PLUGINS_FILE_ROUTE"
+    chmod 644 "$AGENT_PLUGINS_FILE_ROUTE"
+  done
 fi
 
 # ---------------------------------------------------------------------------
