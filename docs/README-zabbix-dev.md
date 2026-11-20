@@ -173,5 +173,5 @@ sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
 - [`README.md`](../README.md): full deployment guide.
 - [`docker-compose.yml`](../docker-compose.yml): server stack.
 - [`agent2/docker-compose-agent2.yml`](../agent2/docker-compose-agent2.yml): remote agent.
-- [`scripts/zabbix-conf.sh`](../scripts/zabbix-conf.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf.md).
+- [`scripts/zabbix-conf.sh`](../scripts/zabbix-conf.sh) · [`-es`](../scripts/zabbix-conf-es.sh): initial setup run by `zabbix-init`. See [its README](README-zabbix-conf.md).
 - [`scripts/user_scripts/`](../scripts/user_scripts/): probes and MACDT loop.

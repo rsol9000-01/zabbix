@@ -10,7 +10,7 @@ Post-install script of the Zabbix server. The `zabbix-init` container runs it on
 
 | Item | Value |
 | --- | --- |
-| **Location** | `scripts/zabbix-conf.sh` (selected with `SCRIPT_POST_INSTALL` in `.env`) |
+| **Location** | `scripts/zabbix-conf.sh` (selected with `SCRIPT_POST_INSTALL` in `.env`). Spanish version, same code with comments and messages in Spanish: `scripts/zabbix-conf-es.sh` |
 | **Runs on** | The `zabbix-init` container on the server (R4), mounted as `/init.sh` |
 | **Run by** | `docker compose up` (started by [`zabbix-dev.sh`](README-zabbix-dev.md) in `server` mode) |
 | **Talks to** | Zabbix JSON-RPC API at `API_URL` |

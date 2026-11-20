@@ -967,7 +967,7 @@ The three per-queue macros accept context: `{$CELERY.QUEUE.WARN:"realtime_engine
 - [`agent2/docker-compose-agent2.yml`](agent2/docker-compose-agent2.yml): remote agent.
 - [`agent2/zabbix_agent2.conf`](agent2/zabbix_agent2.conf): probe `UserParameter`s.
 - [`scripts/zabbix-dev.sh`](scripts/zabbix-dev.sh) · [`-es`](scripts/zabbix-dev-es.sh): server and agent deployment, including the network check.
-- [`scripts/zabbix-conf.sh`](scripts/zabbix-conf.sh): initial setup run by `zabbix-init`.
+- [`scripts/zabbix-conf.sh`](scripts/zabbix-conf.sh) · [`-es`](scripts/zabbix-conf-es.sh): initial setup run by `zabbix-init`.
 - [`scripts/user_scripts/`](scripts/user_scripts/): probes and MACDT loop, each one in English and Spanish (`-es`).
 - [`templates/`](templates/): Zabbix templates.
 - [`docs/`](docs/): detailed documentation of each script, and one guide per template (`docs/README-template-*.md`): what it measures, requirements, alert tree, macros and dashboard.
