@@ -32,9 +32,9 @@ connects to the container while sending a Host value the deployment already
 accepts, without requiring changes to databus.
 
 Usage:
-  python3 gtfsrt_probe-en.py --base http://orchestrator:8000/feed/realtime \
+  python3 gtfsrt_probe.py --base http://orchestrator:8000/feed/realtime \
                              --host-header databus.ucr.ac.cr --stale 60
-  python3 gtfsrt_probe-en.py --vp-file vp.pb --tu-file tu.pb
+  python3 gtfsrt_probe.py --vp-file vp.pb --tu-file tu.pb
 
 Dependencies: requests, gtfs-realtime-bindings
 """

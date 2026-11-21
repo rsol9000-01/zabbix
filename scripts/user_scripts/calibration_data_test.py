@@ -4,7 +4,7 @@ Revisa si los datos ya tienen suficiente variacion de buses para que la
 calibracion de MACDT pueda medir el peso de cada bus (c -> beta).
 
 Solo lee de Zabbix. No escribe macros, historial ni trappers.
-Usa exactamente los mismos datos que macdt_loop-en.py --calibrate (version p95):
+Usa exactamente los mismos datos que macdt_loop.py --calibrate (version p95):
   latencia  = infobus.api.lat_p95_1h        (host infobus)
   llegadas  = infobus.api.llegadas_p95_1h   (host infobus)   -> N
   buses     = gtfs.v_trips                  (host databus)   -> V
@@ -48,7 +48,7 @@ def main():
     hasta = int(time.time())
     desde = hasta - a.dias * 86400
 
-    # Mismo cruce de datos que calibrar() en macdt_loop-en.py
+    # Mismo cruce de datos que calibrar() en macdt_loop.py
     lat = {c // 60: (c, v) for c, v in m.historial(z, m.HOST_INFOBUS, "infobus.api.lat_p95_1h", desde, hasta)}
     lleg = {c // 60: v for c, v in m.historial(z, m.HOST_INFOBUS, "infobus.api.llegadas_p95_1h", desde, hasta)}
     vtr = m.historial(z, m.HOST_DATABUS, "gtfs.v_trips", desde, hasta)

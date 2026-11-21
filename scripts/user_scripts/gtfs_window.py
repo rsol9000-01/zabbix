@@ -14,9 +14,9 @@ Why derive these values instead of setting them manually: when the GTFS changes
 Zabbix. Run this script after each GTFS import.
 
 Usage:
-  python3 gtfs_window-en.py --zip GTFS_bUCR.zip
-  python3 gtfs_window-en.py --pg "host=... dbname=databus user=zbx_ro password=..."
-  python3 gtfs_window-en.py --zip f.zip --macros
+  python3 gtfs_window.py --zip GTFS_bUCR.zip
+  python3 gtfs_window.py --pg "host=... dbname=databus user=zbx_ro password=..."
+  python3 gtfs_window.py --zip f.zip --macros
 
 Dependencies: none for --zip; psycopg[binary] for --pg
 """

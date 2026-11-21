@@ -7,7 +7,7 @@ Run the same script from two locations:
   - External (R4 agent, infobus.api.ext key):  https://<domain>          -> network + TLS + Traefik + Daphne + query
 Zabbix calculates the external-to-internal difference (simovilab-infobus-ext template).
 Prints one JSON object: use it as the master item and attach dependent items with
-JSONPath, as with gtfsrt_probe-en.py.
+JSONPath, as with gtfsrt_probe.py.
 
 Why use --repeat 10 instead of 30 or 100 (based on infobus/backend/infobus/settings.py):
   NextTripView declares throttle_scope = "realtime", and DEFAULT_THROTTLE_RATES
@@ -77,15 +77,15 @@ Why use --stop-id auto (worst-case stop):
   only, all services, window [t, t + 5 h], without crossing midnight.
 
 Usage:
-  python3 infobus_probe-en.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01
-  python3 infobus_probe-en.py --base http://orchestrator:8000 --host-header localhost \
+  python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01
+  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost \
                               --stop-id auto --transit-system 1
 
   Internally, without Traefik (InfoBus orchestrator container, HTTP on port 8000):
-  python3 infobus_probe-en.py --base http://orchestrator:8000 --host-header localhost --stop-id bUCR_0_01
+  python3 infobus_probe.py --base http://orchestrator:8000 --host-header localhost --stop-id bUCR_0_01
   --host-header must be a value in InfoBus ALLOWED_HOSTS; otherwise Django responds with 400.
   In this mode, health_ms excludes TLS and Traefik and measures Daphne only.
-  python3 infobus_probe-en.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01 \
+  python3 infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id bUCR_0_01 \
                               --repeat 10 --timeout 5
 
 Dependencies: requests (stop selection uses only the standard library)

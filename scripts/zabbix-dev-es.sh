@@ -138,6 +138,22 @@ FLAG_SERVER=false
 PSK_SEED="${2:-}"
 
 # ---------------------------------------------------------------------------
+# Definir la revisión de las redes y crearlas si no existen
+# ---------------------------------------------------------------------------
+
+check_networks() {
+  local red
+  for red in "$@"; do
+    if docker network inspect "$red" >/dev/null 2>&1; then
+      echo "Red '$red': ya existe."
+    else
+      echo "Red '$red': no existe. Creando la red..."
+      docker network create "$red" >/dev/null
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
 # Validar la cantidad de argumentos recibidos
 # ---------------------------------------------------------------------------
 if [[ $# -ne 1 && $# -ne 2 ]]; then
@@ -309,6 +325,12 @@ if [ "$FLAG_SERVER" = "true" ]; then
   fi
   echo "✅  Post-install script found: $REPO_ROOT/$SCRIPT_POST_INSTALL"
 fi
+# ---------------------------------------------------------------------------
+# Definir las redes que se revisan y se crean si no existen
+# ---------------------------------------------------------------------------
+
+ZBX_TRAEFIK_NETWORK="$(grep '^ZBX_TRAEFIK_NETWORK[[:space:]]*=' .env | sed 's/^[^=]*=[[:space:]]*//')"
+ZBX_GESTION_NETWORK="gestion_network"
 
 # ---------------------------------------------------------------------------
 # Crear el directorio de scripts auxiliares y asignar sus permisos
@@ -562,6 +584,15 @@ else
   echo "    Agregar esta línea al crontab de root (crontab -e) para que los ítems de memoria y CPU tengan datos:"
   echo "    * * * * * /usr/local/sbin/simovilab-host-stats.sh /srv/zabbix-disco"
 fi
+
+# ---------------------------------------------------------------------------
+# Revisar las redes necesarias antes de correr Compose
+# ---------------------------------------------------------------------------
+if [ "$FLAG_SERVER" = "true" ]; then
+  echo "ℹ️  Modo servidor: revisando las redes necesarias..."
+  check_networks "$ZBX_GESTION_NETWORK" "$ZBX_TRAEFIK_NETWORK"
+fi
+
 
 # ---------------------------------------------------------------------------
 # Iniciar el despliegue con Docker Compose y esperar el resultado del init
