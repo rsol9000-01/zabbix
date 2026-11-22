@@ -11,7 +11,7 @@ Measures the latency of the infobus API from inside (agent on srv-infobus, strai
 | **File** | [`templates/simovilab-infobus.yml`](../templates/simovilab-infobus.yml) |
 | **Template** | `simovilab-infobus` |
 | **Linked to** | `srv-infobus`, through `ROLE_INFOBUS_TEMPLATE_*` (autoregistration metadata `docker-autoreg infobus`). It also defines `{$DB.SESSION} = infobus`, used by `simovilab-database` on the same host. |
-| **Contents** | 31 items, 10 alerts, 17 macros |
+| **Contents** | 32 items, 11 alerts, 17 macros |
 
 ## Requirements
 
@@ -33,6 +33,7 @@ flowchart TD
   T2["L_api p95 incumple el RNF de 200 ms<br/><i>Average</i>"]
   T3["L_api p95 sobre el umbral adaptativo de MACDT<br/><i>Warning</i>"]
   T4["La sonda agota su cuota: la medicion no es valida<br/><i>Warning</i>"]
+  T5["Latencia de día sin servicio sobre el umbral de MACDT (204)<br/><i>Warning</i>"]
   T0 --> T3
   T1 --> T2
   T1 --> T3
@@ -40,6 +41,8 @@ flowchart TD
   T4 --> T2
   T4 --> T3
   T4 --> T0
+  T1 --> T5
+  T4 --> T5
 ```
 
 ## Alerts
@@ -52,6 +55,7 @@ flowchart TD
 | El bucle MACDT no reporta: puede estar caido | Average | 5 min without data from macdt.status. | — |
 | L_api p95 sobre el umbral adaptativo de MACDT | Warning | The last-hour p95 is above {$T_LATENCY_WARN} (written by the MACDT loop). | La API de InfoBus no responde correctamente, La sonda agota su cuota: la medicion no es valida, L_api p95 sostenido sobre el umbral adaptativo de MACDT |
 | Latencia de día sin servicio fuera de lo normal (204) | Warning | 10-min average above {$INFOBUS.T204.FACTOR} × the daily median. | — |
+| Latencia de día sin servicio sobre el umbral de MACDT (204) | Warning | The last-hour p95 of the 204 responses is above {$T_LATENCY_WARN}. With no service there is no N(t), so MACDT leaves the threshold at the {$MACDT.T_BASE} seed (idle threshold). | La API de InfoBus no responde correctamente, La sonda agota su cuota: la medicion no es valida |
 | Costo de abrir la conexión fuera de lo normal | Warning | 10-min average above {$INFOBUS.SETUP.FACTOR} × the daily median and above {$INFOBUS.SETUP.MIN_MS} ms. | — |
 | La sonda agota su cuota: la medicion no es valida | Warning | At least one 429 response in the cycle. | — |
 | MACDT: la latencia de infobus cambió más de lo permitido | Warning | Calibration was held: the new line changes more than MACDT_CALIB_MAX_DRIFT. A person decides whether to apply it. | — |
@@ -72,13 +76,13 @@ Override a macro on the host to keep the change after the next import: *Data col
 | `{$MACDT.DELTA}` | `0` | δ in T_base(t): margin, P95 of the regression residuals. |
 | `{$MACDT.F_CRIT}` | `0.7` | Factor that tightens T_warn when GPS coverage is critical. |
 | `{$MACDT.M}` | `0` | m in T_base(t): ms per scheduled arrival in 5 h. With 0, T_base is constant. |
-| `{$MACDT.T_BASE}` | `130` | T_base seed. Used only when N(t) is missing or stale. |
+| `{$MACDT.T_BASE}` | `160` | T_base seed. Used only when N(t) is missing or stale: days without service or a probe failure. On a day without service it is the idle threshold. It can be changed in operation as a host macro on srv-infobus; the loop reads it every cycle. |
 | `{$MACDT.T_FLOOR}` | `91` | T_warn floor (ms). |
 | `{$MACDT.T_RNF}` | `350` | T_warn ceiling (ms). |
 | `{$Q_CRIT}` | `150` | Not used yet (infobus Redis event queue). |
 | `{$Q_WARN}` | `80` | Not used yet (infobus Redis event queue). |
 | `{$T_LATENCY_CRIT}` | `200` | L_api critical threshold: the non-functional requirement. MACDT never changes it. |
-| `{$T_LATENCY_WARN}` | `130` | L_api warning threshold. Overwritten every minute by the MACDT loop (host macro). |
+| `{$T_LATENCY_WARN}` | `160` | L_api warning threshold. Overwritten every minute by the MACDT loop (host macro). |
 | `{$T_LATENCY_WARN.SOSTENIDO}` | `30m` | Time the p95 must stay above T_warn for the "sostenido" high alert. |
 
 ## Dashboard
@@ -102,6 +106,7 @@ Override a macro on the host to keep the change after the next import: *Data col
 | L_api p90 del ciclo | `infobus.api.lat_p90` | Dependent | ms |
 | L_api p95 real, ventana de 1 h | `infobus.api.lat_p95_1h` | Calculated | ms |
 | Latencia en día sin servicio (respuestas 204) | `infobus.api.lat_sin_servicio` | Dependent | ms |
+| Latencia en día sin servicio p95, ventana de 1 h (204) | `infobus.api.lat_sin_servicio_p95_1h` | Calculated | ms |
 | Llegadas programadas en 5 h, N(t) | `infobus.api.llegadas` | Dependent | — |
 | N(t) para MACDT: p95 de llegadas, ventana de 1 h | `infobus.api.llegadas_p95_1h` | Calculated | — |
 | API de InfoBus responde correctamente | `infobus.api.ok` | Dependent | — |

@@ -233,7 +233,7 @@ If the frontend does not open:
 3. Writes the result to the `{$T_LATENCY_WARN}` host macro on Infobus-host.
 4. Sends its status through trappers (`macdt.status`, `macdt.t_warn` and `macdt.t_base`).
 
-Until a calibration runs, `m = 0` and `δ = 0`, so T_base equals `{$MACDT.T_BASE}` (130 ms). Calibration fits the regression `latency = b + m·N + c·V` on the last `MACDT_CALIB_WINDOW_D` days of data and writes b, m, δ and β as host macros:
+Until a calibration runs, `m = 0` and `δ = 0`, so T_base equals `{$MACDT.B}` (130 ms). On a day without service next-trips answers 204, so there is no N(t) and T_base takes the seed `{$MACDT.T_BASE}` (160 ms): it is the idle threshold. The alert *Latencia de día sin servicio sobre el umbral de MACDT (204)* compares the last-hour p95 of the 204 responses against it. Calibration fits the regression `latency = b + m·N + c·V` on the last `MACDT_CALIB_WINDOW_D` days of data and writes b, m, δ and β as host macros:
 
 ```bash
 docker exec macdt-loop python3 /macdt_loop.py --calibrate --dry-run   # compute and show, write nothing
@@ -640,6 +640,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
 | N(t) para MACDT: p95 de llegadas, ventana de 1 h | `infobus.api.llegadas_p95_1h` | Calculated |
 | L_api p50 del ciclo | `infobus.api.lat_p50` | Dependent |
 | Latencia en día sin servicio (respuestas 204) | `infobus.api.lat_sin_servicio` | Dependent |
+| Latencia en día sin servicio p95, ventana de 1 h (204) | `infobus.api.lat_sin_servicio_p95_1h` | Calculated |
 | L_api p90 del ciclo | `infobus.api.lat_p90` | Dependent |
 | L_api maxima del ciclo | `infobus.api.lat_max` | Dependent |
 | Costo de la consulta, aislado del transporte | `infobus.api.query_p50` | Dependent |
@@ -767,14 +768,14 @@ To change a macro without losing the change on the next template import, overrid
 
 | Macro | Default | Template | What it controls |
 | --- | --- | --- | --- |
-| `{$T_LATENCY_WARN}` | `130` | `simovilab-infobus` | L_api warning threshold. Overwritten every minute by the MACDT loop (host macro). |
+| `{$T_LATENCY_WARN}` | `160` | `simovilab-infobus` | L_api warning threshold. Overwritten every minute by the MACDT loop (host macro). |
 
 **Set by calibration (or by several days of data)**
 
 | Macro | Default | Template | What it controls |
 | --- | --- | --- | --- |
 | `{$MACDT.TSFILL.WARN}` | `50` | `simovilab-databus` | % of vehicles carrying the header time that counts as filler. |
-| `{$MACDT.T_BASE}` | `130` | `simovilab-infobus` | T_base seed. Used only when N(t) is missing or stale. |
+| `{$MACDT.T_BASE}` | `160` | `simovilab-infobus` | T_base seed. Used only when N(t) is missing or stale: days without service or a probe failure. On a day without service it is the idle threshold. It can be changed in operation as a host macro on srv-infobus. |
 | `{$MACDT.B}` | `130` | `simovilab-infobus` | b in T_base(t): fixed request cost (ms). Written by calibration. |
 | `{$MACDT.M}` | `0` | `simovilab-infobus` | m in T_base(t): ms per scheduled arrival in 5 h. With 0, T_base is constant. |
 | `{$MACDT.DELTA}` | `0` | `simovilab-infobus` | δ in T_base(t): margin, P95 of the regression residuals. |
@@ -940,6 +941,7 @@ The three per-queue macros accept context: `{$CELERY.QUEUE.WARN:"realtime_engine
 | Sin viajes activos | `simovilab-databus` | During service hours, with scheduled trips, 3 min without trips in the feed. |
 | Sospecha de relleno de timestamps | `simovilab-databus` | During service hours, more than {$MACDT.TSFILL.WARN} % of vehicles carry the header time for 10 min. |
 | Latencia de día sin servicio fuera de lo normal (204) | `simovilab-infobus` | 10-min average above {$INFOBUS.T204.FACTOR} × the daily median. |
+| Latencia de día sin servicio sobre el umbral de MACDT (204) | `simovilab-infobus` | The last-hour p95 of the 204 responses is above {$T_LATENCY_WARN} (the {$MACDT.T_BASE} seed on days without service). |
 | Costo de abrir la conexión fuera de lo normal | `simovilab-infobus` | 10-min average above {$INFOBUS.SETUP.FACTOR} × the daily median and above {$INFOBUS.SETUP.MIN_MS} ms. |
 | La sonda agota su cuota: la medicion no es valida | `simovilab-infobus` | At least one 429 response in the cycle. |
 | L_api p95 sobre el umbral adaptativo de MACDT | `simovilab-infobus` | The last-hour p95 is above {$T_LATENCY_WARN} (written by the MACDT loop). |

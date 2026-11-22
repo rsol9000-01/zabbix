@@ -135,7 +135,9 @@ It applies the result only if it passes every guard:
 
 When applied (`macdt.calib = 1`), it writes `{$MACDT.M}`, `{$MACDT.B}`, `{$MACDT.DELTA}` and, if measured, `{$MACDT.BETA}` as host macros on Infobus-host. A held calibration fires the alert *MACDT: la latencia de infobus cambió más de lo permitido*; a person reviews it and applies it with `--calibrate --force` if it is the new normal.
 
-Until the first calibration, `m = 0` and `δ = 0`, so T_base equals `{$MACDT.T_BASE}` (130 ms).
+Until the first calibration, `m = 0` and `δ = 0`, so T_base equals `{$MACDT.B}` (130 ms).
+
+On a day without service next-trips answers 204, so there is no N(t) and T_base takes the seed `{$MACDT.T_BASE}` (160 ms): it is the idle threshold. The alert *Latencia de día sin servicio sobre el umbral de MACDT (204)* compares the last-hour p95 of the 204 responses against it.
 
 #### 5. Verify
 
@@ -185,7 +187,7 @@ All are trapper items on Infobus-host, sent with `history.push` through the API.
 | Macro | Read or written | Role |
 | --- | --- | --- |
 | `{$T_LATENCY_WARN}` | Written (host) | Output: warning threshold |
-| `{$MACDT.T_BASE}` | Read | T_base seed when N(t) is missing |
+| `{$MACDT.T_BASE}` | Read | T_base seed when N(t) is missing; on days without service it is the idle threshold |
 | `{$MACDT.B}`, `{$MACDT.M}`, `{$MACDT.DELTA}` | Read; written by calibration (host) | T_base(t) line |
 | `{$MACDT.BETA}` | Read; written by calibration (host) | Weight of ρ |
 | `{$MACDT.F_CRIT}` | Read | Factor applied when GPS coverage is critical |

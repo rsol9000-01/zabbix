@@ -222,6 +222,32 @@ zabbix_export:
                 promedio de 10 min supera {$INFOBUS.T204.FACTOR} veces la mediana del
                 último día. Un pico aquí no lo explica el horario: revisar carga del
                 servidor, base de datos o red de infobus.
+        - uuid: 60f0829716ce486fbb0ea8648cbce264
+          name: 'Latencia en día sin servicio p95, ventana de 1 h (204)'
+          type: CALCULATED
+          key: infobus.api.lat_sin_servicio_p95_1h
+          value_type: FLOAT
+          units: ms
+          params: 'percentile(//infobus.api.lat_sin_servicio,1h,95)'
+          description: 'p95 de la última hora de las respuestas 204 (día sin servicio). Mismo tratamiento que infobus.api.lat_p95_1h en días de servicio. Sin datos en días hábiles.'
+          triggers:
+            - uuid: 9db68fb6217a4cb8a4b4689ea596b187
+              expression: 'last(/simovilab-infobus/infobus.api.lat_sin_servicio_p95_1h)>{$T_LATENCY_WARN}'
+              name: 'Latencia de día sin servicio sobre el umbral de MACDT (204)'
+              priority: WARNING
+              description: |
+                En día sin servicio no hay N(t), así que MACDT deja T_WARN en la semilla
+                {$MACDT.T_BASE} (umbral de reposo). Se dispara cuando el p95 de la última hora
+                de las respuestas 204 supera ese umbral. Un pico aislado no la abre: con un
+                valor por minuto, el p95 de 1 h solo sube si hay unos 3 picos en la misma hora.
+                Complementa la alerta relativa (factor sobre la mediana del día), que no
+                detecta una subida lenta.
+                Revisar carga del servidor, base de datos o red de infobus.
+              dependencies:
+                - name: 'La API de InfoBus no responde correctamente'
+                  expression: last(/simovilab-infobus/infobus.api.ok)=0
+                - name: 'La sonda agota su cuota: la medicion no es valida'
+                  expression: last(/simovilab-infobus/infobus.api.throttled)>0
         - uuid: 4c96a5cd6ad84db4a7e7c930ca8e624a
           name: 'Llegadas programadas en 5 h, N(t)'
           type: DEPENDENT
@@ -560,8 +586,8 @@ zabbix_export:
           value: '0'
           description: 'm: ms por cada llegada programada en 5 h. Con 0 (sin calibrar) T_base es constante, como antes.'
         - macro: '{$MACDT.T_BASE}'
-          value: '130'
-          description: 'Semilla. Se usa como T_base solo si no hay N(t) fresco (infobus.api.llegadas_p95_1h).'
+          value: '160'
+          description: 'Semilla. Se usa como T_base solo si no hay N(t) fresco (infobus.api.llegadas_p95_1h): días sin servicio o falla de la sonda. En día sin servicio es el umbral de reposo que compara la alerta de latencia 204. 160 desde 2026-11-21: la latencia 204 medida supera 130 y su p95 queda por encima de la p50. Se puede cambiar en operación como macro de host.'
         - macro: '{$MACDT.T_FLOOR}'
           value: '91'
           description: 'Piso del umbral (decisión 2026-11-05: bajar de 130 a 91). Confirmar con la latencia nocturna.'
@@ -578,7 +604,7 @@ zabbix_export:
           value: '200'
           description: 'Fijo en el RNF. No lo mueve MACDT.'
         - macro: '{$T_LATENCY_WARN}'
-          value: '130'
+          value: '160'
           description: 'Semilla igual a T_BASE. Lo sobrescribe el bucle MACDT en F5.'
         - macro: '{$T_LATENCY_WARN.SOSTENIDO}'
           value: 30m
@@ -931,3 +957,8 @@ zabbix_export:
           item:
             host: simovilab-infobus
             key: infobus.api.lat_sin_servicio
+        - sortorder: '4'
+          color: 6D4C41
+          item:
+            host: simovilab-infobus
+            key: infobus.api.lat_sin_servicio_p95_1h
