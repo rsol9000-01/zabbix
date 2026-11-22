@@ -233,7 +233,16 @@ Si la interfaz no abre:
 3. Escribe el resultado en la macro de host `{$T_LATENCY_WARN}` de Infobus-host.
 4. Envía su estado por trapper (`macdt.status`, `macdt.t_warn` y `macdt.t_base`).
 
-Mientras no hay calibración, `m = 0` y `δ = 0`, así que T_base vale `{$MACDT.B}` (130 ms). En un día sin servicio next-trips responde 204, así que no hay N(t) y T_base toma la semilla `{$MACDT.T_BASE}` (160 ms): es el umbral de reposo. La alerta *Latencia de día sin servicio sobre el umbral de MACDT (204)* compara contra él el p95 de la última hora de las respuestas 204. La calibración ajusta una regresión `latencia = b + m·N + c·V` con los datos de los últimos `MACDT_CALIB_WINDOW_D` días y escribe b, m, δ y β como macros de host:
+Mientras no hay calibración, `m = 0` y `δ = 0`, así que T_base vale `{$MACDT.B}` (130 ms). En un día sin servicio next-trips responde 204, así que no hay N(t) y T_base toma la semilla `{$MACDT.T_BASE}` (160 ms): es el umbral de reposo. La alerta *Latencia de día sin servicio sobre el umbral de MACDT (204)* compara contra él el p95 de la última hora de las respuestas 204. La calibración ajusta una regresión `latencia = b + m·N + c·V` con los datos de los últimos `MACDT_CALIB_WINDOW_D` días y escribe b, m, δ y β como macros de host.
+
+Antes de calibrar, revisar que los datos tengan suficiente variación de buses activos para medir su peso (c → β). `scripts/user_scripts/calibration_data_test.py` está montado en el contenedor como `/calibration_data_test.py`; solo lee de Zabbix y no escribe nada:
+
+```bash
+docker exec macdt-loop python3 /calibration_data_test.py           # ventana de MACDT_CALIB_WINDOW_D días
+docker exec macdt-loop python3 /calibration_data_test.py --dias 3  # otra ventana
+```
+
+Si termina en `SUFICIENTE`, correr la calibración:
 
 ```bash
 docker exec macdt-loop python3 /macdt_loop.py --calibrate --dry-run   # calcula y muestra, no escribe nada

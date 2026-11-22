@@ -233,7 +233,16 @@ If the frontend does not open:
 3. Writes the result to the `{$T_LATENCY_WARN}` host macro on Infobus-host.
 4. Sends its status through trappers (`macdt.status`, `macdt.t_warn` and `macdt.t_base`).
 
-Until a calibration runs, `m = 0` and `δ = 0`, so T_base equals `{$MACDT.B}` (130 ms). On a day without service next-trips answers 204, so there is no N(t) and T_base takes the seed `{$MACDT.T_BASE}` (160 ms): it is the idle threshold. The alert *Latencia de día sin servicio sobre el umbral de MACDT (204)* compares the last-hour p95 of the 204 responses against it. Calibration fits the regression `latency = b + m·N + c·V` on the last `MACDT_CALIB_WINDOW_D` days of data and writes b, m, δ and β as host macros:
+Until a calibration runs, `m = 0` and `δ = 0`, so T_base equals `{$MACDT.B}` (130 ms). On a day without service next-trips answers 204, so there is no N(t) and T_base takes the seed `{$MACDT.T_BASE}` (160 ms): it is the idle threshold. The alert *Latencia de día sin servicio sobre el umbral de MACDT (204)* compares the last-hour p95 of the 204 responses against it. Calibration fits the regression `latency = b + m·N + c·V` on the last `MACDT_CALIB_WINDOW_D` days of data and writes b, m, δ and β as host macros.
+
+Before calibrating, check that the data has enough variation of active buses to measure their weight (c → β). `scripts/user_scripts/calibration_data_test.py` is mounted in the container at `/calibration_data_test.py`; it only reads from Zabbix and writes nothing:
+
+```bash
+docker exec macdt-loop python3 /calibration_data_test.py           # window of MACDT_CALIB_WINDOW_D days
+docker exec macdt-loop python3 /calibration_data_test.py --dias 3  # another window
+```
+
+If it ends with `SUFICIENTE`, run the calibration:
 
 ```bash
 docker exec macdt-loop python3 /macdt_loop.py --calibrate --dry-run   # compute and show, write nothing

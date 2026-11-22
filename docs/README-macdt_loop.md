@@ -56,6 +56,7 @@ One-off runs inside the container:
 
 ```bash
 docker exec macdt-loop python3 /macdt_loop.py --once --dry-run        # one test cycle, no writes
+docker exec macdt-loop python3 /calibration_data_test.py               # check whether the data can calibrate β, no writes
 docker exec macdt-loop python3 /macdt_loop.py --calibrate --dry-run   # compute the line and show it, no writes
 docker exec macdt-loop python3 /macdt_loop.py --calibrate             # calibrate and apply if it passes the guards
 docker exec macdt-loop python3 /macdt_loop.py --calibrate --force     # apply even if it changes more than MACDT_CALIB_MAX_DRIFT
@@ -118,9 +119,18 @@ With `MACDT_CALIB_MODE=daily`, before the first cycle at or after `MACDT_CALIB_H
 
 #### 4. Calibrate T_base(t) and β
 
+Before calibrating, check the data with `scripts/user_scripts/calibration_data_test.py`. It is mounted in the container at `/calibration_data_test.py`, so it does not need to be copied:
+
+```bash
+docker exec macdt-loop python3 /calibration_data_test.py           # window of MACDT_CALIB_WINDOW_D days
+docker exec macdt-loop python3 /calibration_data_test.py --dias 3  # another window
+```
+
+It reads the same data as the calibration and writes nothing. It shows the points per number of active buses and the correlation between arrivals (N) and buses (V), and ends with `SUFICIENTE` when β can be measured.
+
 The calibration fits `latency = b + m·N + c·V` over the last `MACDT_CALIB_WINDOW_D` days:
 
-- `latency` = `infobus.api.lat_p50`, `N` = `infobus.api.llegadas` (same master item, same clock).
+- `latency` = `infobus.api.lat_p95_1h`, `N` = `infobus.api.llegadas_p95_1h` (the same p95 that the alert compares and that the loop uses as N(t)), joined by minute.
 - `V` = `gtfs.v_trips` of databus, taken at or before each point and no older than `MACDT_MAX_AGE`.
 - δ = p95 of the residuals (never below 0).
 - β = c × V_max ÷ mean T_base while buses are running. With no buses in the window, c cannot be measured and β is kept.
@@ -153,6 +163,7 @@ In the frontend: **Data collection → Hosts → Infobus-host → Macros** shows
 ```bash
 docker logs -f macdt-loop                                            # follow the loop
 docker exec macdt-loop python3 /macdt_loop.py --once --dry-run        # test without writing
+docker exec macdt-loop python3 /calibration_data_test.py             # check the data before calibrating
 docker exec macdt-loop python3 /macdt_loop.py --calibrate --dry-run   # preview a calibration
 docker compose restart macdt-loop                                    # after changing the script
 ```
