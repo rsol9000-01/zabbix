@@ -14,7 +14,7 @@ Deployment script for the Zabbix stack. It prepares the host (dependencies, perm
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/zabbix-dev.sh` |
-| **Runs on** | The host: R4 in `server` mode, R2 or R3 in `agent` mode |
+| **Runs on** | The host: srv-gestion in `server` mode, srv-databus or srv-infobus in `agent` mode |
 | **Run by** | An administrator, as root (`sudo`) |
 | **Reads** | `.env`, `agent2/simovilab-plugins.conf.example` |
 | **Writes** | `agent2/` (sudoers, `Dockerfile`, `zabbix_agent2.conf`, `simovilab-plugins.conf`), `psk/zabbix_agentd.psk` |
@@ -45,8 +45,8 @@ flowchart TD
 ```bash
 cd /home/zabbix
 cp .env.example .env                               # fill in the values for the mode
-sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'  # on R4
-sudo ./scripts/zabbix-dev.sh agent 'MySeed.2026'   # on R2 and R3, with the SAME seed
+sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'  # on srv-gestion
+sudo ./scripts/zabbix-dev.sh agent 'MySeed.2026'   # on srv-databus and srv-infobus, with the SAME seed
 ```
 
 ### How to

@@ -14,7 +14,7 @@ Despliegue con Docker Compose del monitoreo de [databus](https://github.com/simo
 - **Servidor (`server`):** Zabbix Server, PostgreSQL, interfaz web, un agente local, el contenedor `zabbix-init`, que deja Zabbix configurado por API, y el bucle **MACDT**, que ajusta el umbral de latencia de infobus según la carga del transporte. Corre en el servidor de gestión (**srv-gestion**), y la interfaz web se publica **solo a través de Traefik**, que corre en el mismo servidor.
 - **Agente (`agent`):** un Zabbix Agent 2 en cada servidor de aplicación (srv-databus y srv-infobus). Se autorregistra en el servidor con su rol (`databus` o `infobus`), se cifra con PSK y corre las sondas de dominio (GTFS, GTFS-RT y la API de infobus).
 
-> **Nombres de los servidores.** srv-gestion es el servidor que antes se llamaba R4, srv-databus era R3 y srv-infobus era R2. Algunos documentos, diagramas y nombres de ítems de Zabbix (por ejemplo *Red: RTT de R4 a R2*) todavía usan R2, R3 y R4.
+> **Nombres de los servidores.** srv-gestion es el servidor que antes se llamaba R4, srv-databus era R3 y srv-infobus era R2. Los documentos, diagramas y plantillas usan los nombres nuevos.
 
 <img width="80%" alt="Arquitectura de Zabbix en Docker" src="./diagramas/zabbix-docker.svg" />
 
@@ -113,7 +113,7 @@ El servidor va en srv-gestion, junto al servidor de Wazuh y a Traefik. Levanta t
 ### Inicio rápido
 
 ```bash
-git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
+git clone -b zabbix-fase-3 https://github.com/rsol9000-01/zabbix.git /home/zabbix
 cd /home/zabbix
 cp .env.example .env     # cambiar contraseñas, usuario web y nombres (ver abajo)
 sudo ./scripts/zabbix-dev.sh server 'MiSemilla.2026'
@@ -306,7 +306,7 @@ El agente va en cada servidor de aplicación: srv-databus y srv-infobus. Se leva
 ### Inicio rápido
 
 ```bash
-git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
+git clone -b zabbix-fase-3 https://github.com/rsol9000-01/zabbix.git /home/zabbix
 cd /home/zabbix
 cp .env.example .env     # completar el bloque del agente (ver abajo)
 sudo ./scripts/zabbix-dev.sh agent 'MiSemilla.2026'   # la MISMA semilla del servidor
@@ -660,7 +660,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 | Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.throttled` | Dependiente |
 | L_api p95 real, ventana de 1 h | `infobus.api.lat_p95_1h` | Calculado |
 | Conexion TCP al orchestrator | `infobus.api.tcp_connect_ms` | Dependiente |
-| Red: RTT de R4 a R2, promedio 15 min | `infobus.net.rtt_ms` | Calculado |
+| Red: RTT de srv-gestion a srv-infobus, promedio 15 min | `infobus.net.rtt_ms` | Calculado |
 | Externo - interno: red + TLS + Traefik | `infobus.net.delta_ms` | Calculado |
 | TLS + Traefik (sin red) | `infobus.net.tls_traefik_ms` | Calculado |
 | Estado del bucle MACDT | `macdt.status` | Trapper |
@@ -685,7 +685,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem 
 | External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependiente |
 | External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependiente |
 | External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependiente |
-| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente |
+| External: TCP connection from srv-gestion to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente |
 | External: burst requests | `infobus.api.ext.n` | Dependiente |
 | External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependiente |
 | External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependiente |

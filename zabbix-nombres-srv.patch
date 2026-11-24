@@ -1,0 +1,833 @@
+diff --git a/.env.example b/.env.example
+index 7d8055b..b27a398 100644
+--- a/.env.example
++++ b/.env.example
+@@ -11,16 +11,16 @@ AGENT_FQDN=databus.siua.ac.cr
+ #----- Remote agent hostname ---------
+ REMOTE_AGENT_HOSTNAME=Databus-host
+ #----- Red Docker de la aplicación a la que se une el agente remoto ---------
+-#      R3 (databus): databus_internal      R2 (infobus): infobus_internal
++#      srv-databus: databus_internal      srv-infobus: infobus_internal
+ #      Confirmar con: docker inspect <contenedor orchestrator> --format '{{json .NetworkSettings.Networks}}'
+ AGENT_DOCKER_NETWORK=databus_internal
+ #----- Contraseña de PostgreSQL para el ítem pgsql.bloat.detail (psql) ---------
+ AGENT_PGPASSWORD=postgres
+ SERVER_FQDN=srv-gestion.siua.ac.cr
+ #----- Metadata de autorregistro: "docker-autoreg" + rol del servidor ---------
+-#      Servidor R4 (modo server):  docker-autoreg
+-#      R3 (modo agent, databus):   docker-autoreg databus
+-#      R2 (modo agent, infobus):   docker-autoreg infobus
++#      srv-gestion (modo server):  docker-autoreg
++#      srv-databus (modo agent):   docker-autoreg databus
++#      srv-infobus (modo agent):   docker-autoreg infobus
+ #      El rol decide qué plantillas recibe el agente al autorregistrarse.
+ ZBX_METADATA=docker-autoreg
+ 
+@@ -92,12 +92,12 @@ POSTGRES_DB=zabbix
+ #      El separador de nombres no puede ser coma: los nombres de plantilla
+ #      de Zabbix la contienen.
+ #
+-#      LOCAL_*         -> host local de R4 (contenedor zabbix-agent2 del servidor)
+-#      ROLE_DATABUS_*  -> agentes con ZBX_METADATA "docker-autoreg databus" (R3)
+-#      ROLE_INFOBUS_*  -> agentes con ZBX_METADATA "docker-autoreg infobus" (R2)
++#      LOCAL_*         -> host local de srv-gestion (contenedor zabbix-agent2 del servidor)
++#      ROLE_DATABUS_*  -> agentes con ZBX_METADATA "docker-autoreg databus" (srv-databus)
++#      ROLE_INFOBUS_*  -> agentes con ZBX_METADATA "docker-autoreg infobus" (srv-infobus)
+ #      simovilab-database: PostgreSQL y Redis de cada proyecto (macro {$DB.SESSION} en la plantilla del rol)
+ #      simovilab-celery: colas de tareas de Celery (broker en agent2/simovilab-celery.conf)
+-#      simovilab-infobus-ext: medición externa de infobus desde R4 (por Traefik) y resta con la interna de R2
++#      simovilab-infobus-ext: medición externa de infobus desde srv-gestion (por Traefik) y resta con la interna de srv-infobus
+ LOCAL_TEMPLATE_FILES=simovilab-templates.yml,simovilab-infobus-ext.yml,-
+ LOCAL_TEMPLATE_NAMES=simovilab servidor y sistema operativo|simovilab-infobus-ext|Docker by Zabbix agent 2
+ 
+diff --git a/FLUJO-DATOS.md b/FLUJO-DATOS.md
+index 40ad8ea..4da801f 100644
+--- a/FLUJO-DATOS.md
++++ b/FLUJO-DATOS.md
+@@ -11,29 +11,29 @@ Arquitectura de los tres servidores del prototipo y ubicación de cada sonda (Za
+ 
+ ## Nivel 1 — Vista de sistema
+ 
+-Plano de datos arriba, plano de observación abajo. Cada servidor de aplicación lleva dos agentes: Zabbix Agent 2 para el dominio y el rendimiento, y Wazuh para la seguridad. R4 concentra Zabbix, el bucle MACDT y Wazuh.
++Plano de datos arriba, plano de observación abajo. Cada servidor de aplicación lleva dos agentes: Zabbix Agent 2 para el dominio y el rendimiento, y Wazuh para la seguridad. srv-gestion concentra Zabbix, el bucle MACDT y Wazuh.
+ 
+ <img width="100%" alt="Nivel 1: vista de sistema" src="./diagramas/flujo-n1-sistema.svg" />
+ 
+ | Canal | Puerto | Sentido |
+ | --- | --- | --- |
+-| Zabbix | `10051/tcp` · TLS PSK | Checks activos de R2 y R3 hacia R4 |
+-| Wazuh | `1515/tcp` enrolamiento · `1514/tcp` eventos | Agentes de R2 y R3 hacia R4 |
+-| Sonda externa | `443/tcp` | R4 hacia infobus por Traefik (`infobus.api.ext`) |
++| Zabbix | `10051/tcp` · TLS PSK | Checks activos de srv-databus y srv-infobus hacia srv-gestion |
++| Wazuh | `1515/tcp` enrolamiento · `1514/tcp` eventos | Agentes de srv-databus y srv-infobus hacia srv-gestion |
++| Sonda externa | `443/tcp` | srv-gestion hacia infobus por Traefik (`infobus.api.ext`) |
+ 
+-## Nivel 2A — R3 · databus
++## Nivel 2A — srv-databus
+ 
+ Los 12 servicios de `compose.prod.yml` están en las redes `internal` y `traefik_proxy`. El agente de Zabbix se une a `databus_internal` y consulta los servicios por nombre, sin pasar por Traefik. El agente de Wazuh lee los registros de todos los contenedores y vigila la integridad del despliegue y del GTFS publicado.
+ 
+ <img width="100%" alt="Nivel 2A: servicios de databus y sus agentes" src="./diagramas/flujo-n2a-databus.svg" />
+ 
+-## Nivel 2B — R2 · infobus
++## Nivel 2B — srv-infobus
+ 
+-`compose.prod.yml` tiene 9 servicios. `streams`, `lake` (MinIO) y `frontend` reemplazan a `streams-consumer`, `lake_data` y `user-interface`. `context` y `knowledge` ya no están en producción. El agente de Zabbix mide `next-trips` por dentro y R4 la mide por fuera, a través de Traefik.
++`compose.prod.yml` tiene 9 servicios. `streams`, `lake` (MinIO) y `frontend` reemplazan a `streams-consumer`, `lake_data` y `user-interface`. `context` y `knowledge` ya no están en producción. El agente de Zabbix mide `next-trips` por dentro y srv-gestion la mide por fuera, a través de Traefik.
+ 
+ <img width="100%" alt="Nivel 2B: servicios de infobus y sus agentes" src="./diagramas/flujo-n2b-infobus.svg" />
+ 
+-## Nivel 2C — R4 · cadena MACDT
++## Nivel 2C — srv-gestion · cadena MACDT
+ 
+ Cinco sondas maestras, con una ejecución por intervalo cada una, alimentan por dependencia 61 ítems. El servidor calcula ρ, N(t) y el p95 de L_api. `macdt-loop` los lee por API y escribe el umbral de advertencia como macro de host en Infobus-host.
+ 
+@@ -50,34 +50,34 @@ Están definidas como `UserParameter` en `agent2/zabbix_agent2.conf` y como *plu
+ 
+ | Clave | Mecanismo | Agente → destino | Qué produce | Estado |
+ | --- | --- | --- | --- | --- |
+-| `gtfs.probe[{$MACDT.STALE_S}]` | `gtfsrt_probe.py --stale 60` | R3 → `orchestrator:8000/feed/realtime` | 20 dependientes: viajes, vehículos, GPS, frescura, completitud | 🟢 activa |
+-| `macdt.window` | `gtfs_window.py --now` | R3 → `feeds.simovi.org/bucr/schedule/gtfs.zip` | 10: ventana, gate, S_t, V_trips_max, calendario | 🟢 activa |
+-| `databus.static` | `gtfs_window.py --now` | R3 → `orchestrator:8000/feed/schedule/feed.zip` | 3 dependientes + desfase calculado | 🟢 activa |
+-| `infobus.api` | `infobus_probe.py --repeat 10` | R2 → `orchestrator:8000`, sin Traefik | 19: L_api, N(t), costo de consulta, 429 | 🟢 activa |
+-| `infobus.api.ext` | `infobus_probe.py` | R4 → `https://infobus.ucr.ac.cr` | 9: latencia externa; Zabbix calcula red y TLS + Traefik | 🟢 activa |
++| `gtfs.probe[{$MACDT.STALE_S}]` | `gtfsrt_probe.py --stale 60` | srv-databus → `orchestrator:8000/feed/realtime` | 20 dependientes: viajes, vehículos, GPS, frescura, completitud | 🟢 activa |
++| `macdt.window` | `gtfs_window.py --now` | srv-databus → `feeds.simovi.org/bucr/schedule/gtfs.zip` | 10: ventana, gate, S_t, V_trips_max, calendario | 🟢 activa |
++| `databus.static` | `gtfs_window.py --now` | srv-databus → `orchestrator:8000/feed/schedule/feed.zip` | 3 dependientes + desfase calculado | 🟢 activa |
++| `infobus.api` | `infobus_probe.py --repeat 10` | srv-infobus → `orchestrator:8000`, sin Traefik | 19: L_api, N(t), costo de consulta, 429 | 🟢 activa |
++| `infobus.api.ext` | `infobus_probe.py` | srv-gestion → `https://infobus.ucr.ac.cr` | 9: latencia externa; Zabbix calcula red y TLS + Traefik | 🟢 activa |
+ | `host.tcp.established` | script + `sudo` | los 3 hosts | conexiones TCP establecidas | 🟢 activa |
+ | Docker y contenedores | plugin Docker + descubrimiento | los 3 hosts, `docker.sock` | estado, código de salida y reinicios por contenedor | 🟢 activa |
+-| `macdt-loop` | `macdt_loop.py` en contenedor | R4 → API JSON-RPC de Zabbix | `{$T_LATENCY_WARN}` + 5 trappers | 🟢 activa |
++| `macdt-loop` | `macdt_loop.py` en contenedor | srv-gestion → API JSON-RPC de Zabbix | `{$T_LATENCY_WARN}` + 5 trappers | 🟢 activa |
+ | plugins PostgreSQL / Redis | Agent2 nativo | `database:5432` · `state:6379` | sesiones definidas; ninguna plantilla las usa | 🟡 sin ítems |
+ | `pgsql.bloat.detail` | `psql` directo | — | comentado en `zabbix_agent2.conf` | ⚪ retirada |
+ | V_displays | — | pantallas de parada | sin fuente de datos | 🟡 pendiente |
+ 
+ > [!NOTE]
+-> **Infobus se mide desde dos lados.** `infobus.api` entra por `infobus_internal` y aísla la aplicación (Daphne + consulta). `infobus.api.ext` sale desde R4 por el dominio público. La plantilla resta ambas mediciones: `infobus.net.delta_ms` es red + TLS + Traefik, y `infobus.net.tls_traefik_ms` descuenta el RTT. El umbral adaptativo sigue gobernando el servicio que origina la latencia, pero ahora se puede mostrar cuánto añade el borde.
++> **Infobus se mide desde dos lados.** `infobus.api` entra por `infobus_internal` y aísla la aplicación (Daphne + consulta). `infobus.api.ext` sale desde srv-gestion por el dominio público. La plantilla resta ambas mediciones: `infobus.net.delta_ms` es red + TLS + Traefik, y `infobus.net.tls_traefik_ms` descuenta el RTT. El umbral adaptativo sigue gobernando el servicio que origina la latencia, pero ahora se puede mostrar cuánto añade el borde.
+ 
+ ## Plano de seguridad · Wazuh fase 3
+ 
+-Es un stack single-node en Docker sobre R4, junto a Zabbix. `wazuh-init` crea los grupos y sube por API el `agent.conf` de cada uno y las reglas locales. Los agentes remotos se enrolan solos con contraseña.
++Es un stack single-node en Docker sobre srv-gestion, junto a Zabbix. `wazuh-init` crea los grupos y sube por API el `agent.conf` de cada uno y las reglas locales. Los agentes remotos se enrolan solos con contraseña.
+ 
+ | Grupo | Host | Registros | Integridad (FIM, tiempo real) | Reglas propias que aplican |
+ | --- | --- | --- | --- | --- |
+-| `databus` | R3 | JSON de todos los contenedores | `DATABUS_PATH` y volumen `databus_feed_files` | 100101 importación GTFS · 100109 clona código en arranque · 100121 GTFS publicado cambió |
+-| `infobus` | R2 | JSON de todos los contenedores | `INFOBUS_PATH` | 100102–100106 Host, 5xx, 404 · 100107 Redis · 100108–100112 eventos de streams |
+-| `monitoring` | R4 | `/var/log/auth.log` + contenedores | `WAZUH_PATH` y `ZABBIX_PATH` | SSH (5712, 5720, 5763) con respuesta activa |
++| `databus` | srv-databus | JSON de todos los contenedores | `DATABUS_PATH` y volumen `databus_feed_files` | 100101 importación GTFS · 100109 clona código en arranque · 100121 GTFS publicado cambió |
++| `infobus` | srv-infobus | JSON de todos los contenedores | `INFOBUS_PATH` | 100102–100106 Host, 5xx, 404 · 100107 Redis · 100108–100112 eventos de streams |
++| `monitoring` | srv-gestion | `/var/log/auth.log` + contenedores | `WAZUH_PATH` y `ZABBIX_PATH` | SSH (5712, 5720, 5763) con respuesta activa |
+ | todos | — | — | sin diff de `.env` ni `authd.pass` | 100120 configuración o secretos · 100122 socket Docker |
+ 
+ > [!WARNING]
+-> **La respuesta activa solo bloquea de verdad en R4.** El agente local comparte la red del host y tiene `NET_ADMIN`. En R2 y R3, `firewall-drop` queda dentro del contenedor del agente y no protege al host.
++> **La respuesta activa bloquea de verdad en srv-databus, srv-infobus y srv-gestion.** Los tres agentes comparten la red del host y tienen `NET_ADMIN`. SSH (5712, 5720, 5763) bloquea 180 s; Traefik (100132 fuerza bruta, 100134 escaneo de rutas) bloquea 1 h. Nunca se bloquea a ninguno de los tres servidores ni a las redes internas de Docker.
+ 
+ ## Lo que el diagrama deja ver
+ 
+@@ -87,9 +87,9 @@ Es un stack single-node en Docker sobre R4, junto a Zabbix. `wazuh-init` crea lo
+    | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+    | Mediana del p95 (ms) | 120 | 161 | 187 | **214** | **246** | **279** | **287** | **287** | **281** | **285** | **265** | **241** | **208** | 188 | 125 | 119 |
+ 
+-2. **R2 ya aporta al lazo.** Antes toda la cadena salía de R3. Ahora `infobus.api` da N(t) y L_api, y `macdt-loop` cierra el lazo entre los dos sistemas: lee ρ y V_gps de databus y escribe el umbral sobre infobus.
++2. **srv-infobus ya aporta al lazo.** Antes toda la cadena salía de srv-databus. Ahora `infobus.api` da N(t) y L_api, y `macdt-loop` cierra el lazo entre los dos sistemas: lee ρ y V_gps de databus y escribe el umbral sobre infobus.
+ 3. **V_gps sigue midiendo frescura, y ahora gobierna F_crit.** `gtfs.v_gps_pct` se calcula como vehículos con GPS fresco ÷ `v_vehicles`. Un bus que deja de transmitir del todo sale del denominador y el porcentaje no baja. Falta `v_gps_cobertura_pct` contra `macdt.v_trips_max`.
+ 4. **El estado interno de las bases no se observa.** Los *plugins* de PostgreSQL y Redis solo tienen sesiones, y ninguna plantilla define ítems que las usen. Hay dos opciones: agregar dos o tres ítems con un usuario `zabbix_ro` (`pg_monitor`), o declararlo fuera de alcance.
+ 5. **La comparación cruzada del estático es el mejor argumento de la plantilla.** `databus.static.desfase_s` resta lo que publica databus de la fuente autoritativa. Wazuh lo refuerza desde el otro plano con la regla 100121.
+-6. **R4 es un punto único de observación.** Zabbix, el efector MACDT y Wazuh comparten host. Si R4 cae, se pierden a la vez el monitoreo, el ajuste del umbral y la detección.
++6. **srv-gestion es un punto único de observación.** Zabbix, el efector MACDT y Wazuh comparten host. Si srv-gestion cae, se pierden a la vez el monitoreo, el ajuste del umbral y la detección.
+ 7. **Las sondas maestras amortizan el costo.** Cinco ejecuciones por intervalo producen 61 ítems por dependencia, así que instrumentar el dominio no multiplica la carga sobre el sistema observado.
+diff --git a/README es.md b/README es.md
+index 12c9935..a0642bd 100644
+--- a/README es.md	
++++ b/README es.md	
+@@ -14,7 +14,7 @@ Despliegue con Docker Compose del monitoreo de [databus](https://github.com/simo
+ - **Servidor (`server`):** Zabbix Server, PostgreSQL, interfaz web, un agente local, el contenedor `zabbix-init`, que deja Zabbix configurado por API, y el bucle **MACDT**, que ajusta el umbral de latencia de infobus según la carga del transporte. Corre en el servidor de gestión (**srv-gestion**), y la interfaz web se publica **solo a través de Traefik**, que corre en el mismo servidor.
+ - **Agente (`agent`):** un Zabbix Agent 2 en cada servidor de aplicación (srv-databus y srv-infobus). Se autorregistra en el servidor con su rol (`databus` o `infobus`), se cifra con PSK y corre las sondas de dominio (GTFS, GTFS-RT y la API de infobus).
+ 
+-> **Nombres de los servidores.** srv-gestion es el servidor que antes se llamaba R4, srv-databus era R3 y srv-infobus era R2. Algunos documentos, diagramas y nombres de ítems de Zabbix (por ejemplo *Red: RTT de R4 a R2*) todavía usan R2, R3 y R4.
++> **Nombres de los servidores.** srv-gestion es el servidor que antes se llamaba R4, srv-databus era R3 y srv-infobus era R2. Los documentos, diagramas y plantillas usan los nombres nuevos.
+ 
+ <img width="80%" alt="Arquitectura de Zabbix en Docker" src="./diagramas/zabbix-docker.svg" />
+ 
+@@ -113,7 +113,7 @@ El servidor va en srv-gestion, junto al servidor de Wazuh y a Traefik. Levanta t
+ ### Inicio rápido
+ 
+ ```bash
+-git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
++git clone -b zabbix-fase-3 https://github.com/rsol9000-01/zabbix.git /home/zabbix
+ cd /home/zabbix
+ cp .env.example .env     # cambiar contraseñas, usuario web y nombres (ver abajo)
+ sudo ./scripts/zabbix-dev.sh server 'MiSemilla.2026'
+@@ -306,7 +306,7 @@ El agente va en cada servidor de aplicación: srv-databus y srv-infobus. Se leva
+ ### Inicio rápido
+ 
+ ```bash
+-git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
++git clone -b zabbix-fase-3 https://github.com/rsol9000-01/zabbix.git /home/zabbix
+ cd /home/zabbix
+ cp .env.example .env     # completar el bloque del agente (ver abajo)
+ sudo ./scripts/zabbix-dev.sh agent 'MiSemilla.2026'   # la MISMA semilla del servidor
+@@ -660,7 +660,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem
+ | Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.throttled` | Dependiente |
+ | L_api p95 real, ventana de 1 h | `infobus.api.lat_p95_1h` | Calculado |
+ | Conexion TCP al orchestrator | `infobus.api.tcp_connect_ms` | Dependiente |
+-| Red: RTT de R4 a R2, promedio 15 min | `infobus.net.rtt_ms` | Calculado |
++| Red: RTT de srv-gestion a srv-infobus, promedio 15 min | `infobus.net.rtt_ms` | Calculado |
+ | Externo - interno: red + TLS + Traefik | `infobus.net.delta_ms` | Calculado |
+ | TLS + Traefik (sin red) | `infobus.net.tls_traefik_ms` | Calculado |
+ | Estado del bucle MACDT | `macdt.status` | Trapper |
+@@ -685,7 +685,7 @@ Los ítems *Dependiente* no consultan nada: toman un campo del JSON de su ítem
+ | External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependiente |
+ | External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependiente |
+ | External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependiente |
+-| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente |
++| External: TCP connection from srv-gestion to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente |
+ | External: burst requests | `infobus.api.ext.n` | Dependiente |
+ | External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependiente |
+ | External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependiente |
+diff --git a/README.md b/README.md
+index 719dd33..aa73e86 100644
+--- a/README.md
++++ b/README.md
+@@ -14,7 +14,7 @@ Docker Compose deployment for monitoring [databus](https://github.com/simovilab/
+ - **Server (`server`):** Zabbix Server, PostgreSQL, the web frontend, a local agent, the `zabbix-init` container that configures Zabbix through its API, and the **MACDT** loop, which adjusts the infobus latency threshold to the transit load. It runs on the management server (**srv-gestion**), and the web frontend is published **only through Traefik**, which runs on the same server.
+ - **Agent (`agent`):** a Zabbix Agent 2 on each application server (srv-databus and srv-infobus). It auto-registers with the server under its role (`databus` or `infobus`), is encrypted with PSK, and runs the domain probes (GTFS, GTFS-RT and the infobus API).
+ 
+-> **Server names.** srv-gestion is the server formerly called R4, srv-databus was R3 and srv-infobus was R2. Some older documents, diagrams and Zabbix item names (for example *Red: RTT de R4 a R2*) still use R2, R3 and R4.
++> **Server names.** srv-gestion is the server formerly called R4, srv-databus was R3 and srv-infobus was R2. Documents, diagrams and templates use the new names.
+ 
+ <img width="80%" alt="Zabbix on Docker architecture" src="./diagramas/zabbix-docker.svg" />
+ 
+@@ -113,7 +113,7 @@ The server runs on srv-gestion, next to the Wazuh server and Traefik. It starts
+ ### Quick start
+ 
+ ```bash
+-git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
++git clone -b zabbix-fase-3 https://github.com/rsol9000-01/zabbix.git /home/zabbix
+ cd /home/zabbix
+ cp .env.example .env     # change passwords, web user and names (see below)
+ sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'
+@@ -306,7 +306,7 @@ The agent runs on each application server: srv-databus and srv-infobus. It start
+ ### Quick start
+ 
+ ```bash
+-git clone -b zabbix-fase-2 https://github.com/rsol9000-01/zabbix.git /home/zabbix
++git clone -b zabbix-fase-3 https://github.com/rsol9000-01/zabbix.git /home/zabbix
+ cd /home/zabbix
+ cp .env.example .env     # fill in the agent block (see below)
+ sudo ./scripts/zabbix-dev.sh agent 'MySeed.2026'   # the SAME seed as the server
+@@ -660,7 +660,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
+ | Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.throttled` | Dependent |
+ | L_api p95 real, ventana de 1 h | `infobus.api.lat_p95_1h` | Calculated |
+ | Conexion TCP al orchestrator | `infobus.api.tcp_connect_ms` | Dependent |
+-| Red: RTT de R4 a R2, promedio 15 min | `infobus.net.rtt_ms` | Calculated |
++| Red: RTT de srv-gestion a srv-infobus, promedio 15 min | `infobus.net.rtt_ms` | Calculated |
+ | Externo - interno: red + TLS + Traefik | `infobus.net.delta_ms` | Calculated |
+ | TLS + Traefik (sin red) | `infobus.net.tls_traefik_ms` | Calculated |
+ | Estado del bucle MACDT | `macdt.status` | Trapper |
+@@ -685,7 +685,7 @@ Keep the seed outside the repository. Never publish the seed or the PSK. The `ps
+ | External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependent |
+ | External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependent |
+ | External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependent |
+-| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependent |
++| External: TCP connection from srv-gestion to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependent |
+ | External: burst requests | `infobus.api.ext.n` | Dependent |
+ | External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependent |
+ | External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependent |
+diff --git a/agent2/zabbix_agent2.conf b/agent2/zabbix_agent2.conf
+index 6e54271..bf1f03e 100644
+--- a/agent2/zabbix_agent2.conf
++++ b/agent2/zabbix_agent2.conf
+@@ -4,9 +4,9 @@ UserParameter=host.tcp.established,sudo /var/lib/zabbix/user_scripts/zabbix-host
+ UserParameter=gtfs.probe[*],/var/lib/zabbix/user_scripts/gtfsrt_probe.py --base http://orchestrator:8000/feed/realtime --stale $1
+ UserParameter=macdt.window,/var/lib/zabbix/user_scripts/gtfs_window.py --url https://feeds.simovi.org/bucr/schedule/gtfs.zip --now
+ UserParameter=databus.static,/var/lib/zabbix/user_scripts/gtfs_window.py --url http://orchestrator:8000/feed/schedule/feed.zip --now
+-#---- infobus, medición INTERNA (agente de R2): directo al orchestrator (Daphne, HTTP 8000), sin Traefik
++#---- infobus, medición INTERNA (agente de srv-infobus): directo al orchestrator (Daphne, HTTP 8000), sin Traefik
+ UserParameter=infobus.api,/var/lib/zabbix/user_scripts/infobus_probe.py --base http://orchestrator:8000 --host-header localhost --stop-id auto --repeat 10 --transit-system 1
+-#---- infobus, medición EXTERNA (agente del servidor, R4): por Traefik y HTTPS. Solo funciona cuando la API esté detrás de Traefik
++#---- infobus, medición EXTERNA (agente del servidor, srv-gestion): por Traefik y HTTPS. Solo funciona cuando la API esté detrás de Traefik
+ UserParameter=infobus.api.ext,/var/lib/zabbix/user_scripts/infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id auto --repeat 10 --transit-system 1
+ #---- Celery (databus: RabbitMQ, infobus: Redis). El broker sale de /etc/zabbix/simovilab-celery.conf
+ UserParameter=celery.probe,python3 /var/lib/zabbix/user_scripts/celery_probe.py
+diff --git a/diagramas/flujo-n1-sistema.svg b/diagramas/flujo-n1-sistema.svg
+index e68ff93..0306cd4 100644
+--- a/diagramas/flujo-n1-sistema.svg
++++ b/diagramas/flujo-n1-sistema.svg
+@@ -35,9 +35,9 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="102" y="216" font-size="11.5" text-anchor="middle">GTFS Schedule</text>
+     <text class="m cap" x="102" y="232" font-size="11.5" text-anchor="middle">fuente autoritativa</text>
+ 
+-    <!-- R3 -->
++    <!-- srv-databus -->
+     <rect x="262" y="48" width="208" height="208" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
+-    <text class="m" x="278" y="72" font-size="12" font-weight="600" fill="#0b6e99">R3</text>
++    <text class="m" x="278" y="72" font-size="12" font-weight="600" fill="#0b6e99">srv-databus</text>
+     <text x="278" y="98" font-size="20" font-weight="700">databus</text>
+     <text class="cap" x="278" y="120" font-size="12.5">Ingesta · estado · proyección</text>
+     <line x1="278" y1="134" x2="454" y2="134" stroke="#dde4ec"/>
+@@ -48,9 +48,9 @@ text.cap{fill:#5b6b7c}
+     <rect x="278" y="216" width="176" height="24" rx="4" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.4"/>
+     <text class="m" x="366" y="232" font-size="11" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.agent · databus</text>
+ 
+-    <!-- R2 -->
++    <!-- srv-infobus -->
+     <rect x="556" y="48" width="208" height="208" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
+-    <text class="m" x="572" y="72" font-size="12" font-weight="600" fill="#0b6e99">R2</text>
++    <text class="m" x="572" y="72" font-size="12" font-weight="600" fill="#0b6e99">srv-infobus</text>
+     <text x="572" y="98" font-size="20" font-weight="700">infobus</text>
+     <text class="cap" x="572" y="120" font-size="12.5">Consumo · difusión</text>
+     <line x1="572" y1="134" x2="748" y2="134" stroke="#dde4ec"/>
+@@ -85,7 +85,7 @@ text.cap{fill:#5b6b7c}
+ 
+     <!-- canales -->
+     <rect x="24" y="340" width="196" height="160" rx="7" fill="#ffffff" stroke="#c3cdd8" stroke-width="1.2" stroke-dasharray="5 4"/>
+-    <text class="m cap" x="38" y="362" font-size="11" letter-spacing="1.2">CANALES HACIA R4</text>
++    <text class="m cap" x="38" y="362" font-size="11" letter-spacing="1.2">CANALES HACIA srv-gestion</text>
+     <text class="m" x="38" y="386" font-size="12" font-weight="600" fill="#a14e07">Zabbix</text>
+     <text class="m cap" x="38" y="404" font-size="11">10051/tcp · TLS PSK</text>
+     <text class="m cap" x="38" y="420" font-size="11">checks activos salientes</text>
+@@ -93,15 +93,15 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="38" y="466" font-size="11">1515/tcp enrolamiento</text>
+     <text class="m cap" x="38" y="482" font-size="11">1514/tcp eventos</text>
+ 
+-    <!-- R4 -->
++    <!-- srv-gestion -->
+     <rect x="236" y="332" width="946" height="376" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
+-    <text class="m" x="254" y="694" font-size="12" font-weight="600" fill="#0b6e99">R4</text>
+-    <text x="284" y="695" font-size="17" font-weight="700">monitoreo y seguridad</text>
+-    <text class="cap" x="478" y="694" font-size="12.5">recolección · adaptación del umbral · detección</text>
++    <text class="m" x="254" y="694" font-size="12" font-weight="600" fill="#0b6e99">srv-gestion</text>
++    <text x="346" y="695" font-size="17" font-weight="700">monitoreo y seguridad</text>
++    <text class="cap" x="548" y="694" font-size="12.5">recolección · adaptación del umbral · detección</text>
+ 
+     <!-- grupo zabbix -->
+     <rect x="252" y="348" width="452" height="318" rx="7" fill="none" stroke="#c3cdd8" stroke-width="1.3" stroke-dasharray="6 4"/>
+-    <text class="m cap" x="472" y="368" font-size="11">ZABBIX 7.4.3 · zabbix-fase-2</text>
++    <text class="m cap" x="472" y="368" font-size="11">ZABBIX 7.4.3 · zabbix-fase-3</text>
+     <rect x="268" y="380" width="200" height="46" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
+     <text class="m" x="368" y="399" font-size="12" font-weight="600" text-anchor="middle">zabbix-server</text>
+     <text class="m cap" x="368" y="416" font-size="10.5" text-anchor="middle">:10051 · evaluación</text>
+@@ -113,7 +113,7 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="368" y="474" font-size="10.5" text-anchor="middle">web y API :8080/:8443</text>
+     <rect x="484" y="438" width="204" height="46" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="1.6"/>
+     <text class="m" x="586" y="457" font-size="12" font-weight="600" text-anchor="middle" fill="#a14e07">zabbix-agent2 local</text>
+-    <text class="m cap" x="586" y="474" font-size="10.5" text-anchor="middle">R4 + infobus.api.ext</text>
++    <text class="m cap" x="586" y="474" font-size="10.5" text-anchor="middle">srv-gestion + infobus.api.ext</text>
+     <rect x="268" y="496" width="420" height="50" rx="6" fill="#d9efe3" stroke="#1d6b45" stroke-width="2"/>
+     <text class="m" x="478" y="517" font-size="12.5" font-weight="700" text-anchor="middle" fill="#1d6b45">macdt-loop · cada 60 s</text>
+     <text class="m cap" x="478" y="535" font-size="10.5" text-anchor="middle">lee ρ, V_gps, gate y N(t) → escribe {$T_LATENCY_WARN}</text>
+@@ -130,10 +130,10 @@ text.cap{fill:#5b6b7c}
+ 
+     <!-- grupo wazuh -->
+     <rect x="720" y="348" width="446" height="318" rx="7" fill="none" stroke="#a8406f" stroke-width="1.3" stroke-dasharray="6 4"/>
+-    <text class="m" x="948" y="368" font-size="11" fill="#8a2b55">WAZUH 4.14.5 · wazuh-fase-3</text>
++    <text class="m" x="948" y="368" font-size="11" fill="#8a2b55">WAZUH 4.14.5 · wazuh-fase-4</text>
+     <rect x="736" y="380" width="414" height="46" rx="6" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.8"/>
+     <text class="m" x="943" y="399" font-size="12" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.manager</text>
+-    <text class="m cap" x="943" y="416" font-size="10.5" text-anchor="middle">1514 · 1515 · 514/udp · API 55000 · reglas 100100–100122</text>
++    <text class="m cap" x="943" y="416" font-size="10.5" text-anchor="middle">1514 · 1515 · 514/udp · API 55000 · reglas 100100–100135</text>
+     <rect x="736" y="438" width="200" height="46" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.4"/>
+     <text class="m" x="836" y="457" font-size="12" font-weight="600" text-anchor="middle">wazuh.indexer</text>
+     <text class="m cap" x="836" y="474" font-size="10.5" text-anchor="middle">OpenSearch :9200</text>
+@@ -148,8 +148,8 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="836" y="591" font-size="10.5" text-anchor="middle">una vez · grupos y reglas</text>
+     <rect x="950" y="558" width="200" height="42" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.3"/>
+     <text class="m" x="1050" y="575" font-size="11.5" font-weight="600" text-anchor="middle">respuesta activa</text>
+-    <text class="m cap" x="1050" y="591" font-size="10.5" text-anchor="middle">firewall-drop · 180 s</text>
+-    <text class="m cap" x="736" y="630" font-size="10.5">grupos: databus (R3) · infobus (R2) · monitoring (R4)</text>
++    <text class="m cap" x="1050" y="591" font-size="10.5" text-anchor="middle">firewall-drop · 180 s / 1 h</text>
++    <text class="m cap" x="736" y="630" font-size="10.5">grupos: databus · infobus · monitoring (srv-gestion)</text>
+     <text class="m cap" x="736" y="646" font-size="10.5">mismo host que Zabbix · imágenes fijas 4.14.5</text>
+     <path class="edge" d="M836 426 V438" marker-end="url(#a)"/>
+ 
+diff --git a/diagramas/flujo-n2a-databus.svg b/diagramas/flujo-n2a-databus.svg
+index 61dac21..f59f7b0 100644
+--- a/diagramas/flujo-n2a-databus.svg
++++ b/diagramas/flujo-n2a-databus.svg
+@@ -1,5 +1,5 @@
+ <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 830" width="1200" height="830" role="img" aria-label="Servicios internos de databus con sus agentes">
+-<title>Nivel 2A — R3 · databus</title>
++<title>Nivel 2A — srv-databus</title>
+ <style>
+ text{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#17202a}
+ text.m{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+@@ -93,7 +93,7 @@ text.cap{fill:#5b6b7c}
+ 
+     <rect x="620" y="500" width="200" height="52" rx="6" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.5"/>
+     <text class="m" x="720" y="522" font-size="12.5" font-weight="600" text-anchor="middle">GTFS-RT público</text>
+-    <text class="m cap" x="720" y="539" font-size="10.5" text-anchor="middle">→ R2 infobus</text>
++    <text class="m cap" x="720" y="539" font-size="10.5" text-anchor="middle">→ srv-infobus</text>
+     <path class="edge" d="M430 300 H620 V500" marker-end="url(#b)" opacity=".55"/>
+ 
+     <!-- agente zabbix -->
+@@ -104,7 +104,7 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="640" y="686" font-size="11">macdt.window → feeds.simovi.org/bucr/schedule/gtfs.zip</text>
+     <text class="m cap" x="640" y="705" font-size="11">host.tcp.established · Docker (socket) · contenedores</text>
+     <text class="m" x="640" y="724" font-size="11" fill="#8a5a00">plugins PostgreSQL/Redis: sesiones definidas, sin ítems</text>
+-    <text class="m" x="640" y="746" font-size="11" font-weight="600" fill="#a14e07">→ R4 :10051 · TLS PSK · checks activos</text>
++    <text class="m" x="640" y="746" font-size="11" font-weight="600" fill="#a14e07">→ srv-gestion :10051 · TLS PSK · checks activos</text>
+     <path class="edge-p" d="M620 630 H600 V244 H330 V228" marker-end="url(#bp)"/>
+     <path class="edge-p" d="M1160 600 V64" marker-end="url(#bp)"/>
+     <text class="m" x="1150" y="300" font-size="10.5" text-anchor="end" fill="#a14e07">macdt.window</text>
+@@ -118,7 +118,7 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="40" y="686" font-size="11">FIM: volumen databus_feed_files (GTFS publicado)</text>
+     <text class="m cap" x="40" y="705" font-size="11">100101 importación GTFS falló · 100109 clona en arranque</text>
+     <text class="m cap" x="40" y="724" font-size="11">100120 secretos · 100121 GTFS cambió · 100122 socket</text>
+-    <text class="m" x="40" y="746" font-size="11" font-weight="600" fill="#8a2b55">→ R4 :1515 enrolamiento · :1514 eventos</text>
++    <text class="m" x="40" y="746" font-size="11" font-weight="600" fill="#8a2b55">→ srv-gestion :1515 enrolamiento · :1514 eventos</text>
+     <path class="edge-s" d="M300 600 V552" marker-end="url(#bs)"/>
+   
+ <line x1="0" y1="780" x2="1200" y2="780" stroke="#dde4ec"/>
+diff --git a/diagramas/flujo-n2b-infobus.svg b/diagramas/flujo-n2b-infobus.svg
+index e36ada8..7c82a9c 100644
+--- a/diagramas/flujo-n2b-infobus.svg
++++ b/diagramas/flujo-n2b-infobus.svg
+@@ -1,5 +1,5 @@
+ <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 750" width="1200" height="750" role="img" aria-label="Servicios internos de infobus con sus agentes">
+-<title>Nivel 2B — R2 · infobus</title>
++<title>Nivel 2B — srv-infobus</title>
+ <style>
+ text{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#17202a}
+ text.m{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+@@ -18,7 +18,7 @@ text.cap{fill:#5b6b7c}
+     </defs>
+ 
+     <rect x="20" y="24" width="190" height="66" rx="7" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.6"/>
+-    <text class="m" x="115" y="48" font-size="12.5" font-weight="600" text-anchor="middle">GTFS desde R3</text>
++    <text class="m" x="115" y="48" font-size="12.5" font-weight="600" text-anchor="middle">GTFS desde srv-databus</text>
+     <text class="m cap" x="115" y="66" font-size="10.5" text-anchor="middle">Schedule + Realtime</text>
+     <text class="m cap" x="115" y="82" font-size="10.5" text-anchor="middle">HTTP polling</text>
+ 
+@@ -26,7 +26,7 @@ text.cap{fill:#5b6b7c}
+     <text class="m" x="266" y="49" font-size="12.5" font-weight="600">Traefik — TLS · traefik_proxy (orchestrator · lake · frontend)</text>
+ 
+     <rect x="1040" y="16" width="150" height="56" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="1.6"/>
+-    <text class="m" x="1115" y="38" font-size="11.5" font-weight="700" text-anchor="middle" fill="#a14e07">agent2 de R4</text>
++    <text class="m" x="1115" y="38" font-size="11.5" font-weight="700" text-anchor="middle" fill="#a14e07">agent2 srv-gestion</text>
+     <text class="m cap" x="1115" y="56" font-size="10.5" text-anchor="middle">infobus.api.ext</text>
+     <path class="edge-p" d="M1040 44 H1020" marker-end="url(#cp)"/>
+ 
+@@ -100,7 +100,7 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="616" y="605" font-size="11">N(t) · L_api p50/p90/max · query_p50 · 429</text>
+     <text class="m cap" x="616" y="624" font-size="11">host.tcp.established · Docker · contenedores</text>
+     <text class="m" x="616" y="643" font-size="11" fill="#8a5a00">plugins PostgreSQL/Redis: sesiones, sin ítems</text>
+-    <text class="m" x="616" y="666" font-size="11" font-weight="600" fill="#a14e07">→ R4 :10051 · TLS PSK · checks activos</text>
++    <text class="m" x="616" y="666" font-size="11" font-weight="600" fill="#a14e07">→ srv-gestion :10051 · TLS PSK · checks activos</text>
+     <path class="edge-p" d="M640 500 V470 H396 V196" marker-end="url(#cp)"/>
+ 
+     <!-- agente wazuh -->
+@@ -112,7 +112,7 @@ text.cap{fill:#5b6b7c}
+     <text class="m cap" x="40" y="605" font-size="11">100104 5xx · 100105/100106 404 y enumeración</text>
+     <text class="m cap" x="40" y="624" font-size="11">100107 auth Redis · 100108–100112 eventos de streams</text>
+     <text class="m cap" x="40" y="643" font-size="11">100120 secretos · 100122 socket Docker</text>
+-    <text class="m" x="40" y="666" font-size="11" font-weight="600" fill="#8a2b55">→ R4 :1515 enrolamiento · :1514 eventos</text>
++    <text class="m" x="40" y="666" font-size="11" font-weight="600" fill="#8a2b55">→ srv-gestion :1515 enrolamiento · :1514 eventos</text>
+   
+ <line x1="0" y1="700" x2="1200" y2="700" stroke="#dde4ec"/>
+ <rect x="0" y="700" width="1200" height="50" fill="#eef1f5"/>
+diff --git a/diagramas/flujo-n2c-macdt.svg b/diagramas/flujo-n2c-macdt.svg
+index a377416..13505e8 100644
+--- a/diagramas/flujo-n2c-macdt.svg
++++ b/diagramas/flujo-n2c-macdt.svg
+@@ -1,5 +1,5 @@
+ <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 560" width="1200" height="560" role="img" aria-label="Cadena de ítems desde las sondas hasta la macro del umbral">
+-<title>Nivel 2C — R4 · cadena MACDT</title>
++<title>Nivel 2C — srv-gestion · cadena MACDT</title>
+ <style>
+ text{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#17202a}
+ text.m{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+@@ -26,19 +26,19 @@ text.cap{fill:#5b6b7c}
+     <g>
+       <rect x="20" y="50" width="200" height="52" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="2"/>
+       <text class="m" x="120" y="72" font-size="12.5" font-weight="700" text-anchor="middle" fill="#a14e07">gtfs.probe</text>
+-      <text class="m cap" x="120" y="89" font-size="10.5" text-anchor="middle">R3 · 20 dependientes</text>
++      <text class="m cap" x="120" y="89" font-size="10.5" text-anchor="middle">srv-databus · 20 dependientes</text>
+       <rect x="20" y="118" width="200" height="52" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="2"/>
+       <text class="m" x="120" y="140" font-size="12.5" font-weight="700" text-anchor="middle" fill="#a14e07">macdt.window</text>
+-      <text class="m cap" x="120" y="157" font-size="10.5" text-anchor="middle">R3 · 10 dependientes</text>
++      <text class="m cap" x="120" y="157" font-size="10.5" text-anchor="middle">srv-databus · 10 dependientes</text>
+       <rect x="20" y="186" width="200" height="52" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="2"/>
+       <text class="m" x="120" y="208" font-size="12.5" font-weight="700" text-anchor="middle" fill="#a14e07">databus.static</text>
+-      <text class="m cap" x="120" y="225" font-size="10.5" text-anchor="middle">R3 · 3 dependientes</text>
++      <text class="m cap" x="120" y="225" font-size="10.5" text-anchor="middle">srv-databus · 3 dependientes</text>
+       <rect x="20" y="270" width="200" height="52" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="2"/>
+       <text class="m" x="120" y="292" font-size="12.5" font-weight="700" text-anchor="middle" fill="#a14e07">infobus.api</text>
+-      <text class="m cap" x="120" y="309" font-size="10.5" text-anchor="middle">R2 · 19 dependientes</text>
++      <text class="m cap" x="120" y="309" font-size="10.5" text-anchor="middle">srv-infobus · 19 dependientes</text>
+       <rect x="20" y="354" width="200" height="52" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="2"/>
+       <text class="m" x="120" y="376" font-size="12.5" font-weight="700" text-anchor="middle" fill="#a14e07">infobus.api.ext</text>
+-      <text class="m cap" x="120" y="393" font-size="10.5" text-anchor="middle">R4 · 9 dependientes</text>
++      <text class="m cap" x="120" y="393" font-size="10.5" text-anchor="middle">srv-gestion · 9 dependientes</text>
+     </g>
+ 
+     <!-- dependientes -->
+diff --git a/diagramas/zabbix-docker.svg b/diagramas/zabbix-docker.svg
+index c5ea5ae..b1021b2 100644
+--- a/diagramas/zabbix-docker.svg
++++ b/diagramas/zabbix-docker.svg
+@@ -1,5 +1,5 @@
+-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 930" width="1200" height="930" role="img" aria-label="Arquitectura de Zabbix en Docker en R4">
+-<title>Zabbix en Docker · R4</title>
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 930" width="1200" height="930" role="img" aria-label="Arquitectura de Zabbix en Docker en srv-gestion">
++<title>Zabbix en Docker · srv-gestion</title>
+ <style>
+ text{font-family:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;fill:#17202a}
+ text.m{font-family:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace}
+@@ -11,9 +11,9 @@ text.cap{fill:#5b6b7c}
+ <defs><marker id="a" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c3cdd8"/></marker><marker id="ap" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#c2680f"/></marker><marker id="ao" markerWidth="9" markerHeight="7" refX="8.4" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#1d6b45"/></marker></defs>
+ <rect x="0" y="0" width="1200" height="880" fill="#ffffff"/>
+ <rect x="210" y="20" width="975" height="765" rx="10" fill="#eef1f5" stroke="#dde4ec" stroke-width="1"/>
+-<text class="m" x="230" y="48" font-size="12" font-weight="600" fill="#0b6e99">R4</text>
+-<text x="258" y="49" font-size="19" font-weight="700">host de monitoreo · Zabbix en Docker</text>
+-<text class="m cap" x="230" y="72" font-size="11.5">FQDN docker.siua.ac.cr · Debian 12 · Docker Compose · rama zabbix-fase-2</text>
++<text class="m" x="230" y="48" font-size="12" font-weight="600" fill="#0b6e99">srv-gestion</text>
++<text x="322" y="49" font-size="19" font-weight="700">host de monitoreo · Zabbix en Docker</text>
++<text class="m cap" x="230" y="72" font-size="11.5">FQDN srv-gestion.siua.ac.cr · Debian 12 · Docker Compose · rama zabbix-fase-3</text>
+ <rect x="280" y="90" width="895" height="675" rx="8" fill="none" stroke="#c3cdd8" stroke-width="1.3" stroke-dasharray="6 4"/>
+ <text class="m cap" x="296" y="112" font-size="11">red zabbix_network (bridge) · los servicios se llaman por nombre</text>
+ <rect x="300" y="130" width="410" height="160" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="1.8"/>
+@@ -102,10 +102,10 @@ text.cap{fill:#5b6b7c}
+ <text class="m cap" x="225" y="286" font-size="9.5" text-anchor="middle">PORT_HTTP</text>
+ <text class="m cap" x="20" y="420" font-size="10">AGENTES REMOTOS</text>
+ <rect x="20" y="430" width="150" height="60" rx="7" fill="#fbead6" stroke="#c2680f" stroke-width="1.6"/>
+-<text class="m" x="95" y="454" font-size="12" text-anchor="middle" font-weight="700" fill="#a14e07">R3 · databus</text>
++<text class="m" x="95" y="454" font-size="12" text-anchor="middle" font-weight="700" fill="#a14e07">srv-databus</text>
+ <text class="m cap" x="95" y="472" font-size="10" text-anchor="middle">remote-zabbix-agent2</text>
+ <rect x="20" y="530" width="150" height="60" rx="7" fill="#fbead6" stroke="#c2680f" stroke-width="1.6"/>
+-<text class="m" x="95" y="554" font-size="12" text-anchor="middle" font-weight="700" fill="#a14e07">R2 · infobus</text>
++<text class="m" x="95" y="554" font-size="12" text-anchor="middle" font-weight="700" fill="#a14e07">srv-infobus</text>
+ <text class="m cap" x="95" y="572" font-size="10" text-anchor="middle">remote-zabbix-agent2</text>
+ <rect x="190" y="497" width="70" height="26" rx="4" fill="#fbf0d4" stroke="#8a5a00" stroke-width="1.5"/>
+ <text class="m" x="225" y="514" font-size="11" text-anchor="middle" font-weight="600" fill="#8a5a00">10051/tcp</text>
+@@ -132,7 +132,7 @@ text.cap{fill:#5b6b7c}
+ <path class="edge-p" d="M505 745 V820" marker-end="url(#ap)"/>
+ <text class="m cap" x="513" y="806" font-size="10" fill="#a14e07">HTTPS 443 · sale del host</text>
+ <rect x="300" y="820" width="410" height="48" rx="7" fill="#e8e4ef" stroke="#4a4458" stroke-width="1.6"/>
+-<text class="m" x="505" y="840" font-size="12" text-anchor="middle" font-weight="600" fill="#17202a">infobus.ucr.ac.cr · Traefik en R2</text>
++<text class="m" x="505" y="840" font-size="12" text-anchor="middle" font-weight="600" fill="#17202a">infobus.ucr.ac.cr · Traefik en srv-infobus</text>
+ <text class="m cap" x="505" y="858" font-size="10.5" text-anchor="middle">sonda infobus.api.ext</text>
+ <line x1="0" y1="880" x2="1200" y2="880" stroke="#dde4ec"/>
+ <rect x="0" y="880" width="1200" height="50" fill="#eef1f5"/>
+diff --git a/docs/README-gtfs_window.md b/docs/README-gtfs_window.md
+index 3b06892..39f3961 100644
+--- a/docs/README-gtfs_window.md
++++ b/docs/README-gtfs_window.md
+@@ -16,7 +16,7 @@ The same script feeds two master items:
+ | Item | Value |
+ | --- | --- |
+ | **Location** | `scripts/user_scripts/gtfs_window.py` |
+-| **Runs on** | `zabbix-agent2` on the databus server (R3 / srv-databus) |
++| **Runs on** | `zabbix-agent2` on the databus server (srv-databus) |
+ | **Run by** | Zabbix Agent 2, `UserParameter=macdt.window` and `UserParameter=databus.static` |
+ | **Item keys** | `macdt.window`, `databus.static` (template `simovilab-databus`) |
+ | **Sources** | GTFS ZIP by URL (`--url`), local file (`--zip`) or databus PostgreSQL (`--pg`) |
+diff --git a/docs/README-gtfsrt_probe.md b/docs/README-gtfsrt_probe.md
+index c92d324..33b9e36 100644
+--- a/docs/README-gtfsrt_probe.md
++++ b/docs/README-gtfsrt_probe.md
+@@ -11,7 +11,7 @@ MACDT Layer D probe. It downloads the two GTFS-RT feeds that databus publishes (
+ | Item | Value |
+ | --- | --- |
+ | **Location** | `scripts/user_scripts/gtfsrt_probe.py` |
+-| **Runs on** | `zabbix-agent2` on the databus server (R3 in the old lab, srv-databus in the new one), inside the `databus_internal` network |
++| **Runs on** | `zabbix-agent2` on the databus server (srv-databus), inside the `databus_internal` network |
+ | **Run by** | Zabbix Agent 2, `UserParameter=gtfs.probe[*]` in [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf) |
+ | **Item key** | `gtfs.probe[{$MACDT.STALE_S}]` (template `simovilab-databus`) |
+ | **Queries** | `<base>/vehicle_positions.pb` and `<base>/trip_updates.pb` |
+diff --git a/docs/README-infobus_probe.md b/docs/README-infobus_probe.md
+index 0c9b99b..fae2058 100644
+--- a/docs/README-infobus_probe.md
++++ b/docs/README-infobus_probe.md
+@@ -6,8 +6,8 @@
+ 
+ MACDT Layer I probe. It measures the latency of the infobus `next-trips` endpoint with a short burst of requests, separates the transport cost from the query cost, and prints **one JSON**. The same script runs from two places:
+ 
+-- **Internal (`infobus.api`, R2 agent):** straight to the orchestrator (`http://orchestrator:8000`): Daphne + query, without Traefik.
+-- **External (`infobus.api.ext`, R4 agent):** through the public address (`https://<domain>`): network + TLS + Traefik + Daphne + query.
++- **Internal (`infobus.api`, srv-infobus agent):** straight to the orchestrator (`http://orchestrator:8000`): Daphne + query, without Traefik.
++- **External (`infobus.api.ext`, srv-gestion agent):** through the public address (`https://<domain>`): network + TLS + Traefik + Daphne + query.
+ 
+ Zabbix computes the external minus internal difference in the `simovilab-infobus` template.
+ 
+@@ -16,7 +16,7 @@ Zabbix computes the external minus internal difference in the `simovilab-infobus
+ | Item | Value |
+ | --- | --- |
+ | **Location** | `scripts/user_scripts/infobus_probe.py` |
+-| **Runs on** | `zabbix-agent2` on the infobus server (R2 / srv-infobus) and on the management server (R4 / srv-gestion) |
++| **Runs on** | `zabbix-agent2` on the infobus server (srv-infobus) and on the management server (srv-gestion) |
+ | **Run by** | Zabbix Agent 2, `UserParameter=infobus.api` and `UserParameter=infobus.api.ext` |
+ | **Item keys** | `infobus.api` (template `simovilab-infobus`), `infobus.api.ext` (template `simovilab-infobus-ext`) |
+ | **Queries** | `<base>/health/` and `<base>/api/next-trips/?stop_id=...&transit_system=...` |
+@@ -39,11 +39,11 @@ flowchart LR
+ ### Quick start
+ 
+ ```bash
+-# Internal measurement (as the R2 agent runs it)
++# Internal measurement (as the srv-infobus agent runs it)
+ ./infobus_probe.py --base http://orchestrator:8000 --host-header localhost \
+   --stop-id auto --repeat 10 --transit-system 1
+ 
+-# External measurement (as the R4 agent runs it)
++# External measurement (as the srv-gestion agent runs it)
+ ./infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id auto --repeat 10 --transit-system 1
+ 
+ # Fixed stop
+diff --git a/docs/README-macdt_loop.md b/docs/README-macdt_loop.md
+index a7f1466..51b00ee 100644
+--- a/docs/README-macdt_loop.md
++++ b/docs/README-macdt_loop.md
+@@ -19,7 +19,7 @@ Executor of the MACDT loop (F5). Every minute it reads the transit load from dat
+ | Item | Value |
+ | --- | --- |
+ | **Location** | `scripts/user_scripts/macdt_loop.py`, mounted as `/macdt_loop.py` |
+-| **Runs on** | The `macdt-loop` container on the server (R4), image `simovilab/macdt-loop:1.0` ([`agent2/Dockerfile_local`](../agent2/Dockerfile_local)) |
++| **Runs on** | The `macdt-loop` container on the server (srv-gestion), image `simovilab/macdt-loop:1.0` ([`agent2/Dockerfile_local`](../agent2/Dockerfile_local)) |
+ | **Run by** | The container entrypoint, as a continuous loop, after `zabbix-init` ends successfully |
+ | **Talks to** | Zabbix JSON-RPC API (`ZBX_API_URL`) |
+ | **Writes** | Host macros on Infobus-host, trapper items, files in `/var/lib/macdt` (volume `macdt_state`) |
+diff --git a/docs/README-template-simovilab-infobus-ext.es.md b/docs/README-template-simovilab-infobus-ext.es.md
+index 2908569..6f296c9 100644
+--- a/docs/README-template-simovilab-infobus-ext.es.md
++++ b/docs/README-template-simovilab-infobus-ext.es.md
+@@ -67,7 +67,7 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro
+ | External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependiente | ms |
+ | External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependiente | ms |
+ | External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependiente | ms |
+-| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente | ms |
++| External: TCP connection from srv-gestion to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente | ms |
+ | External: burst requests | `infobus.api.ext.n` | Dependiente | — |
+ | External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependiente | — |
+ | External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependiente | — |
+diff --git a/docs/README-template-simovilab-infobus-ext.md b/docs/README-template-simovilab-infobus-ext.md
+index 9d5c699..b9832b6 100644
+--- a/docs/README-template-simovilab-infobus-ext.md
++++ b/docs/README-template-simovilab-infobus-ext.md
+@@ -63,7 +63,7 @@ Override a macro on the host to keep the change after the next import: *Data col
+ | External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependent | ms |
+ | External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependent | ms |
+ | External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependent | ms |
+-| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependent | ms |
++| External: TCP connection from srv-gestion to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependent | ms |
+ | External: burst requests | `infobus.api.ext.n` | Dependent | — |
+ | External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependent | — |
+ | External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependent | — |
+diff --git a/docs/README-template-simovilab-infobus.es.md b/docs/README-template-simovilab-infobus.es.md
+index 70c6466..5cb6e29 100644
+--- a/docs/README-template-simovilab-infobus.es.md
++++ b/docs/README-template-simovilab-infobus.es.md
+@@ -124,7 +124,7 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro
+ | Conexion TCP al orchestrator | `infobus.api.tcp_connect_ms` | Dependiente | ms |
+ | Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.throttled` | Dependiente | — |
+ | Externo - interno: red + TLS + Traefik | `infobus.net.delta_ms` | Calculado | ms |
+-| Red: RTT de R4 a R2, promedio 15 min | `infobus.net.rtt_ms` | Calculado | ms |
++| Red: RTT de srv-gestion a srv-infobus, promedio 15 min | `infobus.net.rtt_ms` | Calculado | ms |
+ | TLS + Traefik (sin red) | `infobus.net.tls_traefik_ms` | Calculado | ms |
+ | Resultado de la calibración de MACDT | `macdt.calib` | Trapper | — |
+ | Detalle de la calibración de MACDT | `macdt.calib.info` | Trapper | — |
+diff --git a/docs/README-template-simovilab-infobus.md b/docs/README-template-simovilab-infobus.md
+index 0c90d8d..5138b26 100644
+--- a/docs/README-template-simovilab-infobus.md
++++ b/docs/README-template-simovilab-infobus.md
+@@ -120,7 +120,7 @@ Override a macro on the host to keep the change after the next import: *Data col
+ | Conexion TCP al orchestrator | `infobus.api.tcp_connect_ms` | Dependent | ms |
+ | Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.throttled` | Dependent | — |
+ | Externo - interno: red + TLS + Traefik | `infobus.net.delta_ms` | Calculated | ms |
+-| Red: RTT de R4 a R2, promedio 15 min | `infobus.net.rtt_ms` | Calculated | ms |
++| Red: RTT de srv-gestion a srv-infobus, promedio 15 min | `infobus.net.rtt_ms` | Calculated | ms |
+ | TLS + Traefik (sin red) | `infobus.net.tls_traefik_ms` | Calculated | ms |
+ | Resultado de la calibración de MACDT | `macdt.calib` | Trapper | — |
+ | Detalle de la calibración de MACDT | `macdt.calib.info` | Trapper | — |
+diff --git a/docs/README-zabbix-conf.md b/docs/README-zabbix-conf.md
+index 03362a4..bbafcd6 100644
+--- a/docs/README-zabbix-conf.md
++++ b/docs/README-zabbix-conf.md
+@@ -11,7 +11,7 @@ Post-install script of the Zabbix server. The `zabbix-init` container runs it on
+ | Item | Value |
+ | --- | --- |
+ | **Location** | `scripts/zabbix-conf.sh` (selected with `SCRIPT_POST_INSTALL` in `.env`). Spanish version, same code with comments and messages in Spanish: `scripts/zabbix-conf-es.sh` |
+-| **Runs on** | The `zabbix-init` container on the server (R4), mounted as `/init.sh` |
++| **Runs on** | The `zabbix-init` container on the server (srv-gestion), mounted as `/init.sh` |
+ | **Run by** | `docker compose up` (started by [`zabbix-dev.sh`](README-zabbix-dev.md) in `server` mode) |
+ | **Talks to** | Zabbix JSON-RPC API at `API_URL` |
+ | **Reads** | Environment variables from `.env`, `/zabbix_agentd.psk`, templates in `/templates` |
+diff --git a/docs/README-zabbix-dev.md b/docs/README-zabbix-dev.md
+index 1f8c809..f9d4065 100644
+--- a/docs/README-zabbix-dev.md
++++ b/docs/README-zabbix-dev.md
+@@ -14,7 +14,7 @@ Deployment script for the Zabbix stack. It prepares the host (dependencies, perm
+ | Item | Value |
+ | --- | --- |
+ | **Location** | `scripts/zabbix-dev.sh` |
+-| **Runs on** | The host: R4 in `server` mode, R2 or R3 in `agent` mode |
++| **Runs on** | The host: srv-gestion in `server` mode, srv-databus or srv-infobus in `agent` mode |
+ | **Run by** | An administrator, as root (`sudo`) |
+ | **Reads** | `.env`, `agent2/simovilab-plugins.conf.example` |
+ | **Writes** | `agent2/` (sudoers, `Dockerfile`, `zabbix_agent2.conf`, `simovilab-plugins.conf`), `psk/zabbix_agentd.psk` |
+@@ -45,8 +45,8 @@ flowchart TD
+ ```bash
+ cd /home/zabbix
+ cp .env.example .env                               # fill in the values for the mode
+-sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'  # on R4
+-sudo ./scripts/zabbix-dev.sh agent 'MySeed.2026'   # on R2 and R3, with the SAME seed
++sudo ./scripts/zabbix-dev.sh server 'MySeed.2026'  # on srv-gestion
++sudo ./scripts/zabbix-dev.sh agent 'MySeed.2026'   # on srv-databus and srv-infobus, with the SAME seed
+ ```
+ 
+ ### How to
+diff --git a/docs/README-zabbix-host-tcp-established.md b/docs/README-zabbix-host-tcp-established.md
+index 9daf2f0..188eb50 100644
+--- a/docs/README-zabbix-host-tcp-established.md
++++ b/docs/README-zabbix-host-tcp-established.md
+@@ -10,7 +10,7 @@ Counts the TCP connections in `ESTABLISHED` state on the **host**, not inside th
+ | Item | Value |
+ | --- | --- |
+ | **Location** | `scripts/user_scripts/zabbix-host-tcp-established.sh` |
+-| **Runs on** | Every Zabbix agent: the `zabbix-agent2` container on srv-gestion (R4), srv-databus (R3) and srv-infobus (R2) |
++| **Runs on** | Every Zabbix agent: the `zabbix-agent2` container on srv-gestion, srv-databus and srv-infobus |
+ | **Run by** | Zabbix Agent 2, `UserParameter=host.tcp.established` with `sudo` |
+ | **Item key** | `host.tcp.established` (template `simovilab servidor y sistema operativo`) |
+ | **Reads** | `/proc/1/net/tcp` and `/proc/1/net/tcp6` |
+diff --git a/scripts/user_scripts/infobus_probe-es.py b/scripts/user_scripts/infobus_probe-es.py
+index 65d9a0b..cab654e 100755
+--- a/scripts/user_scripts/infobus_probe-es.py
++++ b/scripts/user_scripts/infobus_probe-es.py
+@@ -3,8 +3,8 @@
+ Sonda de latencia de la API de InfoBus para MACDT (capa I).
+ 
+ Se ejecuta desde dos puntos con el mismo script:
+-  - interno (agente de R2, clave infobus.api):      http://orchestrator:8000 -> Daphne + consulta
+-  - externo (agente de R4, clave infobus.api.ext):  https://<dominio>         -> red + TLS + Traefik + Daphne + consulta
++  - interno (agente de srv-infobus, clave infobus.api):      http://orchestrator:8000 -> Daphne + consulta
++  - externo (agente de srv-gestion, clave infobus.api.ext):  https://<dominio>         -> red + TLS + Traefik + Daphne + consulta
+ La diferencia externo - interno la calcula Zabbix (plantilla simovilab-infobus-ext). Imprime UN objeto JSON: usenlo como item maestro y cuelguen items
+ dependientes con JSONPath, igual que gtfsrt_probe.py.
+ 
+diff --git a/scripts/user_scripts/infobus_probe.py b/scripts/user_scripts/infobus_probe.py
+index e37cfeb..624312f 100755
+--- a/scripts/user_scripts/infobus_probe.py
++++ b/scripts/user_scripts/infobus_probe.py
+@@ -3,8 +3,8 @@
+ InfoBus API latency probe for MACDT (Layer I).
+ 
+ Run the same script from two locations:
+-  - Internal (R2 agent, infobus.api key):      http://orchestrator:8000 -> Daphne + query
+-  - External (R4 agent, infobus.api.ext key):  https://<domain>          -> network + TLS + Traefik + Daphne + query
++  - Internal (srv-infobus agent, infobus.api key):      http://orchestrator:8000 -> Daphne + query
++  - External (srv-gestion agent, infobus.api.ext key):  https://<domain>          -> network + TLS + Traefik + Daphne + query
+ Zabbix calculates the external-to-internal difference (simovilab-infobus-ext template).
+ Prints one JSON object: use it as the master item and attach dependent items with
+ JSONPath, as with gtfsrt_probe.py.
+diff --git a/templates/simovilab-infobus-ext.yml b/templates/simovilab-infobus-ext.yml
+index 8a3a3e9..1748b96 100644
+--- a/templates/simovilab-infobus-ext.yml
++++ b/templates/simovilab-infobus-ext.yml
+@@ -8,8 +8,8 @@ zabbix_export:
+       template: simovilab-infobus-ext
+       name: simovilab-infobus-ext
+       description: |
+-        MACDT layer I, external side. Linked to the Zabbix server host (R4) through LOCAL_TEMPLATE_*.
+-        The R4 agent measures the InfoBus API through Traefik and HTTPS, with the same infobus_probe.py.
++        MACDT layer I, external side. Linked to the Zabbix server host (srv-gestion) through LOCAL_TEMPLATE_*.
++        The srv-gestion agent measures the InfoBus API through Traefik and HTTPS, with the same infobus_probe.py.
+         The difference against the internal measurement (network, TLS + Traefik) is in simovilab-infobus,
+         which references this host by its fixed name, Zabbix-server.
+         It only produces data when the API is behind Traefik.
+@@ -24,7 +24,7 @@ zabbix_export:
+           history: 1d
+           value_type: TEXT
+           timeout: 30s
+-          description: 'Master item. Same infobus_probe.py, run by the R4 agent against the public domain (Traefik + HTTPS). 30 s timeout, as in the internal probe: with TLS, 10 requests and the hourly GTFS check, a run takes longer than the 3 s default.'
++          description: 'Master item. Same infobus_probe.py, run by the srv-gestion agent against the public domain (Traefik + HTTPS). 30 s timeout, as in the internal probe: with TLS, 10 requests and the hourly GTFS check, a run takes longer than the 3 s default.'
+         - uuid: eb14d5700b1d4f4283622e8529ca07eb
+           name: 'External: API responds correctly'
+           type: DEPENDENT
+@@ -140,7 +140,7 @@ zabbix_export:
+           key: infobus.api.ext.setup_ms
+           units: ms
+           value_type: FLOAT
+-          description: 'health_cold_ms - health_ms: TCP handshake and TLS negotiation from R4 to Traefik.'
++          description: 'health_cold_ms - health_ms: TCP handshake and TLS negotiation from srv-gestion to Traefik.'
+           preprocessing:
+             - type: JSONPATH
+               parameters:
+@@ -161,10 +161,10 @@ zabbix_export:
+                 What a user pays to open the connection to the public InfoBus API (DNS,
+                 TCP handshake and TLS negotiation with Traefik) rose above {$INFOBUS.EXT.SETUP.FACTOR}
+                 times its median of the last day, as a 10 min average, and is above
+-                {$INFOBUS.EXT.SETUP.MIN_MS} ms. Check public DNS, the network between R4 and the proxy,
++                {$INFOBUS.EXT.SETUP.MIN_MS} ms. Check public DNS, the network between srv-gestion and the proxy,
+                 Traefik (certificate, load) or the site uplink.
+         - uuid: 8c4d43f61cf248e59d1c8241e167ceb7
+-          name: 'External: TCP connection from R4 to Traefik (network)'
++          name: 'External: TCP connection from srv-gestion to Traefik (network)'
+           type: DEPENDENT
+           key: infobus.api.ext.tcp_connect_ms
+           units: ms
+diff --git a/templates/simovilab-infobus.yml b/templates/simovilab-infobus.yml
+index da31242..8609f32 100644
+--- a/templates/simovilab-infobus.yml
++++ b/templates/simovilab-infobus.yml
+@@ -9,8 +9,8 @@ zabbix_export:
+       name: simovilab-infobus
+       description: |
+         Capa I de MACDT: latencia de la API de InfoBus, medida DESDE DENTRO
+-        (agente de R2 directo al orchestrator, sin Traefik ni TLS). La
+-        medicion externa la hace R4 (simovilab-infobus-ext, host Zabbix-server)
++        (agente de srv-infobus directo al orchestrator, sin Traefik ni TLS). La
++        medicion externa la hace srv-gestion (simovilab-infobus-ext, host Zabbix-server)
+         y la resta entre ambas esta aqui (items infobus.net.*). Es el RNF de rendimiento del TFG y el objetivo
+         de calibracion de beta.
+         
+@@ -28,7 +28,7 @@ zabbix_export:
+           delay: 60s
+           history: 1d
+           value_type: TEXT
+-          description: 'Maestro. 10 peticiones a /api/next-trips/ desde R2, directo al orchestrator. Con --stop-id auto mide la parada con mas horas de paso en 5 h (peor caso). timeout 30s: la sonda tarda mas de 3 s en frio y, una vez por hora, revisa si cambio el GTFS.'
++          description: 'Maestro. 10 peticiones a /api/next-trips/ desde srv-infobus, directo al orchestrator. Con --stop-id auto mide la parada con mas horas de paso en 5 h (peor caso). timeout 30s: la sonda tarda mas de 3 s en frio y, una vez por hora, revisa si cambio el GTFS.'
+           timeout: 30s
+         - uuid: 6e0aa045cd3345febb7082ab8d4f2d9c
+           name: 'Buses en camino a la parada medida'
+@@ -466,13 +466,13 @@ zabbix_export:
+             Resta de los pisos de transporte con la conexion abierta (/health/, sin consulta a la base),
+             promediados 15 min porque las dos sondas no corren en el mismo segundo.
+         - uuid: be2242d75ea4436483a48c06969e06a2
+-          name: 'Red: RTT de R4 a R2, promedio 15 min'
++          name: 'Red: RTT de srv-gestion a srv-infobus, promedio 15 min'
+           type: CALCULATED
+           key: infobus.net.rtt_ms
+           value_type: FLOAT
+           units: ms
+           params: 'avg(/Zabbix-server/infobus.api.ext.tcp_connect_ms,15m)'
+-          description: 'Conexion TCP de R4 al 443 de R2. Zabbix-server es el nombre fijo del host del servidor (LOCAL_HOST_NAME).'
++          description: 'Conexion TCP de srv-gestion al 443 de srv-infobus. Zabbix-server es el nombre fijo del host del servidor (LOCAL_HOST_NAME).'
+         - uuid: 085e5649f59042cc95db0551d9647c07
+           name: 'TLS + Traefik (sin red)'
+           type: CALCULATED
+@@ -599,7 +599,7 @@ zabbix_export:
+           description: ídem
+         - macro: '{$Q_WARN}'
+           value: '80'
+-          description: 'Longitud del stream events de Redis. Pendiente del agente en R2.'
++          description: 'Longitud del stream events de Redis. Pendiente del agente en srv-infobus.'
+         - macro: '{$T_LATENCY_CRIT}'
+           value: '200'
+           description: 'Fijo en el RNF. No lo mueve MACDT.'
+diff --git a/templates/simovilab-templates.yml b/templates/simovilab-templates.yml
+index c399630..59d1281 100644
+--- a/templates/simovilab-templates.yml
++++ b/templates/simovilab-templates.yml
+@@ -31,7 +31,7 @@ zabbix_export:
+           key: 'icmpping[,3]'
+           delay: 10s
+           description: |
+-            Ping desde el servidor Zabbix (R4) a la IP de la interfaz del host: 3 paquetes cada 10 s.
++            Ping desde el servidor Zabbix (srv-gestion) a la IP de la interfaz del host: 3 paquetes cada 10 s.
+             1 = respondió al menos uno, 0 = no respondió ninguno.
+           valuemap:
+             name: 'Estado ping'

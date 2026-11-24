@@ -67,7 +67,7 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro 
 | External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependiente | ms |
 | External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependiente | ms |
 | External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependiente | ms |
-| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente | ms |
+| External: TCP connection from srv-gestion to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependiente | ms |
 | External: burst requests | `infobus.api.ext.n` | Dependiente | — |
 | External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependiente | — |
 | External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependiente | — |

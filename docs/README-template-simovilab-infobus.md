@@ -120,7 +120,7 @@ Override a macro on the host to keep the change after the next import: *Data col
 | Conexion TCP al orchestrator | `infobus.api.tcp_connect_ms` | Dependent | ms |
 | Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.throttled` | Dependent | — |
 | Externo - interno: red + TLS + Traefik | `infobus.net.delta_ms` | Calculated | ms |
-| Red: RTT de R4 a R2, promedio 15 min | `infobus.net.rtt_ms` | Calculated | ms |
+| Red: RTT de srv-gestion a srv-infobus, promedio 15 min | `infobus.net.rtt_ms` | Calculated | ms |
 | TLS + Traefik (sin red) | `infobus.net.tls_traefik_ms` | Calculated | ms |
 | Resultado de la calibración de MACDT | `macdt.calib` | Trapper | — |
 | Detalle de la calibración de MACDT | `macdt.calib.info` | Trapper | — |

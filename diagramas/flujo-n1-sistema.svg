@@ -35,9 +35,9 @@ text.cap{fill:#5b6b7c}
     <text class="m cap" x="102" y="216" font-size="11.5" text-anchor="middle">GTFS Schedule</text>
     <text class="m cap" x="102" y="232" font-size="11.5" text-anchor="middle">fuente autoritativa</text>
 
-    <!-- R3 -->
+    <!-- srv-databus -->
     <rect x="262" y="48" width="208" height="208" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
-    <text class="m" x="278" y="72" font-size="12" font-weight="600" fill="#0b6e99">R3</text>
+    <text class="m" x="278" y="72" font-size="12" font-weight="600" fill="#0b6e99">srv-databus</text>
     <text x="278" y="98" font-size="20" font-weight="700">databus</text>
     <text class="cap" x="278" y="120" font-size="12.5">Ingesta · estado · proyección</text>
     <line x1="278" y1="134" x2="454" y2="134" stroke="#dde4ec"/>
@@ -48,9 +48,9 @@ text.cap{fill:#5b6b7c}
     <rect x="278" y="216" width="176" height="24" rx="4" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.4"/>
     <text class="m" x="366" y="232" font-size="11" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.agent · databus</text>
 
-    <!-- R2 -->
+    <!-- srv-infobus -->
     <rect x="556" y="48" width="208" height="208" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
-    <text class="m" x="572" y="72" font-size="12" font-weight="600" fill="#0b6e99">R2</text>
+    <text class="m" x="572" y="72" font-size="12" font-weight="600" fill="#0b6e99">srv-infobus</text>
     <text x="572" y="98" font-size="20" font-weight="700">infobus</text>
     <text class="cap" x="572" y="120" font-size="12.5">Consumo · difusión</text>
     <line x1="572" y1="134" x2="748" y2="134" stroke="#dde4ec"/>
@@ -85,7 +85,7 @@ text.cap{fill:#5b6b7c}
 
     <!-- canales -->
     <rect x="24" y="340" width="196" height="160" rx="7" fill="#ffffff" stroke="#c3cdd8" stroke-width="1.2" stroke-dasharray="5 4"/>
-    <text class="m cap" x="38" y="362" font-size="11" letter-spacing="1.2">CANALES HACIA R4</text>
+    <text class="m cap" x="38" y="362" font-size="11" letter-spacing="1.2">CANALES HACIA srv-gestion</text>
     <text class="m" x="38" y="386" font-size="12" font-weight="600" fill="#a14e07">Zabbix</text>
     <text class="m cap" x="38" y="404" font-size="11">10051/tcp · TLS PSK</text>
     <text class="m cap" x="38" y="420" font-size="11">checks activos salientes</text>
@@ -93,15 +93,15 @@ text.cap{fill:#5b6b7c}
     <text class="m cap" x="38" y="466" font-size="11">1515/tcp enrolamiento</text>
     <text class="m cap" x="38" y="482" font-size="11">1514/tcp eventos</text>
 
-    <!-- R4 -->
+    <!-- srv-gestion -->
     <rect x="236" y="332" width="946" height="376" rx="8" fill="#ffffff" stroke="#0b6e99" stroke-width="2"/>
-    <text class="m" x="254" y="694" font-size="12" font-weight="600" fill="#0b6e99">R4</text>
-    <text x="284" y="695" font-size="17" font-weight="700">monitoreo y seguridad</text>
-    <text class="cap" x="478" y="694" font-size="12.5">recolección · adaptación del umbral · detección</text>
+    <text class="m" x="254" y="694" font-size="12" font-weight="600" fill="#0b6e99">srv-gestion</text>
+    <text x="346" y="695" font-size="17" font-weight="700">monitoreo y seguridad</text>
+    <text class="cap" x="548" y="694" font-size="12.5">recolección · adaptación del umbral · detección</text>
 
     <!-- grupo zabbix -->
     <rect x="252" y="348" width="452" height="318" rx="7" fill="none" stroke="#c3cdd8" stroke-width="1.3" stroke-dasharray="6 4"/>
-    <text class="m cap" x="472" y="368" font-size="11">ZABBIX 7.4.3 · zabbix-fase-2</text>
+    <text class="m cap" x="472" y="368" font-size="11">ZABBIX 7.4.3 · zabbix-fase-3</text>
     <rect x="268" y="380" width="200" height="46" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.6"/>
     <text class="m" x="368" y="399" font-size="12" font-weight="600" text-anchor="middle">zabbix-server</text>
     <text class="m cap" x="368" y="416" font-size="10.5" text-anchor="middle">:10051 · evaluación</text>
@@ -113,7 +113,7 @@ text.cap{fill:#5b6b7c}
     <text class="m cap" x="368" y="474" font-size="10.5" text-anchor="middle">web y API :8080/:8443</text>
     <rect x="484" y="438" width="204" height="46" rx="6" fill="#fbead6" stroke="#c2680f" stroke-width="1.6"/>
     <text class="m" x="586" y="457" font-size="12" font-weight="600" text-anchor="middle" fill="#a14e07">zabbix-agent2 local</text>
-    <text class="m cap" x="586" y="474" font-size="10.5" text-anchor="middle">R4 + infobus.api.ext</text>
+    <text class="m cap" x="586" y="474" font-size="10.5" text-anchor="middle">srv-gestion + infobus.api.ext</text>
     <rect x="268" y="496" width="420" height="50" rx="6" fill="#d9efe3" stroke="#1d6b45" stroke-width="2"/>
     <text class="m" x="478" y="517" font-size="12.5" font-weight="700" text-anchor="middle" fill="#1d6b45">macdt-loop · cada 60 s</text>
     <text class="m cap" x="478" y="535" font-size="10.5" text-anchor="middle">lee ρ, V_gps, gate y N(t) → escribe {$T_LATENCY_WARN}</text>
@@ -130,10 +130,10 @@ text.cap{fill:#5b6b7c}
 
     <!-- grupo wazuh -->
     <rect x="720" y="348" width="446" height="318" rx="7" fill="none" stroke="#a8406f" stroke-width="1.3" stroke-dasharray="6 4"/>
-    <text class="m" x="948" y="368" font-size="11" fill="#8a2b55">WAZUH 4.14.5 · wazuh-fase-3</text>
+    <text class="m" x="948" y="368" font-size="11" fill="#8a2b55">WAZUH 4.14.5 · wazuh-fase-4</text>
     <rect x="736" y="380" width="414" height="46" rx="6" fill="#f6e0ea" stroke="#a8406f" stroke-width="1.8"/>
     <text class="m" x="943" y="399" font-size="12" font-weight="600" text-anchor="middle" fill="#8a2b55">wazuh.manager</text>
-    <text class="m cap" x="943" y="416" font-size="10.5" text-anchor="middle">1514 · 1515 · 514/udp · API 55000 · reglas 100100–100122</text>
+    <text class="m cap" x="943" y="416" font-size="10.5" text-anchor="middle">1514 · 1515 · 514/udp · API 55000 · reglas 100100–100135</text>
     <rect x="736" y="438" width="200" height="46" rx="6" fill="#d7eaf4" stroke="#0b6e99" stroke-width="1.4"/>
     <text class="m" x="836" y="457" font-size="12" font-weight="600" text-anchor="middle">wazuh.indexer</text>
     <text class="m cap" x="836" y="474" font-size="10.5" text-anchor="middle">OpenSearch :9200</text>
@@ -148,8 +148,8 @@ text.cap{fill:#5b6b7c}
     <text class="m cap" x="836" y="591" font-size="10.5" text-anchor="middle">una vez · grupos y reglas</text>
     <rect x="950" y="558" width="200" height="42" rx="6" fill="#eef1f5" stroke="#c3cdd8" stroke-width="1.3"/>
     <text class="m" x="1050" y="575" font-size="11.5" font-weight="600" text-anchor="middle">respuesta activa</text>
-    <text class="m cap" x="1050" y="591" font-size="10.5" text-anchor="middle">firewall-drop · 180 s</text>
-    <text class="m cap" x="736" y="630" font-size="10.5">grupos: databus (R3) · infobus (R2) · monitoring (R4)</text>
+    <text class="m cap" x="1050" y="591" font-size="10.5" text-anchor="middle">firewall-drop · 180 s / 1 h</text>
+    <text class="m cap" x="736" y="630" font-size="10.5">grupos: databus · infobus · monitoring (srv-gestion)</text>
     <text class="m cap" x="736" y="646" font-size="10.5">mismo host que Zabbix · imágenes fijas 4.14.5</text>
     <path class="edge" d="M836 426 V438" marker-end="url(#a)"/>
 

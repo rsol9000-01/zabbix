@@ -11,7 +11,7 @@ MACDT Layer D probe. It downloads the two GTFS-RT feeds that databus publishes (
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/gtfsrt_probe.py` |
-| **Runs on** | `zabbix-agent2` on the databus server (R3 in the old lab, srv-databus in the new one), inside the `databus_internal` network |
+| **Runs on** | `zabbix-agent2` on the databus server (srv-databus), inside the `databus_internal` network |
 | **Run by** | Zabbix Agent 2, `UserParameter=gtfs.probe[*]` in [`agent2/zabbix_agent2.conf`](../agent2/zabbix_agent2.conf) |
 | **Item key** | `gtfs.probe[{$MACDT.STALE_S}]` (template `simovilab-databus`) |
 | **Queries** | `<base>/vehicle_positions.pb` and `<base>/trip_updates.pb` |

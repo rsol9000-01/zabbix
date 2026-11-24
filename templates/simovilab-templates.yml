@@ -31,7 +31,7 @@ zabbix_export:
           key: 'icmpping[,3]'
           delay: 10s
           description: |
-            Ping desde el servidor Zabbix (R4) a la IP de la interfaz del host: 3 paquetes cada 10 s.
+            Ping desde el servidor Zabbix (srv-gestion) a la IP de la interfaz del host: 3 paquetes cada 10 s.
             1 = respondió al menos uno, 0 = no respondió ninguno.
           valuemap:
             name: 'Estado ping'

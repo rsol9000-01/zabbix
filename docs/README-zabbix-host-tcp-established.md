@@ -10,7 +10,7 @@ Counts the TCP connections in `ESTABLISHED` state on the **host**, not inside th
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/zabbix-host-tcp-established.sh` |
-| **Runs on** | Every Zabbix agent: the `zabbix-agent2` container on srv-gestion (R4), srv-databus (R3) and srv-infobus (R2) |
+| **Runs on** | Every Zabbix agent: the `zabbix-agent2` container on srv-gestion, srv-databus and srv-infobus |
 | **Run by** | Zabbix Agent 2, `UserParameter=host.tcp.established` with `sudo` |
 | **Item key** | `host.tcp.established` (template `simovilab servidor y sistema operativo`) |
 | **Reads** | `/proc/1/net/tcp` and `/proc/1/net/tcp6` |

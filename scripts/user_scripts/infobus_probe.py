@@ -3,8 +3,8 @@
 InfoBus API latency probe for MACDT (Layer I).
 
 Run the same script from two locations:
-  - Internal (R2 agent, infobus.api key):      http://orchestrator:8000 -> Daphne + query
-  - External (R4 agent, infobus.api.ext key):  https://<domain>          -> network + TLS + Traefik + Daphne + query
+  - Internal (srv-infobus agent, infobus.api key):      http://orchestrator:8000 -> Daphne + query
+  - External (srv-gestion agent, infobus.api.ext key):  https://<domain>          -> network + TLS + Traefik + Daphne + query
 Zabbix calculates the external-to-internal difference (simovilab-infobus-ext template).
 Prints one JSON object: use it as the master item and attach dependent items with
 JSONPath, as with gtfsrt_probe.py.

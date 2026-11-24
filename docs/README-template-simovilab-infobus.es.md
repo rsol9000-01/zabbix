@@ -124,7 +124,7 @@ Para que un cambio sobreviva a la siguiente importación, sobrescribir la macro 
 | Conexion TCP al orchestrator | `infobus.api.tcp_connect_ms` | Dependiente | ms |
 | Too Many Requests (429): peticiones rechazadas por la cuota | `infobus.api.throttled` | Dependiente | — |
 | Externo - interno: red + TLS + Traefik | `infobus.net.delta_ms` | Calculado | ms |
-| Red: RTT de R4 a R2, promedio 15 min | `infobus.net.rtt_ms` | Calculado | ms |
+| Red: RTT de srv-gestion a srv-infobus, promedio 15 min | `infobus.net.rtt_ms` | Calculado | ms |
 | TLS + Traefik (sin red) | `infobus.net.tls_traefik_ms` | Calculado | ms |
 | Resultado de la calibración de MACDT | `macdt.calib` | Trapper | — |
 | Detalle de la calibración de MACDT | `macdt.calib.info` | Trapper | — |

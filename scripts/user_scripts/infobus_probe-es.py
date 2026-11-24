@@ -3,8 +3,8 @@
 Sonda de latencia de la API de InfoBus para MACDT (capa I).
 
 Se ejecuta desde dos puntos con el mismo script:
-  - interno (agente de R2, clave infobus.api):      http://orchestrator:8000 -> Daphne + consulta
-  - externo (agente de R4, clave infobus.api.ext):  https://<dominio>         -> red + TLS + Traefik + Daphne + consulta
+  - interno (agente de srv-infobus, clave infobus.api):      http://orchestrator:8000 -> Daphne + consulta
+  - externo (agente de srv-gestion, clave infobus.api.ext):  https://<dominio>         -> red + TLS + Traefik + Daphne + consulta
 La diferencia externo - interno la calcula Zabbix (plantilla simovilab-infobus-ext). Imprime UN objeto JSON: usenlo como item maestro y cuelguen items
 dependientes con JSONPath, igual que gtfsrt_probe.py.
 

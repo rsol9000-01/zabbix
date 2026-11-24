@@ -63,7 +63,7 @@ Override a macro on the host to keep the change after the next import: *Data col
 | External: baseline with an open connection (network + TLS + Traefik + Daphne) | `infobus.api.ext.health_ms` | Dependent | ms |
 | External: first request (opens the connection) | `infobus.api.ext.health_cold_ms` | Dependent | ms |
 | External: connection setup cost (TCP + TLS) | `infobus.api.ext.setup_ms` | Dependent | ms |
-| External: TCP connection from R4 to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependent | ms |
+| External: TCP connection from srv-gestion to Traefik (network) | `infobus.api.ext.tcp_connect_ms` | Dependent | ms |
 | External: burst requests | `infobus.api.ext.n` | Dependent | — |
 | External: 200 responses in the burst | `infobus.api.ext.n_200` | Dependent | — |
 | External: 204 responses in the burst | `infobus.api.ext.n_204` | Dependent | — |

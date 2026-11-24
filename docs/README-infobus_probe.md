@@ -6,8 +6,8 @@
 
 MACDT Layer I probe. It measures the latency of the infobus `next-trips` endpoint with a short burst of requests, separates the transport cost from the query cost, and prints **one JSON**. The same script runs from two places:
 
-- **Internal (`infobus.api`, R2 agent):** straight to the orchestrator (`http://orchestrator:8000`): Daphne + query, without Traefik.
-- **External (`infobus.api.ext`, R4 agent):** through the public address (`https://<domain>`): network + TLS + Traefik + Daphne + query.
+- **Internal (`infobus.api`, srv-infobus agent):** straight to the orchestrator (`http://orchestrator:8000`): Daphne + query, without Traefik.
+- **External (`infobus.api.ext`, srv-gestion agent):** through the public address (`https://<domain>`): network + TLS + Traefik + Daphne + query.
 
 Zabbix computes the external minus internal difference in the `simovilab-infobus` template.
 
@@ -16,7 +16,7 @@ Zabbix computes the external minus internal difference in the `simovilab-infobus
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/infobus_probe.py` |
-| **Runs on** | `zabbix-agent2` on the infobus server (R2 / srv-infobus) and on the management server (R4 / srv-gestion) |
+| **Runs on** | `zabbix-agent2` on the infobus server (srv-infobus) and on the management server (srv-gestion) |
 | **Run by** | Zabbix Agent 2, `UserParameter=infobus.api` and `UserParameter=infobus.api.ext` |
 | **Item keys** | `infobus.api` (template `simovilab-infobus`), `infobus.api.ext` (template `simovilab-infobus-ext`) |
 | **Queries** | `<base>/health/` and `<base>/api/next-trips/?stop_id=...&transit_system=...` |
@@ -39,11 +39,11 @@ flowchart LR
 ### Quick start
 
 ```bash
-# Internal measurement (as the R2 agent runs it)
+# Internal measurement (as the srv-infobus agent runs it)
 ./infobus_probe.py --base http://orchestrator:8000 --host-header localhost \
   --stop-id auto --repeat 10 --transit-system 1
 
-# External measurement (as the R4 agent runs it)
+# External measurement (as the srv-gestion agent runs it)
 ./infobus_probe.py --base https://infobus.ucr.ac.cr --stop-id auto --repeat 10 --transit-system 1
 
 # Fixed stop

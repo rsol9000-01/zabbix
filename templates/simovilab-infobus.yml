@@ -9,8 +9,8 @@ zabbix_export:
       name: simovilab-infobus
       description: |
         Capa I de MACDT: latencia de la API de InfoBus, medida DESDE DENTRO
-        (agente de R2 directo al orchestrator, sin Traefik ni TLS). La
-        medicion externa la hace R4 (simovilab-infobus-ext, host Zabbix-server)
+        (agente de srv-infobus directo al orchestrator, sin Traefik ni TLS). La
+        medicion externa la hace srv-gestion (simovilab-infobus-ext, host Zabbix-server)
         y la resta entre ambas esta aqui (items infobus.net.*). Es el RNF de rendimiento del TFG y el objetivo
         de calibracion de beta.
         
@@ -28,7 +28,7 @@ zabbix_export:
           delay: 60s
           history: 1d
           value_type: TEXT
-          description: 'Maestro. 10 peticiones a /api/next-trips/ desde R2, directo al orchestrator. Con --stop-id auto mide la parada con mas horas de paso en 5 h (peor caso). timeout 30s: la sonda tarda mas de 3 s en frio y, una vez por hora, revisa si cambio el GTFS.'
+          description: 'Maestro. 10 peticiones a /api/next-trips/ desde srv-infobus, directo al orchestrator. Con --stop-id auto mide la parada con mas horas de paso en 5 h (peor caso). timeout 30s: la sonda tarda mas de 3 s en frio y, una vez por hora, revisa si cambio el GTFS.'
           timeout: 30s
         - uuid: 6e0aa045cd3345febb7082ab8d4f2d9c
           name: 'Buses en camino a la parada medida'
@@ -466,13 +466,13 @@ zabbix_export:
             Resta de los pisos de transporte con la conexion abierta (/health/, sin consulta a la base),
             promediados 15 min porque las dos sondas no corren en el mismo segundo.
         - uuid: be2242d75ea4436483a48c06969e06a2
-          name: 'Red: RTT de R4 a R2, promedio 15 min'
+          name: 'Red: RTT de srv-gestion a srv-infobus, promedio 15 min'
           type: CALCULATED
           key: infobus.net.rtt_ms
           value_type: FLOAT
           units: ms
           params: 'avg(/Zabbix-server/infobus.api.ext.tcp_connect_ms,15m)'
-          description: 'Conexion TCP de R4 al 443 de R2. Zabbix-server es el nombre fijo del host del servidor (LOCAL_HOST_NAME).'
+          description: 'Conexion TCP de srv-gestion al 443 de srv-infobus. Zabbix-server es el nombre fijo del host del servidor (LOCAL_HOST_NAME).'
         - uuid: 085e5649f59042cc95db0551d9647c07
           name: 'TLS + Traefik (sin red)'
           type: CALCULATED
@@ -599,7 +599,7 @@ zabbix_export:
           description: ídem
         - macro: '{$Q_WARN}'
           value: '80'
-          description: 'Longitud del stream events de Redis. Pendiente del agente en R2.'
+          description: 'Longitud del stream events de Redis. Pendiente del agente en srv-infobus.'
         - macro: '{$T_LATENCY_CRIT}'
           value: '200'
           description: 'Fijo en el RNF. No lo mueve MACDT.'

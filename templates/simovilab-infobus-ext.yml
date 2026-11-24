@@ -8,8 +8,8 @@ zabbix_export:
       template: simovilab-infobus-ext
       name: simovilab-infobus-ext
       description: |
-        MACDT layer I, external side. Linked to the Zabbix server host (R4) through LOCAL_TEMPLATE_*.
-        The R4 agent measures the InfoBus API through Traefik and HTTPS, with the same infobus_probe.py.
+        MACDT layer I, external side. Linked to the Zabbix server host (srv-gestion) through LOCAL_TEMPLATE_*.
+        The srv-gestion agent measures the InfoBus API through Traefik and HTTPS, with the same infobus_probe.py.
         The difference against the internal measurement (network, TLS + Traefik) is in simovilab-infobus,
         which references this host by its fixed name, Zabbix-server.
         It only produces data when the API is behind Traefik.
@@ -24,7 +24,7 @@ zabbix_export:
           history: 1d
           value_type: TEXT
           timeout: 30s
-          description: 'Master item. Same infobus_probe.py, run by the R4 agent against the public domain (Traefik + HTTPS). 30 s timeout, as in the internal probe: with TLS, 10 requests and the hourly GTFS check, a run takes longer than the 3 s default.'
+          description: 'Master item. Same infobus_probe.py, run by the srv-gestion agent against the public domain (Traefik + HTTPS). 30 s timeout, as in the internal probe: with TLS, 10 requests and the hourly GTFS check, a run takes longer than the 3 s default.'
         - uuid: eb14d5700b1d4f4283622e8529ca07eb
           name: 'External: API responds correctly'
           type: DEPENDENT
@@ -140,7 +140,7 @@ zabbix_export:
           key: infobus.api.ext.setup_ms
           units: ms
           value_type: FLOAT
-          description: 'health_cold_ms - health_ms: TCP handshake and TLS negotiation from R4 to Traefik.'
+          description: 'health_cold_ms - health_ms: TCP handshake and TLS negotiation from srv-gestion to Traefik.'
           preprocessing:
             - type: JSONPATH
               parameters:
@@ -161,10 +161,10 @@ zabbix_export:
                 What a user pays to open the connection to the public InfoBus API (DNS,
                 TCP handshake and TLS negotiation with Traefik) rose above {$INFOBUS.EXT.SETUP.FACTOR}
                 times its median of the last day, as a 10 min average, and is above
-                {$INFOBUS.EXT.SETUP.MIN_MS} ms. Check public DNS, the network between R4 and the proxy,
+                {$INFOBUS.EXT.SETUP.MIN_MS} ms. Check public DNS, the network between srv-gestion and the proxy,
                 Traefik (certificate, load) or the site uplink.
         - uuid: 8c4d43f61cf248e59d1c8241e167ceb7
-          name: 'External: TCP connection from R4 to Traefik (network)'
+          name: 'External: TCP connection from srv-gestion to Traefik (network)'
           type: DEPENDENT
           key: infobus.api.ext.tcp_connect_ms
           units: ms

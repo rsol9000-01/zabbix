@@ -16,7 +16,7 @@ The same script feeds two master items:
 | Item | Value |
 | --- | --- |
 | **Location** | `scripts/user_scripts/gtfs_window.py` |
-| **Runs on** | `zabbix-agent2` on the databus server (R3 / srv-databus) |
+| **Runs on** | `zabbix-agent2` on the databus server (srv-databus) |
 | **Run by** | Zabbix Agent 2, `UserParameter=macdt.window` and `UserParameter=databus.static` |
 | **Item keys** | `macdt.window`, `databus.static` (template `simovilab-databus`) |
 | **Sources** | GTFS ZIP by URL (`--url`), local file (`--zip`) or databus PostgreSQL (`--pg`) |
