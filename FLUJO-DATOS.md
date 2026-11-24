@@ -71,9 +71,9 @@ Es un stack single-node en Docker sobre srv-gestion, junto a Zabbix. `wazuh-init
 
 | Grupo | Host | Registros | Integridad (FIM, tiempo real) | Reglas propias que aplican |
 | --- | --- | --- | --- | --- |
-| `databus` | srv-databus | JSON de todos los contenedores | `DATABUS_PATH` y volumen `databus_feed_files` | 100101 importación GTFS · 100109 clona código en arranque · 100121 GTFS publicado cambió |
-| `infobus` | srv-infobus | JSON de todos los contenedores | `INFOBUS_PATH` | 100102–100106 Host, 5xx, 404 · 100107 Redis · 100108–100112 eventos de streams |
-| `monitoring` | srv-gestion | `/var/log/auth.log` + contenedores | `WAZUH_PATH` y `ZABBIX_PATH` | SSH (5712, 5720, 5763) con respuesta activa |
+| `databus` | srv-databus | `auth.log` + Traefik + contenedores | `DATABUS_PATH` y volumen `databus_feed_files` | 100101 importación GTFS · 100109 clona código en arranque · 100121 GTFS publicado cambió · SSH y Traefik con respuesta activa |
+| `infobus` | srv-infobus | `auth.log` + Traefik + contenedores | `INFOBUS_PATH` | 100102–100106 Host, 5xx, 404 · 100107 Redis · 100108–100112 eventos de streams · SSH y Traefik con respuesta activa |
+| `monitoring` | srv-gestion | `auth.log` + Traefik + contenedores | `WAZUH_PATH` y `ZABBIX_PATH` | SSH y Traefik con respuesta activa |
 | todos | — | — | sin diff de `.env` ni `authd.pass` | 100120 configuración o secretos · 100122 socket Docker |
 
 > [!WARNING]
