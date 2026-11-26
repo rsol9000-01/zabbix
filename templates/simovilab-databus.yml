@@ -1318,7 +1318,7 @@ zabbix_export:
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: abdaec51aaf5480e8f43d9a54715f9ad
-      expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,5m)>=2 and (min(/simovilab-databus/macdt.s_t,5m)-max(/simovilab-databus/gtfs.v_trips,5m))>=min(/simovilab-databus/macdt.s_t,5m)/2'
+      expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/macdt.s_t,5m)>=2 and (max(/simovilab-databus/macdt.s_t,5m)-max(/simovilab-databus/gtfs.v_trips,5m))>=max(/simovilab-databus/macdt.s_t,5m)/2'
       name: 'Déficit de viajes'
       priority: AVERAGE
       dependencies:
@@ -1326,6 +1326,9 @@ zabbix_export:
           expression: last(/simovilab-databus/gtfs.fetch_ok)=0
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
+        - name: 'Sin viajes activos'
+          expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/macdt.s_t,3m)>=1 and max(/simovilab-databus/gtfs.v_trips,3m)=0'
+          recovery_expression: 'last(/simovilab-databus/gtfs.v_trips)>=1 or last(/simovilab-databus/macdt.gate)=0'
     - uuid: c55d8ed4f8e046c2843159fa995ca3eb
       expression: 'min(/simovilab-databus/gtfs.v_trips,5m)>last(/simovilab-databus/macdt.v_trips_max)'
       name: 'Más viajes que el máximo programado'
@@ -1336,7 +1339,9 @@ zabbix_export:
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
     - uuid: 2982be5f6b4044bb8514e2c5c9997e54
-      expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,3m)>=1 and max(/simovilab-databus/gtfs.v_trips,3m)=0'
+      expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/macdt.s_t,3m)>=1 and max(/simovilab-databus/gtfs.v_trips,3m)=0'
+      recovery_mode: RECOVERY_EXPRESSION
+      recovery_expression: 'last(/simovilab-databus/gtfs.v_trips)>=1 or last(/simovilab-databus/macdt.gate)=0'
       name: 'Sin viajes activos'
       priority: WARNING
       dependencies:
@@ -1345,9 +1350,12 @@ zabbix_export:
         - name: 'Capa D: sonda sin datos'
           expression: 'nodata(/simovilab-databus/gtfs.probe[{$MACDT.STALE_S}],5m)=1'
         - name: 'Sin viajes activos sostenido'
-          expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,10m)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
+          expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/macdt.s_t,10m)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
+          recovery_expression: 'last(/simovilab-databus/gtfs.v_trips)>=1 or last(/simovilab-databus/macdt.gate)=0'
     - uuid: d2e66eb955194ef28b7c8bcf549da2a3
-      expression: 'last(/simovilab-databus/macdt.gate)=1 and min(/simovilab-databus/macdt.s_t,10m)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
+      expression: 'last(/simovilab-databus/macdt.gate)=1 and max(/simovilab-databus/macdt.s_t,10m)>=1 and max(/simovilab-databus/gtfs.v_trips,10m)=0'
+      recovery_mode: RECOVERY_EXPRESSION
+      recovery_expression: 'last(/simovilab-databus/gtfs.v_trips)>=1 or last(/simovilab-databus/macdt.gate)=0'
       name: 'Sin viajes activos sostenido'
       priority: DISASTER
       dependencies:
