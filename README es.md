@@ -137,12 +137,58 @@ Cada script tiene dos versiones con la misma lógica: `<nombre>.sh` (o `.py`), c
   - Un resolver de certificados (`CERT_RESOLVER`, `letsencrypt` por defecto) o un certificado ya cargado para `ZBX_WEB_HOST`.
   - El file provider activado, con los middlewares `security-headers` y `compression`.
 - Un registro DNS para `ZBX_WEB_HOST` que apunte a srv-gestion.
+- El reloj sincronizado por NTP, con el mismo servidor NTP en srv-gestion, srv-databus y srv-infobus. Ver [Sincronizar el reloj](#sincronizar-el-reloj).
 - Puertos abiertos en el firewall del servidor:
 
 | Puerto | Uso | Abierto para |
 | --- | --- | --- |
 | `443/tcp` | Interfaz web y API, a través de Traefik | Red de administración |
 | `10051/tcp` | Datos de los agentes (checks activos) y trappers del bucle MACDT | Agentes |
+
+#### Sincronizar el reloj
+
+Aplicar esto en srv-gestion, srv-databus y srv-infobus, con **el mismo servidor NTP en los tres**. Las alertas, los bloqueos y los tiempos de detección se comparan entre los tres servidores: un desfase de reloj entre ellos vuelve incorrectos esos tiempos. Los contenedores toman la hora del host, así que no hace falta reiniciarlos.
+
+1. Revisar el estado actual:
+
+```bash
+timedatectl | grep -E "synchronized|NTP service"
+```
+
+2. Editar `/etc/systemd/timesyncd.conf` y definir el servidor NTP en la sección `[Time]`. Usar el gateway de la red u otro servidor NTP que los tres servidores alcancen:
+
+```ini
+[Time]
+NTP=<IP del servidor NTP>
+```
+
+Para usar el gateway de la red sin editar el archivo a mano:
+
+```bash
+GW=$(ip route | awk '/^default/ {print $3; exit}')
+sudo sed -i "s/^#\?NTP=.*/NTP=$GW/" /etc/systemd/timesyncd.conf
+```
+
+3. Activar la sincronización y reiniciar el servicio:
+
+```bash
+sudo timedatectl set-ntp true
+sudo systemctl restart systemd-timesyncd
+```
+
+4. Probarlo después de unos 30 s:
+
+```bash
+timedatectl timesync-status | grep -E "Server|Packet count|Offset"
+timedatectl | grep -E "synchronized|NTP service"
+```
+
+| Resultado | Significado |
+| --- | --- |
+| `Server` muestra la IP configurada, `Packet count` es mayor que 0, `System clock synchronized: yes` y `NTP service: active` | Sincronizado |
+| `Packet count: 0` | El servidor NTP no responde: el firewall bloquea `123/udp` o ese servidor no da hora. Usar otro servidor NTP |
+
+Repetir la prueba en los tres servidores: `Server` tiene que mostrar la misma IP en todos.
 
 #### 2. Configurar el `.env`
 
@@ -323,6 +369,7 @@ En un par de minutos el host aparece en **Data collection → Hosts**, con las p
 - Docker Engine con Compose v2, el grupo `docker` y `python3`. Ejecutar el script como **root** (`sudo`).
 - Salida hacia el servidor por `10051/tcp`, y que `SERVER_FQDN` resuelva desde el host.
 - `10050/tcp` abierto solo si se van a usar checks pasivos (`ZBX_PORTS`). Las sondas usan checks activos.
+- El reloj sincronizado con el mismo servidor NTP que el servidor. Ver [Sincronizar el reloj](#sincronizar-el-reloj).
 
 Para saber el nombre de la red de la aplicación:
 
