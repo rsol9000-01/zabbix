@@ -1032,6 +1032,19 @@ The three per-queue macros accept context: `{$CELERY.QUEUE.WARN:"realtime_engine
 | El GTFS que publica databus está desactualizado | `simovilab-databus` | SIMOVI publishes a newer static GTFS version than the one databus holds, during {$MACDT.ZIP.DESFASE.TIEMPO}. |
 
 
+## Moving to production
+
+Check these points before moving databus and infobus to production. A new domain for the databus API needs no changes here: the databus checks use the internal address `http://orchestrator:8000`, and the Wazuh rules filter by method, path and HTTP code.
+
+1. **Make the real client IP reach Traefik.** If production puts something in front of Traefik (the UGIT nginx proxies, a load balancer or a CDN), Traefik records the IP of that proxy as `ClientHost`. The first brute force would make Wazuh block the proxy and, with it, every user. Either set `forwardedHeaders.trustedIPs` in Traefik to the proxy IP, so Traefik takes the real IP from the `X-Forwarded-For` header, or disable the automatic block in Wazuh and keep only the alerts (see the Wazuh repository README).
+2. **Update the Wazuh white list if the server IPs change.** Edit the `<white_list>` entries `10.20.203.23`–`.25` in `config/wazuh_cluster/wazuh_manager.conf` of the Wazuh repository.
+3. **Check the databus code.** `/api/login/` must keep answering 400 to wrong credentials (Wazuh rules 100141 and 100142), and the healthchecks of `compose.prod.yml` must stay the same (Wazuh rule 100140). If either changes, update those rules in the Wazuh repository.
+4. **Update the external infobus check if the infobus domain changes** (not the databus one): edit the `infobus.api.ext` line in `agent2/zabbix_agent2.conf`, which uses `https://infobus.ucr.ac.cr`, and recreate the agent on srv-gestion:
+
+   ```bash
+   DOCKER_GID=$(getent group docker | cut -d: -f3) docker compose --env-file .env up -d --force-recreate zabbix-agent2
+   ```
+
 ## Security notes
 
 - **Credentials:** they go only in `.env`, `agent2/simovilab-plugins.conf`, `agent2/simovilab-celery.conf` and `psk/`, which are in `.gitignore`. Change every sample value before deploying.

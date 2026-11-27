@@ -1032,6 +1032,19 @@ Las tres macros por cola aceptan contexto: `{$CELERY.QUEUE.WARN:"realtime_engine
 | El GTFS que publica databus está desactualizado | `simovilab-databus` | SIMOVI publica una versión del GTFS estático más nueva que la que tiene databus, durante {$MACDT.ZIP.DESFASE.TIEMPO}. |
 
 
+## Paso a producción
+
+Revisar estos puntos antes de pasar databus e infobus a producción. Un dominio nuevo para la API de databus no requiere cambios aquí: los checks de databus usan la dirección interna `http://orchestrator:8000`, y las reglas de Wazuh filtran por método, ruta y código HTTP.
+
+1. **Hacer que la IP real del cliente llegue a Traefik.** Si producción pone algo delante de Traefik (los proxies nginx de UGIT, un balanceador o un CDN), Traefik registra como `ClientHost` la IP de ese proxy. La primera fuerza bruta haría que Wazuh bloquee al proxy y, con él, a todos los usuarios. Configurar en Traefik `forwardedHeaders.trustedIPs` con la IP del proxy, para que Traefik tome la IP real del encabezado `X-Forwarded-For`, o desactivar el bloqueo automático en Wazuh y dejar solo las alertas (ver el README del repositorio de Wazuh).
+2. **Actualizar la lista blanca de Wazuh si cambian las IPs de los servidores.** Editar las entradas `<white_list>` `10.20.203.23`–`.25` en `config/wazuh_cluster/wazuh_manager.conf` del repositorio de Wazuh.
+3. **Revisar el código de databus.** `/api/login/` tiene que seguir respondiendo 400 ante credenciales incorrectas (reglas de Wazuh 100141 y 100142), y los healthchecks de `compose.prod.yml` tienen que seguir siendo los mismos (regla de Wazuh 100140). Si alguno cambia, actualizar esas reglas en el repositorio de Wazuh.
+4. **Actualizar el check externo de infobus si cambia el dominio de infobus** (no el de databus): editar la línea `infobus.api.ext` en `agent2/zabbix_agent2.conf`, que usa `https://infobus.ucr.ac.cr`, y recrear el agente en srv-gestion:
+
+   ```bash
+   DOCKER_GID=$(getent group docker | cut -d: -f3) docker compose --env-file .env up -d --force-recreate zabbix-agent2
+   ```
+
 ## Notas de seguridad
 
 - **Credenciales:** van solo en `.env`, `agent2/simovilab-plugins.conf`, `agent2/simovilab-celery.conf` y `psk/`, que están en `.gitignore`. Antes de desplegar, cambiar todos los valores de ejemplo.
